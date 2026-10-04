@@ -26,7 +26,12 @@ const scopes = z.array(z.object({ index: z.number(), instruction: z.string(), ou
 const preview = z.object({ html: z.string(), scopes, link_errors: z.array(issue).optional(), errors: z.array(issue).optional(), transclusions: z.array(TransclusionSchema).optional() });
 const ownEntry = z.object({ id: z.string(), kind: z.enum(["fragment", "thread"]), withdrawn: z.boolean(), updated: z.string(), contentHtml: z.string() });
 const importedEntry = z.object({ subscriptionId: z.string(), subscriptionTitle: z.string(), remoteId: z.string(), kind: z.enum(["fragment", "thread"]), withdrawn: z.boolean(), l0: z.boolean(), updated: z.string().nullable(), observedAt: z.string(), contentHtml: z.string(), pinnedVersionRetained: z.number().nullable(), sourceUrl: z.string().nullable() });
-export const ReadingEntrySchema = z.object({ key: z.string(), source: z.enum(["own", "imported"]), kind: z.enum(["fragment", "thread"]), withdrawn: z.boolean(), l0: z.boolean(), contentHtml: z.string(), displayAt: z.string(), own: ownEntry.optional(), imported: importedEntry.optional() }).openapi("ReadingEntry");
+const relationCounts = z.object({ stub: z.number().int().nonnegative(), transclusion: z.number().int().nonnegative(), fork: z.number().int().nonnegative() });
+export const LineageSummarySchema = z.object({ up: relationCounts, down: relationCounts }).openapi("LineageSummary");
+export const ReadingEntrySchema = z.object({ key: z.string(), source: z.enum(["own", "imported"]), kind: z.enum(["fragment", "thread"]), withdrawn: z.boolean(), l0: z.boolean(), contentHtml: z.string(), displayAt: z.string(), own: ownEntry.optional(), imported: importedEntry.optional(), lineage: LineageSummarySchema.optional() }).openapi("ReadingEntry");
+const lineageNodeBase = z.object({ origin: z.string().nullable(), id: z.string().nullable(), version: z.number().int().nullable(), held: z.enum(["own", "imported"]).nullable(), sub: z.string().nullable(), kind: z.enum(["fragment", "thread"]).nullable(), title: z.string().nullable(), excerpt: z.string().nullable(), source: z.string().nullable(), url: z.string().nullable() });
+const lineageNode = lineageNodeBase.extend({ relation: z.enum(["stub", "transclusion", "fork"]), partial: z.boolean(), via: z.enum(["reference", "mention"]) }).openapi("LineageNode");
+export const LineageSchema = z.object({ node: lineageNodeBase, ancestors: z.array(lineageNode), descendants: z.array(lineageNode) }).openapi("Lineage");
 const subscribed = SubscriptionSchema;
 const confirmation = z.object({ needsConfirm: z.literal(true), kind: z.enum(["blyg", "rss"]), origin: z.string().optional(), feedUrl: z.string().optional(), title: z.string(), siteMismatch: z.object({ asserted: z.string(), actual: z.string() }).optional() });
 const quoteFreshness = z.object({ id: z.string(), origin: z.string().optional(), baked: z.number().int(), held: z.number().int().nullable(), live: z.number().int().nullable(), partial: z.boolean(), status: z.enum(["current", "refreshable", "behind", "passage-missing", "unresolvable", "retained"]), reason: z.string().optional() }).openapi("QuoteFreshness");
@@ -102,6 +107,7 @@ export const routes = {
   listStaleThreads: route("listStaleThreads", "get", "/freshness", z.object({ items: z.array(ThreadFreshnessSchema) })),
   getItemFreshness: route("getItemFreshness", "get", "/items/{id}/freshness", ThreadFreshnessSchema, undefined, 200, z.object({ probe: z.enum(["true", "false"]).optional() })),
   refreshItem: route("refreshItem", "post", "/items/{id}/refresh", ok.extend({ version: z.number(), refreshed: z.array(z.string()), resynced: z.number().int().nonnegative(), warning: z.string().optional() }), note, 200, undefined, true),
+  getLineage: route("getLineage", "get", "/lineage", LineageSchema, undefined, 200, z.object({ id: z.string().min(1), sub: z.string().optional(), origin: z.string().optional() })),
   getForkOptions: route("getForkOptions", "get", "/fork-options", z.object({ origin: z.string(), ourOrigin: z.string(), versions: z.array(z.object({ version: z.number(), at: z.string(), note: z.string().nullable() })), error: z.string().optional() }), undefined, 200, z.object({ id: z.string(), sub: z.string().optional(), origin: z.string().optional() })),
 };
 // The resolve/confirm operation has two successful response shapes and statuses.

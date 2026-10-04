@@ -22,6 +22,7 @@ import { normalizeOrigin } from "./stub.ts";
 import { mentionFetch } from "./mentions/http.ts";
 import { platformFetch } from "./importer/http.ts";
 import { fetchImportedHistory, fetchPublicVersion } from "./imported-history.ts";
+import { lineageOf, lineageSummaries } from "./lineage.ts";
 
 export const readApi = contractApp();
 async function collection<T>(db: D1Database, query: Record<string, string>, sql: string, countSql: string) {
@@ -98,7 +99,29 @@ readApi.openapi(routes.getAiModels, async (c) => {
   });
 });
 readApi.openapi(routes.listThumbs, async (c) => c.json({ items: await listThumbs(c.env.DB) }));
-readApi.openapi(routes.listReading, async (c) => c.json(await readingData(c.env.DB, Number(c.req.query("offset") ?? 0), Number(c.req.query("limit") ?? 25), c.req.query("sub"), readingKind(c.req.query("kind")))));
+readApi.openapi(routes.listReading, async (c) => {
+  const page = await readingData(c.env.DB, Number(c.req.query("offset") ?? 0), Number(c.req.query("limit") ?? 25), c.req.query("sub"), readingKind(c.req.query("kind")));
+  // Glyph counts ride along with the page so the timeline needs no request per entry.
+  const ourOrigin = siteOrigin(await getSettings(c.env.DB), c.req.url, normalizeMount(c.env.MOUNT));
+  const linkable = page.items.filter((e) => !e.l0);
+  const summaries = await lineageSummaries(c.env.DB, ourOrigin, linkable.map((e) => e.own ? { sub: null, id: e.own.id } : { sub: e.imported!.subscriptionId, id: e.imported!.remoteId }));
+  const byKey = new Map(linkable.map((e, i) => [e.key, summaries[i]]));
+  return c.json({ ...page, items: page.items.map((e) => byKey.has(e.key) ? { ...e, lineage: byKey.get(e.key) } : e) });
+});
+// One hop of lineage around an item, for the hex view. `sub` names an imported
+// item's subscription ("own" or absent for ours); `origin` re-centres on any
+// node a lineage named, held here or not.
+readApi.openapi(routes.getLineage, async (c) => {
+  const ourOrigin = siteOrigin(await getSettings(c.env.DB), c.req.url, normalizeMount(c.env.MOUNT));
+  const sub = c.req.query("sub");
+  let origin = normalizeOrigin(c.req.query("origin")) ?? ourOrigin;
+  if (sub && sub !== "own") {
+    const row = await getSubscription(c.env.DB, sub);
+    if (!row) return c.json({ error: "no such subscription" }, 404);
+    origin = normalizeOrigin(row.origin) ?? row.origin;
+  }
+  return c.json(await lineageOf(c.env.DB, ourOrigin, origin, c.req.query("id") ?? ""));
+});
 function readingKind(raw: string | undefined): "thread" | "fragment" | undefined {
   return raw === "thread" || raw === "fragment" ? raw : undefined;
 }

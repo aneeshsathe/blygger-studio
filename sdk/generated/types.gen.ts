@@ -303,6 +303,20 @@ export type ReadingEntry = {
         pinnedVersionRetained: number | null;
         sourceUrl: string | null;
     };
+    lineage?: LineageSummary;
+};
+
+export type LineageSummary = {
+    up: {
+        stub: number;
+        transclusion: number;
+        fork: number;
+    };
+    down: {
+        stub: number;
+        transclusion: number;
+        fork: number;
+    };
 };
 
 export type ThreadFreshness = {
@@ -324,6 +338,39 @@ export type QuoteFreshness = {
     partial: boolean;
     status: 'current' | 'refreshable' | 'behind' | 'passage-missing' | 'unresolvable' | 'retained';
     reason?: string;
+};
+
+export type Lineage = {
+    node: {
+        origin: string | null;
+        id: string | null;
+        version: number | null;
+        held: 'own' | 'imported' | null;
+        sub: string | null;
+        kind: 'fragment' | 'thread' | null;
+        title: string | null;
+        excerpt: string | null;
+        source: string | null;
+        url: string | null;
+    };
+    ancestors: Array<LineageNode>;
+    descendants: Array<LineageNode>;
+};
+
+export type LineageNode = {
+    origin: string | null;
+    id: string | null;
+    version: number | null;
+    held: 'own' | 'imported' | null;
+    sub: string | null;
+    kind: 'fragment' | 'thread' | null;
+    title: string | null;
+    excerpt: string | null;
+    source: string | null;
+    url: string | null;
+    relation: 'stub' | 'transclusion' | 'fork';
+    partial: boolean;
+    via: 'reference' | 'mention';
 };
 
 export type ListItemsData = {
@@ -3648,6 +3695,71 @@ export type RefreshItemResponses = {
 };
 
 export type RefreshItemResponse = RefreshItemResponses[keyof RefreshItemResponses];
+
+export type GetLineageData = {
+    body?: never;
+    path?: never;
+    query: {
+        id: string;
+        sub?: string;
+        origin?: string;
+    };
+    url: '/api/lineage';
+};
+
+export type GetLineageErrors = {
+    /**
+     * Request failed
+     */
+    400: ApiError;
+    /**
+     * Request failed
+     */
+    401: ApiError;
+    /**
+     * Request failed
+     */
+    404: ApiError;
+    /**
+     * Request failed
+     */
+    405: ApiError;
+    /**
+     * Request failed
+     */
+    409: ApiError;
+    /**
+     * Request failed
+     */
+    413: ApiError;
+    /**
+     * Request failed
+     */
+    415: ApiError;
+    /**
+     * Request failed
+     */
+    422: ApiError;
+    /**
+     * Request failed
+     */
+    500: ApiError;
+    /**
+     * Request failed
+     */
+    502: ApiError;
+};
+
+export type GetLineageError = GetLineageErrors[keyof GetLineageErrors];
+
+export type GetLineageResponses = {
+    /**
+     * Success
+     */
+    200: Lineage;
+};
+
+export type GetLineageResponse = GetLineageResponses[keyof GetLineageResponses];
 
 export type GetForkOptionsData = {
     body?: never;
