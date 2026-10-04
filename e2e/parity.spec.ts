@@ -214,7 +214,8 @@ test('reading copy actions sit in the ⋯ sheet beside copy url, never beside st
   await expect(entry.locator('.entry-bar')).not.toContainText('copy [[id]]');
   await expect(entry.locator('.entry-bar')).not.toContainText(/respond|reply|answer/);
   let menu = await entryMenu(page, entry);
-  await expect(menu.getByRole('button')).toHaveText([/quote selection/, /link post ↗$/, /fork$/, /copy \[\[id\]\]$/, /copy url$/, /share…$/, /source\.example.*↗/, /history$/]);
+  // link post ↗, fork and history may carry an action tip after their label (lineage.tsx, option C).
+  await expect(menu.getByRole('button')).toHaveText([/quote selection/, /link post ↗/, /fork/, /copy \[\[id\]\]$/, /copy url$/, /share…$/, /source\.example.*↗/, /history/]);
   await expect(menu).not.toContainText(/stub|respond|reply|answer/);
   await menu.getByRole('button', { name: /quote selection/ }).click();
   await expect(page.getByRole('alert')).toContainText('Select text');

@@ -53,6 +53,9 @@ import { formatDateIn } from '../dates.ts';
 import { AddFeedForm } from './catalog.tsx';
 import { diffText, type DiffOp } from '../word-diff.ts';
 import { useSwipe } from './swipe.ts';
+import type { ActionKey, Handlers } from './lineage.tsx';
+import { Coach, LineageGlyph, LineageSheet, glyphCounts, glyphLabel, usedAction, useTip } from './lineage.tsx';
+import type { Lineage } from '../../sdk/dist/browser.js';
 import './reading.css';
 
 const PAGE = 25;
@@ -272,6 +275,42 @@ function entryParts(entry: Reading) {
   return { imported, id, url, source };
 }
 
+/**
+ * What the lineage view's actions do for a node it was re-centred on: only
+ * what holding that node here allows. The opening entry has its own set.
+ */
+function nodeHandlers(node: Lineage['node'], actions: Actions): Handlers {
+  const { run, openDraft, navigate } = actions;
+  const open = node.url
+    ? { run: () => void window.open(node.url!, '_blank', 'noreferrer') }
+    : { unavailable: 'No public page is known for it.' };
+  const id = node.id;
+  if (node.held === 'imported' && node.sub && id) {
+    const source = { subscription_id: node.sub, remote_id: id };
+    return {
+      stub: { run: () => void run(() => openDraft({ mode: 'response', source })) },
+      quote: { unavailable: 'To quote a passage, find this post in its timeline and select the text there.' },
+      fork: { run: () => void navigate({ to: '/fork', search: { id, sub: node.sub! } }) },
+      link: { run: () => void run(() => openDraft({ content_md: `[[${id}]]\n\n`, kind: 'fragment' })) },
+      history: { unavailable: "Its history opens from the post's own ⋯ sheet in the timeline." },
+      open,
+    };
+  }
+  if (node.held === 'own' && id) {
+    const yours = { unavailable: 'This is your own post — edit it rather than respond to it.' };
+    return {
+      stub: yours,
+      quote: yours,
+      fork: yours,
+      link: { run: () => void run(() => openDraft({ content_md: `[[${id}]]\n\n`, kind: 'fragment' })) },
+      history: { unavailable: 'Your own versions are in the editor.' },
+      open,
+    };
+  }
+  const notHeld = { unavailable: 'Not held here — subscribe to its blyg to respond to, quote, fork or link it.' };
+  return { stub: notHeld, quote: notHeld, fork: notHeld, link: notHeld, history: notHeld, open };
+}
+
 /* ---------------- one entry ---------------- */
 
 function Entry({
@@ -288,6 +327,17 @@ function Entry({
   const { run, openDraft, navigate } = actions;
   const settings = useSettings();
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [lineageOpen, setLineageOpen] = useState(false);
+  const [lineageSelection, setLineageSelection] = useState<string>();
+  // The action being pointed at in the bar: drawn as a ghost on the glyph,
+  // with a coach line while its tip lasts (option C).
+  const [pointing, setPointing] = useState<ActionKey | null>(null);
+  const tip = useTip();
+  // A tip on a ⋯ row is shown, not announced: the row keeps its name.
+  const menuTip = (key: ActionKey) => {
+    const text = tip(key);
+    return text ? <span className="lg-tip" aria-hidden="true">{text} </span> : null;
+  };
   const { imported, id, url, source } = entryParts(entry);
   const signal = votes.find(
     (vote) =>
@@ -306,7 +356,67 @@ function Entry({
       await changed('signals');
     });
   const stub = () =>
-    source ? run(() => openDraft({ mode: 'response', source })) : undefined;
+    source
+      ? run(() => {
+          usedAction('stub');
+          return openDraft({ mode: 'response', source });
+        })
+      : undefined;
+  const linkPost = () =>
+    run(() => {
+      usedAction('link');
+      return openDraft({ content_md: `[[${id}]]\n\n`, kind: 'fragment' });
+    });
+  const fork = () => {
+    if (!imported) return;
+    usedAction('fork');
+    void navigate({ to: '/fork', search: { id, sub: imported.subscriptionId } });
+  };
+  const toggleHistory = () => {
+    if (!historyOpen) usedAction('history');
+    setHistoryOpen((open) => !open);
+  };
+  const openPage = () => {
+    usedAction('open');
+    window.open(url, '_blank', 'noreferrer');
+  };
+  const quote = (selection: string) =>
+    source
+      ? run(() => {
+          usedAction('quote');
+          return openDraft({ mode: 'response', source, selection });
+        })
+      : undefined;
+  const openLineage = () => {
+    // As with ⋯: read the selection now, before the sheet takes focus.
+    let selection: string | undefined;
+    if (canQuote(entry))
+      try {
+        selection = selectedTextInEntry(entry.key);
+      } catch {
+        selection = undefined;
+      }
+    setLineageSelection(selection);
+    setLineageOpen(true);
+  };
+  // The lineage sheet counts uses itself; these run the same handlers as the bar and ⋯.
+  const handlersFor = (node: Lineage['node'], isStart: boolean): Handlers => {
+    if (!isStart) return nodeHandlers(node, actions);
+    const yours = entry.own ? 'This is your own post — edit it rather than respond to it.' : undefined;
+    return {
+      stub: imported && source ? { run: () => void run(() => openDraft({ mode: 'response', source })) } : { unavailable: yours ?? 'This post cannot be responded to.' },
+      quote:
+        canQuote(entry) && source
+          ? lineageSelection
+            ? { run: () => void run(() => openDraft({ mode: 'response', source, selection: lineageSelection })) }
+            : { unavailable: 'Select the passage in the post first, then open the lineage again — or use the ❝ quote selection pill.' }
+          : { unavailable: yours ?? 'Only a blyg post you follow can be quoted.' },
+      fork: canQuote(entry) && imported ? { run: () => void navigate({ to: '/fork', search: { id, sub: imported.subscriptionId } }) } : { unavailable: yours ?? 'This post cannot be forked.' },
+      link: canLink(entry) ? { run: () => void run(() => openDraft({ content_md: `[[${id}]]\n\n`, kind: 'fragment' })) } : { unavailable: 'A link to this post would not resolve.' },
+      history: imported && !entry.l0 ? { run: () => setHistoryOpen(true) } : { unavailable: 'Your own versions are in the editor.' },
+      open: url ? { run: () => void window.open(url, '_blank', 'noreferrer') } : { unavailable: 'It has no public page.' },
+    };
+  };
   const addToHopper = () =>
     run(async () => {
       if (!imported) return;
@@ -359,31 +469,30 @@ function Entry({
           source && {
             icon: '❝',
             label: 'quote selection',
-            description:
-              'select text in the entry first — a quote selection button appears',
+            description: (
+              <>
+                {menuTip('quote')}
+                select text in the entry first — a quote selection button appears
+              </>
+            ),
             onSelect: () =>
               void run(async () => {
                 if (selection === undefined) throw selectionError;
-                await openDraft({ mode: 'response', source, selection });
+                await quote(selection);
               }),
           },
         canLink(entry) && {
           icon: '⇢',
           label: 'link post ↗',
-          onSelect: () =>
-            void run(() =>
-              openDraft({ content_md: `[[${id}]]\n\n`, kind: 'fragment' }),
-            ),
+          description: menuTip('link'),
+          onSelect: () => void linkPost(),
         },
         canQuote(entry) &&
           imported && {
             icon: '⑂',
             label: 'fork',
-            onSelect: () =>
-              void navigate({
-                to: '/fork',
-                search: { id, sub: imported.subscriptionId },
-              }),
+            description: menuTip('fork'),
+            onSelect: fork,
           },
         canLink(entry) && {
           icon: '⟦',
@@ -409,15 +518,21 @@ function Entry({
           key: 'open',
           icon: '↗',
           label: `${displayUrl(url!)} ↗`,
-          description: url,
-          onSelect: () => void window.open(url, '_blank', 'noreferrer'),
+          description: (
+            <>
+              {menuTip('open')}
+              {url}
+            </>
+          ),
+          onSelect: openPage,
         },
         !!imported &&
           !entry.l0 && {
             key: 'history',
             icon: '⟲',
             label: historyOpen ? 'hide history' : 'history',
-            onSelect: () => setHistoryOpen((open) => !open),
+            description: historyOpen ? undefined : menuTip('history'),
+            onSelect: toggleHistory,
           },
       ],
     });
@@ -455,6 +570,21 @@ function Entry({
             ) : null}
             <span className="src">{imported?.subscriptionTitle || 'you'}</span>
             <span>· {date}</span>
+            {entry.lineage ? (
+              <button
+                type="button"
+                className="glyph-btn"
+                data-action="lineage"
+                aria-label={glyphLabel(entry.lineage)}
+                title="where this came from, what came from it, and what each action does"
+                // Keep a text selection alive, for quote selection in the sheet.
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={openLineage}
+              >
+                <LineageGlyph summary={entry.lineage} ghost={pointing} />
+                <span>{glyphCounts(entry.lineage)}</span>
+              </button>
+            ) : null}
           </p>
           {entry.withdrawn ? (
             <p className="tomb">
@@ -501,6 +631,10 @@ function Entry({
                 data-sub={imported.subscriptionId}
                 data-remote={imported.remoteId}
                 onClick={() => void stub()}
+                onMouseEnter={() => setPointing('stub')}
+                onMouseLeave={() => setPointing(null)}
+                onFocus={() => setPointing('stub')}
+                onBlur={() => setPointing(null)}
               >
                 stub ↗
               </Button>
@@ -523,6 +657,15 @@ function Entry({
             ⋯
           </Button>
         </div>
+        <Coach action={pointing} tip={tip} />
+        {entry.lineage && lineageOpen ? (
+          <LineageSheet
+            open={lineageOpen}
+            onClose={() => setLineageOpen(false)}
+            start={imported ? { id, sub: imported.subscriptionId } : { id }}
+            handlersFor={handlersFor}
+          />
+        ) : null}
       </article>
     </div>
   );
@@ -625,6 +768,7 @@ function EntryList({
           const entry = byKey.get(key);
           const { source } = entry ? entryParts(entry) : {};
           if (!source) return;
+          usedAction('quote');
           void actions.run(async () =>
             actions.openDraft({
               mode: 'response',
