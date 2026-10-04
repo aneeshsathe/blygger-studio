@@ -340,6 +340,19 @@ export function Sketch({ action, title }: { action: ActionKey; title: string }) 
   );
 }
 
+/** True beside the graph (≥900px, where the sheet is two columns), false on a phone. */
+function useWide() {
+  const query = '(min-width: 900px)';
+  return useSyncExternalStore(
+    (listener) => {
+      const media = matchMedia(query);
+      media.addEventListener('change', listener);
+      return () => media.removeEventListener('change', listener);
+    },
+    () => matchMedia(query).matches,
+  );
+}
+
 function Explain({
   action,
   handler,
@@ -351,6 +364,7 @@ function Explain({
   title: string;
   onDo: () => void;
 }) {
+  const wide = useWide();
   if (!action)
     return (
       <div className="lg-explain" aria-live="polite">
@@ -362,19 +376,23 @@ function Explain({
     );
   const p = point(action);
   return (
-    <div className="lg-explain" aria-live="polite" data-action={action}>
+    <div className="lg-explain" aria-live="polite" data-action={action} key={action}>
       <div className={`lg-act c-${p.rel}`}>{p.label}</div>
       <p className="lg-one">{p.one}</p>
       <Sketch action={action} title={title} />
-      <p className="lg-long">{p.long}</p>
-      <dl className="lg-facts">
-        {p.facts.map(([k, v, yes]) => (
-          <div key={k}>
-            <dt>{k}</dt>
-            <dd className={yes ? '' : 'no'}>{v}</dd>
-          </div>
-        ))}
-      </dl>
+      {/* Always open beside the graph; folded on a phone, where the card is pinned over it. */}
+      <details className="lg-more" open={wide}>
+        <summary>what exactly happens</summary>
+        <p className="lg-long">{p.long}</p>
+        <dl className="lg-facts">
+          {p.facts.map(([k, v, yes]) => (
+            <div key={k}>
+              <dt>{k}</dt>
+              <dd className={yes ? '' : 'no'}>{v}</dd>
+            </div>
+          ))}
+        </dl>
+      </details>
       {handler?.unavailable ? <p className="lg-hint lg-unavailable">{handler.unavailable}</p> : null}
       <Button className="btn btn-primary lg-do" disabled={!handler?.run} onClick={onDo} data-action={`lineage-${action}`}>
         {p.label}
@@ -477,7 +495,7 @@ function HexGraph({
   ring: boolean;
   labels: boolean;
   handlers: Handlers;
-  onPreview: (key: ActionKey, pressed?: boolean) => void;
+  onPreview: (key: ActionKey) => void;
   onCommit: (key: ActionKey) => void;
   onRing: () => void;
   onOpen: (node: LineageNode) => void;
@@ -492,7 +510,7 @@ function HexGraph({
   const down = (key: ActionKey) => {
     armed.current = preview === key ? key : null;
   };
-  const press = (key: ActionKey) => (armed.current === key ? onCommit(key) : onPreview(key, true));
+  const press = (key: ActionKey) => (armed.current === key ? onCommit(key) : onPreview(key));
   const hover = (key: ActionKey) => (event: React.PointerEvent) => {
     if (event.pointerType === 'mouse') onPreview(key);
   };
@@ -505,7 +523,11 @@ function HexGraph({
   let ghost: ReactNode = null;
   if (p && !ring) {
     const [vx, vy] = vpos(p.angle);
-    const gx = CX + D * Math.cos(rad(p.angle)), gy = CY + D * Math.sin(rad(p.angle));
+    // The sideways actions sit off their corner's level so the ghost clears the
+    // corner labels: fork below (it joins what came from it), link post above
+    // (it joins nothing — the author is never told).
+    const lift = p.angle === 0 ? 78 : p.angle === 180 ? -78 : 0;
+    const gx = CX + D * Math.cos(rad(p.angle)), gy = lift ? CY + lift : CY + D * Math.sin(rad(p.angle));
     const dx = vx - gx, dy = vy - gy, len = Math.hypot(dx, dy);
     const ex = vx - (dx / len) * 14, ey = vy - (dy / len) * 14;
     const sx = gx + (dx / len) * 28, sy = gy + (dy / len) * 22;
@@ -518,7 +540,7 @@ function HexGraph({
           <text className="lg-t" x="11" y="17">{p.ghost[0]}</text>
           <text className="lg-w" x="11" y="31">{p.ghost[1]}</text>
         </g>
-        {p.key === 'link' ? <text className="lg-w c-link" x={(sx + ex) / 2} y={(sy + ey) / 2 - 8} textAnchor="middle">not sent</text> : null}
+        {p.key === 'link' ? <text className="lg-w c-link" x={(sx + ex) / 2 + 10} y={(sy + ey) / 2 + 2} textAnchor="start">not sent</text> : null}
         {p.key === 'stub' || p.key === 'quote' || p.key === 'fork' ? (
           <text className={`lg-w c-${p.rel}`} x={gx} y={gy + NH / 2 + 14} textAnchor="middle">joins what came from it</text>
         ) : null}
@@ -704,12 +726,6 @@ export function LineageSheet({
   const [preview, setPreview] = useState<ActionKey | null>(null);
   const [ring, setRing] = useState(false);
   const [labels, setLabels] = useState(true);
-  const explainRef = useRef<HTMLDivElement>(null);
-  const showPreview = (key: ActionKey, pressed?: boolean) => {
-    setPreview(key);
-    // Stacked under the graph on a phone: bring the explanation into view on a tap.
-    if (pressed) requestAnimationFrame(() => explainRef.current?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }));
-  };
   const centre = trail[trail.length - 1];
   const isStart = trail.length === 1;
   useEffect(() => {
@@ -770,7 +786,7 @@ export function LineageSheet({
               ring={ring}
               labels={labels}
               handlers={handlers}
-              onPreview={showPreview}
+              onPreview={setPreview}
               onCommit={commit}
               onRing={() => setRing((r) => !r)}
               onOpen={recentre}
@@ -778,7 +794,8 @@ export function LineageSheet({
             <NodeList title="where it came from" nodes={lineage.ancestors} up onOpen={recentre} />
             <NodeList title="what came from it — known here" nodes={lineage.descendants} up={false} onOpen={recentre} />
           </div>
-          <div ref={explainRef}>
+          {/* Pinned to the sheet's bottom edge on a phone, so the sketch plays beside the graph. */}
+          <div className="lg-explain-wrap">
             <Explain action={preview} handler={preview ? handlers[preview] : undefined} title={title} onDo={() => preview && commit(preview)} />
           </div>
         </div>

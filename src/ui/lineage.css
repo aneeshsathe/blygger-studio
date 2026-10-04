@@ -80,6 +80,19 @@
 .lg-wedge.off.on path { fill-opacity: .22; }
 
 /* explainer */
+.lg-more > summary { display: none; }
+@media (max-width: 899px) {
+  /* A phone stacks the panel under the graph; pin it to the sheet's bottom edge instead. */
+  .lg-explain-wrap { position: sticky; bottom: 0; z-index: 2; }
+  .lg-explain-wrap .lg-explain { box-shadow: 0 -8px 24px rgba(0,0,0,.18); padding: 10px 12px; }
+  .lg-act { display: inline; margin-right: 6px; }
+  .lg-one { display: inline; font-size: .85rem; }
+  .lg-sketch { max-height: 17vh; margin: 4px 0; }
+  .lg-explain-wrap .lg-do { padding: 9px; }
+  .lg-explain-wrap .lg-one { margin: 0; }
+  .lg-more > summary { display: list-item; cursor: pointer; font-size: .8rem; color: var(--ink-soft); margin: 2px 0 6px; }
+  .lg-graph { max-height: 44vh; }
+}
 .lg-explain { border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; background: var(--card); }
 .lg-act { font-weight: 700; font-size: 1rem; }
 .lg-one { margin: 2px 0 6px; font-size: .9rem; }
