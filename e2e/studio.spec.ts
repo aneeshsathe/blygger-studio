@@ -355,20 +355,23 @@ test("the composer list's publish asks for the note on a new version too", async
   await page.getByRole("button", { name: "log in", exact: true }).click();
   const api = (m: string, p: string, d?: unknown) => page.evaluate(async ([m, p, d]) => (await fetch('/api' + p, { method: m, headers: { 'content-type': 'application/json' }, body: d === undefined ? undefined : JSON.stringify(d) })).json(), [m, p, d] as const);
   await api("PATCH", "/settings", { auto_change_notes: true });
-  await page.route("**/note-draft", (route) => route.fulfill({ json: { note: "Reworded the opening.", model: "test", pinned_prior: false } }));
-  const marker = `Row publish fixture ${Date.now()}`;
-  const id = (await api("POST", "/items", { content_md: marker })).id;
-  await api("POST", `/items/${id}/publish`, {});
-  await api("PATCH", `/items/${id}`, { content_md: `${marker}, reworded` });
-  await page.reload();
-  const row = page.locator(`.item-row[data-id="${id}"]`);
-  const published = page.waitForRequest((r) => r.url().endsWith(`/items/${id}/publish`));
-  await expandRow(page, id);
-  await row.getByRole("button", { name: "publish", exact: true }).click();
-  await expect(page.locator("#note-confirm-text")).toHaveValue("Reworded the opening.");
-  await expect(page.locator(".dialog-popup")).toContainText("Version 2");
-  await page.locator(".dialog-popup").screenshot({ path: "/private/tmp/claude-501/-Users-Venkat-Dropbox-Code-blygger-protocol/0fd9c08a-76fd-4fbd-8415-6494efda88eb/scratchpad/note-confirm-" + info.project.name + ".png" });
-  await page.locator("#note-confirm-ok").click();
-  expect((await published).postDataJSON()).toMatchObject({ note: "Reworded the opening.", note_generated: true });
-  await api("PATCH", "/settings", { auto_change_notes: false });
+  try {
+    await page.route("**/note-draft", (route) => route.fulfill({ json: { note: "Reworded the opening.", model: "test", pinned_prior: false } }));
+    const marker = `Row publish fixture ${Date.now()}`;
+    const id = (await api("POST", "/items", { content_md: marker })).id;
+    await api("POST", `/items/${id}/publish`, {});
+    await api("PATCH", `/items/${id}`, { content_md: `${marker}, reworded` });
+    await page.reload();
+    const row = page.locator(`.item-row[data-id="${id}"]`);
+    const published = page.waitForRequest((r) => r.url().endsWith(`/items/${id}/publish`));
+    await expandRow(page, id);
+    await row.getByRole("button", { name: "publish", exact: true }).click();
+    await expect(page.locator("#note-confirm-text")).toHaveValue("Reworded the opening.");
+    await expect(page.locator(".dialog-popup")).toContainText("Version 2");
+    await page.locator(".dialog-popup").screenshot({ path: info.outputPath("note-confirm-" + info.project.name + ".png") });
+    await page.locator("#note-confirm-ok").click();
+    expect((await published).postDataJSON()).toMatchObject({ note: "Reworded the opening.", note_generated: true });
+  } finally {
+    await api("PATCH", "/settings", { auto_change_notes: false });
+  }
 });
