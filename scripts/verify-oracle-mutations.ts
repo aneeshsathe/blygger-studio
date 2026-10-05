@@ -20,7 +20,7 @@ try {
   }
   cpSync(join(root, "sdk/dist"), join(temp, "sdk/dist"), { recursive: true });
   mkdirSync(join(temp, "build"));
-  for (const file of ["studio-spa.txt", "studio-spa-style.txt"]) cpSync(join(root, "build", file), join(temp, "build", file));
+  for (const file of ["studio-spa.txt", "studio-spa-style.txt", "models.json"]) cpSync(join(root, "build", file), join(temp, "build", file));
   symlinkSync(join(root, "node_modules"), join(temp, "node_modules"), "dir");
   const execute = (test: string, pattern: string) => spawnSync(process.execPath, [join(root, "node_modules/vitest/vitest.mjs"), "run", "--maxWorkers=1", test, "-t", pattern], { cwd: temp, encoding: "utf8", timeout: 90_000, env: { ...process.env, ORACLE_TARGET: undefined, ORACLE_SEED: undefined, ORACLE_PATH: undefined, NO_COLOR: "1" } });
   // Green baseline uses precisely the same test entry points as the mutants.
