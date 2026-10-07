@@ -14,7 +14,9 @@
  * The compass is the rule that makes the positions teach: bottom = respond
  * (stub ↗ whole, quote a passage), sides = make your own thing (fork
  * their words, link post ↗ your words), top = only look (history, open ↗).
- * Arrows point at the cited post, so "up" always means "towards origins".
+ * Arrows follow derivation: ancestor → post → descendant (from what a post
+ * draws on into it, and out of it to what draws on it), so "up" always means
+ * "towards origins".
  *
  * Tips (option C) fade per action after three uses, counted per device.
  * Nothing here touches the wire; descendants are what this node knows.
@@ -251,7 +253,7 @@ export function Sketch({ action, title }: { action: ActionKey; title: string }) 
           {lines(160, 172, 3, 130)}
           <text className="sk-t c-stub" x="160" y="206">you · your response</text>
         </g>
-        {arrow(200, 118, 85, 72, 'stub', 'responds to')}
+        {arrow(85, 72, 200, 118, 'stub', 'answered by')}
       </>
     );
   if (action === 'quote')
@@ -266,7 +268,7 @@ export function Sketch({ action, title }: { action: ActionKey; title: string }) 
           <rect className="sk-quote s-quote" x="12" y="10" width="80" height="20" rx="3" />
           <text className="sk-w" x="18" y="24">“the passage…”</text>
         </g>
-        {arrow(200, 118, 85, 72, 'quote', 'one passage')}
+        {arrow(85, 72, 200, 118, 'quote', 'one passage')}
       </>
     );
   if (action === 'fork')
@@ -530,10 +532,14 @@ function HexGraph({
     const gx = CX + D * Math.cos(rad(p.angle)), gy = lift ? CY + lift : CY + D * Math.sin(rad(p.angle));
     const dx = vx - gx, dy = vy - gy, len = Math.hypot(dx, dy);
     const ex = vx - (dx / len) * 14, ey = vy - (dy / len) * 14;
-    const sx = gx + (dx / len) * 28, sy = gy + (dy / len) * 22;
+    // The arrow runs from the post to the ghost (derivation flows out), so its
+    // head sits at the ghost end: start just outside the ghost box's edge.
+    const ux = dx / len, uy = dy / len;
+    const clear = Math.min(Math.abs(ux) > 0.01 ? 56 / Math.abs(ux) : Infinity, NH / 2 / Math.abs(uy)) + 3;
+    const sx = gx + ux * clear, sy = gy + uy * clear;
     ghost = (
       <g className="lg-ghost" data-ghost={p.key}>
-        <path className={`lg-edge lg-ghost-edge s-${p.rel}`} d={`M${sx} ${sy} L${ex} ${ey}`} markerEnd={p.rel === 'read' ? undefined : `url(#lg-${p.rel})`} />
+        <path className={`lg-edge lg-ghost-edge s-${p.rel}`} d={`M${sx} ${sy} L${ex} ${ey}`} markerStart={p.rel === 'read' ? undefined : `url(#lg-${p.rel})`} />
         <g transform={`translate(${gx - 56},${gy - NH / 2})`}>
           <rect className={`lg-box lg-ghost-box s-${p.rel}`} width="112" height={NH} rx="6" />
           <rect className={`f-${p.rel}`} width="4" height={NH} rx="2" />
@@ -563,11 +569,11 @@ function HexGraph({
       <g className="lg-base">
         {ups.map((a, i) => {
           const x = rowXs(ups.length)[i];
-          return <path key={`ue${i}`} className={`lg-edge s-${relOf(a.relation, a.partial)}`} d={curve(CX - 16 + i * 16, CY - R * 0.866, x, 40 + NH / 2)} markerEnd={`url(#lg-${relOf(a.relation, a.partial)})`} />;
+          return <path key={`ue${i}`} className={`lg-edge s-${relOf(a.relation, a.partial)}`} d={curve(CX - 16 + i * 16, CY - R * 0.866, x, 40 + NH / 2)} markerStart={`url(#lg-${relOf(a.relation, a.partial)})`} />;
         })}
         {downs.map((d, i) => {
           const x = rowXs(downs.length)[i];
-          return <path key={`de${i}`} className={`lg-edge s-${relOf(d.relation, d.partial)}`} d={curve(x, H - 40 - NH / 2, CX - 16 + i * 16, CY + R * 0.866 + 2)} markerEnd={`url(#lg-${relOf(d.relation, d.partial)})`} />;
+          return <path key={`de${i}`} className={`lg-edge s-${relOf(d.relation, d.partial)}`} d={curve(x, H - 40 - NH / 2, CX - 16 + i * 16, CY + R * 0.866 + 2)} markerStart={`url(#lg-${relOf(d.relation, d.partial)})`} />;
         })}
       </g>
       {ups.map((a, i) => <GraphNode key={`u${i}`} x={rowXs(ups.length)[i]} y={40} node={a} up onOpen={onOpen} />)}

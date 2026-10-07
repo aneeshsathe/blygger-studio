@@ -50,11 +50,18 @@ test('the hex view shows ancestors, previews a ghost per vertex, and commits on 
   await expect(graph.locator('.lg-node').filter({ hasText: 'news.example' })).toContainText('responds to');
   await expect(graph.locator('.lg-node').filter({ hasText: 'Pinned retained' })).toContainText('quotes it');
   await expect(graph).toContainText('nothing known here draws on it yet');
+  // Arrows follow derivation (ancestor → post): each edge is drawn from the post
+  // out to its ancestor, so the head is the reversed START marker, at the post.
+  await expect(graph.locator('.lg-base path[marker-start]')).toHaveCount(2);
+  await expect(graph.locator('.lg-base path[marker-end]')).toHaveCount(0);
   await expect(sheet.locator('.lg-explain')).toContainText('The bottom corners respond');
 
   // Each vertex previews: a ghost in the graph, the explanation beside it.
   await previewAt(page, graph.locator('[data-vertex=link]'));
   await expect(graph.locator('[data-ghost=link]')).toContainText('not sent');
+  // post → ghost: the head sits at the ghost end.
+  await expect(graph.locator('[data-ghost=link] path[marker-start]')).toHaveCount(1);
+  await expect(graph.locator('[data-ghost=link] path[marker-end]')).toHaveCount(0);
   const explain = sheet.locator('.lg-explain');
   await expect(explain).toHaveAttribute('data-action', 'link');
   await expect(explain.locator('.lg-facts')).toContainText('the author is told?no — links are silent');
