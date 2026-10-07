@@ -134,6 +134,26 @@ describe("lineage across blygs", () => {
     ]));
   });
 
+  it("only followable URLs reach a node: javascript: and data: from remote documents and mentions become null", async () => {
+    // A node's url is an href in the studio, and these come from documents and
+    // mentions someone else wrote.
+    const cookie = await login();
+    const frag = await createAndPublish(cookie, "Hostile references.");
+    const ours = (await lineage(cookie, `id=${frag}`)).json.node.origin as string;
+    await seedSubscription();
+    const F = "0000000000000000000000000f";
+    await seedImported(F, "<p>Hostile stub.</p>", { stub_of: { url: "data:text/html,<script>alert(1)</script>", cited: { source: "Evil", url: "javascript:alert(1)", retrieved: "2026-10-01T00:00:00Z" } } });
+    const got = await lineage(cookie, `sub=them&id=${F}`);
+    expect(got.json.ancestors).toEqual([expect.objectContaining({ id: null, relation: "stub", source: "Evil", url: null })]);
+
+    const G = "0000000000000000000000000g";
+    await env.DB.prepare(`INSERT INTO mentions_in (id, source, target, target_item_id, status, relation, source_origin, source_id, source_kind, source_version, source_author_json, source_page, first_seen, last_seen, verified_at)
+      VALUES (?, ?, ?, ?, 'verified', 'stub', ?, ?, 'fragment', 1, NULL, 'javascript:alert(1)', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')`)
+      .bind(`m-hostile-${frag}`, STRANGER + G, `${ours}f/${frag}/`, frag, STRANGER, G).run();
+    const down = await lineage(cookie, `id=${frag}`);
+    expect(down.json.descendants).toEqual([expect.objectContaining({ id: G, via: "mention", url: null })]);
+  });
+
   it("an unknown subscription is a 404", async () => {
     const cookie = await login();
     expect((await lineage(cookie, "sub=nope&id=x")).status).toBe(404);

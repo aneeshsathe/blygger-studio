@@ -18,6 +18,7 @@
 import { normalizeOrigin } from "./stub.ts";
 import { previewFromHtml, stripTransclusionQuotes } from "./preview.ts";
 import { blygItemUrl } from "./importer/util.ts";
+import { isFollowableUrl } from "./util.ts";
 import type { SubscriptionRow } from "./types.ts";
 
 export type LineageRelation = "stub" | "transclusion" | "fork";
@@ -161,6 +162,15 @@ export async function lineageSummaries(db: D1Database, ourOrigin: string, nodes:
   });
 }
 
+/**
+ * A node's url becomes an href in the studio. Remote documents, their `cited`
+ * and stored mention source pages are untrusted, so only http(s)/mailto URLs
+ * survive; anything else (javascript:, data:, …) is no link at all.
+ */
+function followable(url: string | null | undefined): string | null {
+  return url && isFollowableUrl(url) ? url : null;
+}
+
 /** The full one-hop lineage of a node, each neighbour described as well as this node can. */
 export async function lineageOf(db: D1Database, ourOrigin: string, rawOrigin: string, id: string): Promise<Lineage> {
   const origin = normalizeOrigin(rawOrigin) ?? rawOrigin;
@@ -184,7 +194,7 @@ export async function lineageOf(db: D1Database, ourOrigin: string, rawOrigin: st
       .first<{ remote_id: string; kind: "fragment" | "thread"; version: number; content_html: string; page: string | null; l0: number }>();
     if (!row) return { ...blank, source: sub.title || null };
     const p = previewFromHtml(stripTransclusionQuotes(row.content_html), 140);
-    return { ...blank, version: row.version, held: "imported" as const, sub: sub.id, kind: row.kind, title: p.title, excerpt: p.body || null, source: sub.title || null, url: blygItemUrl(o, row.kind, row.remote_id, row.page) };
+    return { ...blank, version: row.version, held: "imported" as const, sub: sub.id, kind: row.kind, title: p.title, excerpt: p.body || null, source: sub.title || null, url: followable(blygItemUrl(o, row.kind, row.remote_id, row.page)) };
   };
 
   const ancestors: LineageNode[] = [];
@@ -196,7 +206,7 @@ export async function lineageOf(db: D1Database, ourOrigin: string, rawOrigin: st
       // A target we do not hold still has a frozen human half (§16.1 `cited`).
       excerpt: d.excerpt ?? e.to.cited?.excerpt ?? null,
       source: d.source ?? e.to.cited?.source ?? e.to.cited?.author ?? null,
-      url: d.url ?? e.to.cited?.url ?? e.to.url,
+      url: d.url ?? followable(e.to.cited?.url) ?? followable(e.to.url),
       relation: e.relation, partial: e.partial, via: "reference",
     });
   }
@@ -214,7 +224,7 @@ export async function lineageOf(db: D1Database, ourOrigin: string, rawOrigin: st
       kind: held.kind ?? (m.source_kind === "thread" || m.source_kind === "fragment" ? m.source_kind : null),
       version: held.version ?? m.source_version,
       source: held.source ?? author?.name ?? null,
-      url: held.url ?? m.source_page,
+      url: held.url ?? followable(m.source_page),
       relation: f.relation, partial: false, via: "mention",
     });
   }
