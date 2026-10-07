@@ -2,7 +2,7 @@
 
 import { client } from './client.gen.js';
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client/index.js';
-import type { AddHopperItemData, AddHopperItemErrors, AddHopperItemResponses, CreateHopperData, CreateHopperErrors, CreateHopperResponses, CreateItemData, CreateItemErrors, CreateItemResponses, CreateSubscriptionData, CreateSubscriptionErrors, CreateSubscriptionResponses, DeleteHopperData, DeleteHopperErrors, DeleteHopperResponses, DeleteItemData, DeleteItemErrors, DeleteItemResponses, DeleteMediaData, DeleteMediaErrors, DeleteMediaResponses, DeleteSignalData, DeleteSignalErrors, DeleteSignalResponses, DeleteSubscriptionData, DeleteSubscriptionErrors, DeleteSubscriptionResponses, DraftNoteData, DraftNoteErrors, DraftNoteResponses, GenerateItemData, GenerateItemErrors, GenerateItemResponses, GetAiModelsData, GetAiModelsErrors, GetAiModelsResponses, GetForkOptionsData, GetForkOptionsErrors, GetForkOptionsResponses, GetHopperData, GetHopperErrors, GetHopperResponses, GetImportedHistoryData, GetImportedHistoryErrors, GetImportedHistoryResponses, GetImportedItemData, GetImportedItemErrors, GetImportedItemResponses, GetImportedVersionData, GetImportedVersionErrors, GetImportedVersionResponses, GetItemData, GetItemErrors, GetItemFreshnessData, GetItemFreshnessErrors, GetItemFreshnessResponses, GetItemResponses, GetLineageData, GetLineageErrors, GetLineageResponses, GetMentionSourceData, GetMentionSourceErrors, GetMentionSourceResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetSubscriptionData, GetSubscriptionErrors, GetSubscriptionResponses, GetUpdateStateData, GetUpdateStateErrors, GetUpdateStateResponses, GetVersionData, GetVersionErrors, GetVersionResponses, ListHoppersData, ListHoppersErrors, ListHoppersResponses, ListInteractionsData, ListInteractionsErrors, ListInteractionsResponses, ListItemsData, ListItemsErrors, ListItemsResponses, ListMentionsData, ListMentionsErrors, ListMentionsResponses, ListReadingData, ListReadingErrors, ListReadingResponses, ListSignalsData, ListSignalsErrors, ListSignalsResponses, ListStaleThreadsData, ListStaleThreadsErrors, ListStaleThreadsResponses, ListSubscriptionsData, ListSubscriptionsErrors, ListSubscriptionsResponses, ListThumbsData, ListThumbsErrors, ListThumbsResponses, PinItemData, PinItemErrors, PinItemResponses, PreviewData, PreviewErrors, PreviewResponses, PublishItemData, PublishItemErrors, PublishItemResponses, RefreshItemData, RefreshItemErrors, RefreshItemResponses, RemoveHopperItemData, RemoveHopperItemErrors, RemoveHopperItemResponses, RestoreItemData, RestoreItemErrors, RestoreItemResponses, ResyncSubscriptionData, ResyncSubscriptionErrors, ResyncSubscriptionResponses, SearchData, SearchErrors, SearchResponses, SetSignalData, SetSignalErrors, SetSignalResponses, UpdateHopperData, UpdateHopperErrors, UpdateHopperResponses, UpdateItemData, UpdateItemErrors, UpdateItemResponses, UpdateMentionData, UpdateMentionErrors, UpdateMentionResponses, UpdateSettingsData, UpdateSettingsErrors, UpdateSettingsResponses, UpdateSubscriptionData, UpdateSubscriptionErrors, UpdateSubscriptionResponses, UploadMediaData, UploadMediaErrors, UploadMediaResponses, WithdrawItemData, WithdrawItemErrors, WithdrawItemResponses } from './types.gen.js';
+import type { AddHopperItemData, AddHopperItemErrors, AddHopperItemResponses, CreateAuthorizationData, CreateAuthorizationErrors, CreateAuthorizationResponses, CreateHopperData, CreateHopperErrors, CreateHopperResponses, CreateItemData, CreateItemErrors, CreateItemResponses, CreateSubscriptionData, CreateSubscriptionErrors, CreateSubscriptionResponses, DeleteHopperData, DeleteHopperErrors, DeleteHopperResponses, DeleteItemData, DeleteItemErrors, DeleteItemResponses, DeleteMediaData, DeleteMediaErrors, DeleteMediaResponses, DeleteSignalData, DeleteSignalErrors, DeleteSignalResponses, DeleteSubscriptionData, DeleteSubscriptionErrors, DeleteSubscriptionResponses, DraftNoteData, DraftNoteErrors, DraftNoteResponses, GenerateItemData, GenerateItemErrors, GenerateItemResponses, GetAiModelsData, GetAiModelsErrors, GetAiModelsResponses, GetChangesData, GetChangesErrors, GetChangesResponses, GetForkOptionsData, GetForkOptionsErrors, GetForkOptionsResponses, GetHopperData, GetHopperErrors, GetHopperResponses, GetImportedHistoryData, GetImportedHistoryErrors, GetImportedHistoryResponses, GetImportedItemData, GetImportedItemErrors, GetImportedItemResponses, GetImportedVersionData, GetImportedVersionErrors, GetImportedVersionResponses, GetItemData, GetItemErrors, GetItemFreshnessData, GetItemFreshnessErrors, GetItemFreshnessResponses, GetItemResponses, GetLineageData, GetLineageErrors, GetLineageResponses, GetMentionSourceData, GetMentionSourceErrors, GetMentionSourceResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetSubscriptionData, GetSubscriptionErrors, GetSubscriptionResponses, GetUpdateStateData, GetUpdateStateErrors, GetUpdateStateResponses, GetVersionData, GetVersionErrors, GetVersionResponses, ListAuthorizationsData, ListAuthorizationsErrors, ListAuthorizationsResponses, ListHoppersData, ListHoppersErrors, ListHoppersResponses, ListInteractionsData, ListInteractionsErrors, ListInteractionsResponses, ListItemsData, ListItemsErrors, ListItemsResponses, ListMentionsData, ListMentionsErrors, ListMentionsResponses, ListReadingData, ListReadingErrors, ListReadingResponses, ListSignalsData, ListSignalsErrors, ListSignalsResponses, ListStaleThreadsData, ListStaleThreadsErrors, ListStaleThreadsResponses, ListSubscriptionsData, ListSubscriptionsErrors, ListSubscriptionsResponses, ListThumbsData, ListThumbsErrors, ListThumbsResponses, PinItemData, PinItemErrors, PinItemResponses, PollAllSubscriptionsData, PollAllSubscriptionsErrors, PollAllSubscriptionsResponses, PreviewData, PreviewErrors, PreviewResponses, PublishItemData, PublishItemErrors, PublishItemResponses, RefreshItemData, RefreshItemErrors, RefreshItemResponses, RemoveHopperItemData, RemoveHopperItemErrors, RemoveHopperItemResponses, RestoreItemData, RestoreItemErrors, RestoreItemResponses, ResyncSubscriptionData, ResyncSubscriptionErrors, ResyncSubscriptionResponses, RevokeAllAuthorizationsData, RevokeAllAuthorizationsErrors, RevokeAllAuthorizationsResponses, RevokeAuthorizationData, RevokeAuthorizationErrors, RevokeAuthorizationResponses, SearchData, SearchErrors, SearchResponses, SetSignalData, SetSignalErrors, SetSignalResponses, UpdateHopperData, UpdateHopperErrors, UpdateHopperResponses, UpdateItemData, UpdateItemErrors, UpdateItemResponses, UpdateMentionData, UpdateMentionErrors, UpdateMentionResponses, UpdateSettingsData, UpdateSettingsErrors, UpdateSettingsResponses, UpdateSubscriptionData, UpdateSubscriptionErrors, UpdateSubscriptionResponses, UploadMediaData, UploadMediaErrors, UploadMediaResponses, WithdrawItemData, WithdrawItemErrors, WithdrawItemResponses } from './types.gen.js';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -18,12 +18,66 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
     meta?: keyof ClientMeta extends never ? Record<string, unknown> : ClientMeta;
 };
 
-export const listItems = <ThrowOnError extends boolean = false>(options?: Options<ListItemsData, ThrowOnError>): RequestResult<ListItemsResponses, ListItemsErrors, ThrowOnError> => (options?.client ?? client).get<ListItemsResponses, ListItemsErrors, ThrowOnError>({
+export const revokeAllAuthorizations = <ThrowOnError extends boolean = false>(options?: Options<RevokeAllAuthorizationsData, ThrowOnError>): RequestResult<RevokeAllAuthorizationsResponses, RevokeAllAuthorizationsErrors, ThrowOnError> => (options?.client ?? client).delete<RevokeAllAuthorizationsResponses, RevokeAllAuthorizationsErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
         }],
+    url: '/api/authorizations',
+    ...options
+});
+
+export const listAuthorizations = <ThrowOnError extends boolean = false>(options?: Options<ListAuthorizationsData, ThrowOnError>): RequestResult<ListAuthorizationsResponses, ListAuthorizationsErrors, ThrowOnError> => (options?.client ?? client).get<ListAuthorizationsResponses, ListAuthorizationsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }],
+    url: '/api/authorizations',
+    ...options
+});
+
+export const createAuthorization = <ThrowOnError extends boolean = false>(options: Options<CreateAuthorizationData, ThrowOnError>): RequestResult<CreateAuthorizationResponses, CreateAuthorizationErrors, ThrowOnError> => (options.client ?? client).post<CreateAuthorizationResponses, CreateAuthorizationErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }],
+    url: '/api/authorizations',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+export const revokeAuthorization = <ThrowOnError extends boolean = false>(options: Options<RevokeAuthorizationData, ThrowOnError>): RequestResult<RevokeAuthorizationResponses, RevokeAuthorizationErrors, ThrowOnError> => (options.client ?? client).delete<RevokeAuthorizationResponses, RevokeAuthorizationErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }],
+    url: '/api/authorizations/{id}',
+    ...options
+});
+
+export const getChanges = <ThrowOnError extends boolean = false>(options?: Options<GetChangesData, ThrowOnError>): RequestResult<GetChangesResponses, GetChangesErrors, ThrowOnError> => (options?.client ?? client).get<GetChangesResponses, GetChangesErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/api/changes',
+    ...options
+});
+
+export const listItems = <ThrowOnError extends boolean = false>(options?: Options<ListItemsData, ThrowOnError>): RequestResult<ListItemsResponses, ListItemsErrors, ThrowOnError> => (options?.client ?? client).get<ListItemsResponses, ListItemsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/items',
     ...options
 });
@@ -33,7 +87,7 @@ export const createItem = <ThrowOnError extends boolean = false>(options?: Optio
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/items',
     ...options,
     headers: {
@@ -47,7 +101,7 @@ export const deleteItem = <ThrowOnError extends boolean = false>(options: Option
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/items/{id}',
     ...options
 });
@@ -57,7 +111,7 @@ export const getItem = <ThrowOnError extends boolean = false>(options: Options<G
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/items/{id}',
     ...options
 });
@@ -67,7 +121,7 @@ export const updateItem = <ThrowOnError extends boolean = false>(options: Option
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/items/{id}',
     ...options,
     headers: {
@@ -81,7 +135,7 @@ export const publishItem = <ThrowOnError extends boolean = false>(options: Optio
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/items/{id}/publish',
     ...options,
     headers: {
@@ -95,7 +149,7 @@ export const draftNote = <ThrowOnError extends boolean = false>(options: Options
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/items/{id}/note-draft',
     ...options
 });
@@ -105,7 +159,7 @@ export const generateItem = <ThrowOnError extends boolean = false>(options: Opti
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/items/{id}/generate',
     ...options,
     headers: {
@@ -119,7 +173,7 @@ export const withdrawItem = <ThrowOnError extends boolean = false>(options: Opti
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/items/{id}/withdraw',
     ...options,
     headers: {
@@ -133,7 +187,7 @@ export const pinItem = <ThrowOnError extends boolean = false>(options: Options<P
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/items/{id}/versions/{version}/pin',
     ...options
 });
@@ -143,7 +197,7 @@ export const restoreItem = <ThrowOnError extends boolean = false>(options: Optio
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/items/{id}/restore',
     ...options,
     headers: {
@@ -158,7 +212,7 @@ export const uploadMedia = <ThrowOnError extends boolean = false>(options: Optio
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/media',
     ...options,
     headers: {
@@ -172,7 +226,7 @@ export const deleteMedia = <ThrowOnError extends boolean = false>(options: Optio
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/media/{id}',
     ...options
 });
@@ -182,7 +236,7 @@ export const getSettings = <ThrowOnError extends boolean = false>(options?: Opti
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/settings',
     ...options
 });
@@ -192,7 +246,7 @@ export const updateSettings = <ThrowOnError extends boolean = false>(options: Op
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/settings',
     ...options,
     headers: {
@@ -206,7 +260,7 @@ export const listSubscriptions = <ThrowOnError extends boolean = false>(options?
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/subscriptions',
     ...options
 });
@@ -216,7 +270,7 @@ export const createSubscription = <ThrowOnError extends boolean = false>(options
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/subscriptions',
     ...options,
     headers: {
@@ -230,7 +284,7 @@ export const deleteSubscription = <ThrowOnError extends boolean = false>(options
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/subscriptions/{id}',
     ...options
 });
@@ -240,7 +294,7 @@ export const getSubscription = <ThrowOnError extends boolean = false>(options: O
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/subscriptions/{id}',
     ...options
 });
@@ -250,7 +304,7 @@ export const updateSubscription = <ThrowOnError extends boolean = false>(options
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/subscriptions/{id}',
     ...options,
     headers: {
@@ -259,12 +313,22 @@ export const updateSubscription = <ThrowOnError extends boolean = false>(options
     }
 });
 
+export const pollAllSubscriptions = <ThrowOnError extends boolean = false>(options?: Options<PollAllSubscriptionsData, ThrowOnError>): RequestResult<PollAllSubscriptionsResponses, PollAllSubscriptionsErrors, ThrowOnError> => (options?.client ?? client).post<PollAllSubscriptionsResponses, PollAllSubscriptionsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/api/subscriptions/poll',
+    ...options
+});
+
 export const resyncSubscription = <ThrowOnError extends boolean = false>(options: Options<ResyncSubscriptionData, ThrowOnError>): RequestResult<ResyncSubscriptionResponses, ResyncSubscriptionErrors, ThrowOnError> => (options.client ?? client).post<ResyncSubscriptionResponses, ResyncSubscriptionErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/subscriptions/{id}/resync',
     ...options
 });
@@ -274,7 +338,7 @@ export const listHoppers = <ThrowOnError extends boolean = false>(options?: Opti
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/hoppers',
     ...options
 });
@@ -284,7 +348,7 @@ export const createHopper = <ThrowOnError extends boolean = false>(options: Opti
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/hoppers',
     ...options,
     headers: {
@@ -298,7 +362,7 @@ export const deleteHopper = <ThrowOnError extends boolean = false>(options: Opti
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/hoppers/{id}',
     ...options
 });
@@ -308,7 +372,7 @@ export const getHopper = <ThrowOnError extends boolean = false>(options: Options
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/hoppers/{id}',
     ...options
 });
@@ -318,7 +382,7 @@ export const updateHopper = <ThrowOnError extends boolean = false>(options: Opti
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/hoppers/{id}',
     ...options,
     headers: {
@@ -332,7 +396,7 @@ export const removeHopperItem = <ThrowOnError extends boolean = false>(options: 
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/hoppers/{id}/items/{sub}/{remoteId}',
     ...options
 });
@@ -342,7 +406,7 @@ export const addHopperItem = <ThrowOnError extends boolean = false>(options: Opt
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/hoppers/{id}/items/{sub}/{remoteId}',
     ...options
 });
@@ -352,7 +416,7 @@ export const deleteSignal = <ThrowOnError extends boolean = false>(options: Opti
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/signals/{sub}/{remoteId}',
     ...options
 });
@@ -362,7 +426,7 @@ export const setSignal = <ThrowOnError extends boolean = false>(options: Options
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/signals/{sub}/{remoteId}',
     ...options,
     headers: {
@@ -376,7 +440,7 @@ export const updateMention = <ThrowOnError extends boolean = false>(options: Opt
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/mentions/{id}',
     ...options,
     headers: {
@@ -390,7 +454,7 @@ export const listSignals = <ThrowOnError extends boolean = false>(options?: Opti
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/signals',
     ...options
 });
@@ -400,7 +464,7 @@ export const listInteractions = <ThrowOnError extends boolean = false>(options?:
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/interactions',
     ...options
 });
@@ -410,7 +474,7 @@ export const listThumbs = <ThrowOnError extends boolean = false>(options?: Optio
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/thumbs',
     ...options
 });
@@ -420,7 +484,7 @@ export const getAiModels = <ThrowOnError extends boolean = false>(options?: Opti
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/ai/models',
     ...options
 });
@@ -430,7 +494,7 @@ export const listMentions = <ThrowOnError extends boolean = false>(options?: Opt
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/mentions',
     ...options
 });
@@ -440,7 +504,7 @@ export const preview = <ThrowOnError extends boolean = false>(options: Options<P
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/preview',
     ...options,
     headers: {
@@ -454,7 +518,7 @@ export const search = <ThrowOnError extends boolean = false>(options?: Options<S
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/search',
     ...options
 });
@@ -464,7 +528,7 @@ export const getVersion = <ThrowOnError extends boolean = false>(options: Option
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/items/{id}/versions/{v}',
     ...options
 });
@@ -474,7 +538,7 @@ export const listReading = <ThrowOnError extends boolean = false>(options?: Opti
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/reading',
     ...options
 });
@@ -484,7 +548,7 @@ export const getImportedItem = <ThrowOnError extends boolean = false>(options: O
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/imports/{sub}/{id}',
     ...options
 });
@@ -494,7 +558,7 @@ export const getImportedHistory = <ThrowOnError extends boolean = false>(options
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/imports/{sub}/{id}/history',
     ...options
 });
@@ -504,7 +568,7 @@ export const getImportedVersion = <ThrowOnError extends boolean = false>(options
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/imports/{sub}/{id}/versions/{v}',
     ...options
 });
@@ -514,7 +578,7 @@ export const getUpdateState = <ThrowOnError extends boolean = false>(options?: O
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/update-state',
     ...options
 });
@@ -524,7 +588,7 @@ export const getMentionSource = <ThrowOnError extends boolean = false>(options: 
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/mentions/{id}/source',
     ...options
 });
@@ -534,7 +598,7 @@ export const listStaleThreads = <ThrowOnError extends boolean = false>(options?:
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/freshness',
     ...options
 });
@@ -544,7 +608,7 @@ export const getItemFreshness = <ThrowOnError extends boolean = false>(options: 
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/items/{id}/freshness',
     ...options
 });
@@ -554,7 +618,7 @@ export const refreshItem = <ThrowOnError extends boolean = false>(options: Optio
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/items/{id}/refresh',
     ...options,
     headers: {
@@ -568,7 +632,7 @@ export const getLineage = <ThrowOnError extends boolean = false>(options: Option
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/lineage',
     ...options
 });
@@ -578,7 +642,7 @@ export const getForkOptions = <ThrowOnError extends boolean = false>(options: Op
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
-        }],
+        }, { scheme: 'bearer', type: 'http' }],
     url: '/api/fork-options',
     ...options
 });

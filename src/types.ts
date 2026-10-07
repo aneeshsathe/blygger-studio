@@ -11,6 +11,28 @@ export interface Env {
    * protocol vocabulary.
    */
   MOUNT?: string;
+  /** Explicit network exception; unset/false restricts outbound destinations. */
+  ALLOW_PRIVATE_FETCH?: string;
+  /** Owner/per-grant authenticated API calls per minute (default: 1,200 reads and 120 writes). */
+  API_READ_LIMIT?: string;
+  /** Authenticated MCP envelopes per minute, including discovery (default 300). */
+  MCP_REQUEST_LIMIT?: string;
+  API_WRITE_LIMIT?: string;
+  /** Delegated aggregate per-minute API ceilings; owner quotas are separate. */
+  API_DELEGATED_READ_LIMIT?: string;
+  API_DELEGATED_WRITE_LIMIT?: string;
+  MCP_DELEGATED_REQUEST_LIMIT?: string;
+  /** Total AI calls reserved for owner/background work (default 5). */
+  AI_OWNER_RESERVED_CALLS?: string;
+  AI_GRANT_DAILY_CALL_LIMIT?: string;
+  /** REST/authorization request bytes (default 8 MiB). */
+  API_BODY_LIMIT?: string;
+  /** Actual AI provider calls per UTC day (default: 20). */
+  AI_DAILY_CALL_LIMIT?: string;
+  /** Stored OAuth clients plus pending anonymous registrations (default: 100). */
+  OAUTH_CLIENT_LIMIT?: string;
+  /** Grace for abandoned unapproved anonymous clients (default 24 hours). */
+  OAUTH_UNAPPROVED_CLIENT_TTL_SECONDS?: string;
   /** The Anthropic API key (the manifest's anthropic key_secret). Wrangler secret, per security-policy.md — never in code or .dev.vars committed to git. */
   AI_PROVIDER_KEY?: string;
   /** OpenAI API key, when an OpenAI model is chosen in Settings (0.26.0). Wrangler secret. */
@@ -52,6 +74,8 @@ export interface ItemRow {
    * about should not.
    */
   responses_override: number | null;
+  /** Highlight generated spans on public pages: NULL inherits `highlight_generated_default` (migration 0020). */
+  highlight_override: number | null;
   /**
    * Working-copy stub citation (migration 0007, v0.3-plan §2.2) — JSON `StubOf`
    * or null. Threads only. Carried onto the published version by publish(),
@@ -227,6 +251,8 @@ export interface SubscriptionRow {
   /** JSON array of ImporterFlag strings — the discrepancy log surfaced in the subs UI. */
   flags: string;
   created: string;
+  /** 1 = the title follows the source (manifest or channel title); 0 = the owner named it. */
+  title_auto: number;
 }
 
 export interface ImportedItemRow {
@@ -416,12 +442,15 @@ export interface Settings {
    * from per-item to once — it does not reverse it.
    */
   show_responses_default: boolean;
+  highlight_generated_default: boolean;
   /**
    * Draft a changelog note with the configured model whenever a new version is
    * published with an empty note (#40). The draft is shown for editing before
    * anything is published; off by default, because it spends the operator's key.
    */
   auto_change_notes: boolean;
+  /** Where you type to search in the [[ / ![[ picker (0.29): auto = the editor with a mouse, the panel on touch. */
+  picker_typing: "auto" | "editor" | "panel";
   /** Where to ask. Configurable so a fork checks its own releases, not ours. */
   update_feed_url: string;
   /**

@@ -34,10 +34,11 @@ describe("generated SDK against the real Worker", () => {
     expect((await response.json<{ error: string }>()).error).toContain("content_md");
   });
   it("uploads a File and retains its MIME type through the SDK", async () => {
-    const client = clientFor(await login());
+    const cookie = await login(), client = clientFor(cookie);
     const media = await unwrap(BlyggerApi.uploadMedia({ client: client, body: { file: new File([new Uint8Array([1, 2, 3])], "image.png", { type: "image/png" }), alt: "sdk image" } }));
     expect(media.mime).toBe("image/png");
-    const response = await SELF.fetch(`${BASE}/blyg/${media.url}`);
+    expect((await SELF.fetch(`${BASE}/blyg/${media.url}`)).status).toBe(404);
+    const response = await SELF.fetch(`${BASE}/blyg/${media.url}`, { headers: { cookie } });
     expect(response.status).toBe(200);
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
   });

@@ -9,17 +9,25 @@ const FLAG_LOG_CAP = 20;
 
 export async function createSubscription(
   db: D1Database,
-  row: { kind: "blyg" | "rss"; origin: string; feedUrl: string; title: string },
+  row: { kind: "blyg" | "rss"; origin: string; feedUrl: string; title: string; titleAuto?: boolean },
 ): Promise<SubscriptionRow> {
   const id = newId();
   const created = nowIso();
   await db
     .prepare(
-      "INSERT INTO subscriptions (id, kind, origin, feed_url, title, status, fail_count, in_blogroll, flags, created) VALUES (?, ?, ?, ?, ?, 'active', 0, 0, '[]', ?)",
+      "INSERT INTO subscriptions (id, kind, origin, feed_url, title, status, fail_count, in_blogroll, flags, created, title_auto) VALUES (?, ?, ?, ?, ?, 'active', 0, 0, '[]', ?, ?)",
     )
-    .bind(id, row.kind, row.origin, row.feedUrl, row.title, created)
+    .bind(id, row.kind, row.origin, row.feedUrl, row.title, created, row.titleAuto === false ? 0 : 1)
     .run();
   return (await getSubscription(db, id))!;
+}
+
+/** An existing subscription to the same source: same origin, or the same feed reached another way. */
+export async function findSubscription(db: D1Database, origin: string, feedUrl: string): Promise<SubscriptionRow | null> {
+  return db
+    .prepare("SELECT * FROM subscriptions WHERE origin = ? OR feed_url = ? OR origin = ? LIMIT 1")
+    .bind(origin, feedUrl, feedUrl)
+    .first<SubscriptionRow>();
 }
 
 export async function getSubscription(db: D1Database, id: string): Promise<SubscriptionRow | null> {
@@ -57,8 +65,14 @@ export async function setBlogrollFlag(db: D1Database, id: string, inBlogroll: bo
   await db.prepare("UPDATE subscriptions SET in_blogroll = ? WHERE id = ?").bind(inBlogroll ? 1 : 0, id).run();
 }
 
-export async function setSubscriptionTitle(db: D1Database, id: string, title: string): Promise<void> {
-  await db.prepare("UPDATE subscriptions SET title = ? WHERE id = ?").bind(title, id).run();
+/**
+ * The source's current name, from its manifest or feed: applied only while the
+ * subscription follows its source (title_auto = 1), never over the owner's own.
+ */
+export async function refreshSourceTitle(db: D1Database, id: string, title: string | undefined): Promise<void> {
+  const name = title?.trim().slice(0, 200);
+  if (!name) return;
+  await db.prepare("UPDATE subscriptions SET title = ? WHERE id = ? AND title_auto = 1 AND title <> ?").bind(name, id, name).run();
 }
 
 /** A successful poll (including 304): resets failure state, un-degrades. */

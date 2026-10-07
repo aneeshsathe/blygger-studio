@@ -1,0 +1,333 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 122 and seed 1435700360312061595 with 1 worker on 10 cores with 1765MB heap and 64MB offheap memory [pid: 1] (Linux 6.12.76-linuxkit aarch64, Eclipse Adoptium 21.0.12 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /work/FeedCron.tla
+Parsing file /work/Feed.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module Feed
+Semantic processing of module FeedCron
+Starting... (2026-10-06 01:57:01)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-06 01:57:01.
+Error: Invariant LegalArtifact is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ regressed = FALSE
+/\ attempts = << [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE,
+     observed |-> 0 ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE,
+     observed |-> 0 ] >>
+/\ triggerWrites = 0
+/\ checks = 0
+/\ ticks = 0
+/\ missedTimer = FALSE
+/\ source = 0
+/\ missedCheck = FALSE
+/\ services = 0
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ renders = 0
+/\ revision = 0
+
+State 2: <CronNext line 20, col 14 to line 20, col 53 of module FeedCron>
+/\ regressed = FALSE
+/\ attempts = << [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE,
+     observed |-> 0 ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE,
+     observed |-> 0 ] >>
+/\ triggerWrites = 1
+/\ checks = 0
+/\ ticks = 0
+/\ missedTimer = FALSE
+/\ source = 1
+/\ missedCheck = FALSE
+/\ services = 0
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ renders = 0
+/\ revision = 1
+
+State 3: <CronNext line 20, col 14 to line 20, col 53 of module FeedCron>
+/\ regressed = FALSE
+/\ attempts = << [ phase |-> "check",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE,
+     observed |-> 0 ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE,
+     observed |-> 0 ] >>
+/\ triggerWrites = 1
+/\ checks = 0
+/\ ticks = 0
+/\ missedTimer = FALSE
+/\ source = 1
+/\ missedCheck = FALSE
+/\ services = 1
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ renders = 0
+/\ revision = 1
+
+State 4: <CronNext line 20, col 14 to line 20, col 53 of module FeedCron>
+/\ regressed = FALSE
+/\ attempts = << [ phase |-> "readA",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 1,
+     conditional |-> FALSE,
+     observed |-> 0 ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE,
+     observed |-> 0 ] >>
+/\ triggerWrites = 1
+/\ checks = 1
+/\ ticks = 0
+/\ missedTimer = FALSE
+/\ source = 1
+/\ missedCheck = FALSE
+/\ services = 1
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ renders = 1
+/\ revision = 1
+
+State 5: <CronNext line 20, col 14 to line 20, col 53 of module FeedCron>
+/\ regressed = FALSE
+/\ attempts = << [ phase |-> "readA",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 1,
+     conditional |-> FALSE,
+     observed |-> 0 ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE,
+     observed |-> 0 ] >>
+/\ triggerWrites = 2
+/\ checks = 1
+/\ ticks = 0
+/\ missedTimer = FALSE
+/\ source = 2
+/\ missedCheck = FALSE
+/\ services = 1
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ renders = 1
+/\ revision = 2
+
+State 6: <CronNext line 20, col 14 to line 20, col 53 of module FeedCron>
+/\ regressed = FALSE
+/\ attempts = << [ phase |-> "readB",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 1,
+     conditional |-> FALSE,
+     observed |-> 0 ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE,
+     observed |-> 0 ] >>
+/\ triggerWrites = 2
+/\ checks = 1
+/\ ticks = 0
+/\ missedTimer = FALSE
+/\ source = 2
+/\ missedCheck = FALSE
+/\ services = 1
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ renders = 1
+/\ revision = 2
+
+State 7: <CronNext line 20, col 14 to line 20, col 53 of module FeedCron>
+/\ regressed = FALSE
+/\ attempts = << [ phase |-> "validate",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 1,
+     conditional |-> FALSE,
+     observed |-> 0 ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE,
+     observed |-> 0 ] >>
+/\ triggerWrites = 2
+/\ checks = 1
+/\ ticks = 0
+/\ missedTimer = FALSE
+/\ source = 2
+/\ missedCheck = FALSE
+/\ services = 1
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ renders = 1
+/\ revision = 2
+
+State 8: <CronNext line 20, col 14 to line 20, col 53 of module FeedCron>
+/\ regressed = FALSE
+/\ attempts = << [ phase |-> "preflight",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 1,
+     conditional |-> FALSE,
+     observed |-> 0 ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE,
+     observed |-> 0 ] >>
+/\ triggerWrites = 2
+/\ checks = 1
+/\ ticks = 0
+/\ missedTimer = FALSE
+/\ source = 2
+/\ missedCheck = FALSE
+/\ services = 1
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ renders = 1
+/\ revision = 2
+
+State 9: <CronNext line 20, col 14 to line 20, col 53 of module FeedCron>
+/\ regressed = FALSE
+/\ attempts = << [ phase |-> "publish",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 1,
+     conditional |-> FALSE,
+     observed |-> 0 ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE,
+     observed |-> 0 ] >>
+/\ triggerWrites = 2
+/\ checks = 1
+/\ ticks = 0
+/\ missedTimer = FALSE
+/\ source = 2
+/\ missedCheck = FALSE
+/\ services = 1
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ renders = 1
+/\ revision = 2
+
+State 10: <CronNext line 20, col 14 to line 20, col 53 of module FeedCron>
+/\ regressed = FALSE
+/\ attempts = << [ phase |-> "done",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 1,
+     conditional |-> FALSE,
+     observed |-> 0 ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE,
+     observed |-> 0 ] >>
+/\ triggerWrites = 2
+/\ checks = 1
+/\ ticks = 0
+/\ missedTimer = FALSE
+/\ source = 2
+/\ missedCheck = FALSE
+/\ services = 1
+/\ artifact = [commit |-> 1, a |-> 0, b |-> 0, rev |-> 1, token |-> 1]
+/\ renders = 1
+/\ revision = 2
+
+19270 states generated, 8293 distinct states found, 4379 states left on queue.
+The depth of the complete state graph search is 10.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 7 and the 95th percentile is 5).
+Finished in 00s at (2026-10-06 01:57:02)

@@ -1,0 +1,221 @@
+{
+  "source": "models/d1-polling-cache/design-specimen-v1.md (originally docs/d1-polling-cache-design.md)",
+  "mode": "exploratory provisional",
+  "target": "trigger-domain change checks and saved feed SWR, no general cache owner",
+  "primitives": [
+    "M1 committed source and revisions",
+    "M2 effect dependency relation",
+    "M3 applied client state",
+    "M4 artifact and replacement token",
+    "M5 attempt lifetime",
+    "M6 work"
+  ],
+  "rules": [
+    "R1 atomic complete effect tracking",
+    "R2 fixed check + affected refresh",
+    "R3 acknowledge target captured before successful authoritative load",
+    "R4 serve/check/retry including 304",
+    "R5 monotonic-consistent stable render interval",
+    "R6 expected-token conditional publication",
+    "R7 token binds generation, plain ETag unresolved",
+    "R8 cross-isolate duplicate work unresolved"
+  ],
+  "preservation": "P1–P10 provisional in source",
+  "reconstruction": "Source sketch conditional on R3/R5/R7; counters refinement of journal, no row deltas",
+  "ablations": {
+    "M1": "untracked deletes and no cursor",
+    "M2": "all diagnostics cause expensive reloads or missing provenance",
+    "M3": "observed != applied, failed refresh loss",
+    "M4": "no reusable render identity and CAS",
+    "M5": "overlapping attempt overwrites and failed refresh",
+    "M6": "query count savings hide counter writes",
+    "R1": "source changes without revisions",
+    "R2": "same full scan every tick",
+    "R3": "change after read falsely acknowledged",
+    "R4": "304 path never refreshes stale object",
+    "R5": "mixed render stamped as current",
+    "R6": "older builder replaces newer",
+    "R7": "body ETag ABA",
+    "R8": "cannot claim global single-flight"
+  },
+  "overlaps": [
+    "M1/M2 OLD+NEW effect relation",
+    "M3/M5 applied checkpoint and refresh lifetime",
+    "M4/M5 token identity and competing publication",
+    "M1/M4 source revision vs saved representation"
+  ],
+  "range": "No independently supplied marginal case; untested",
+  "negative": "MAX(item.updated) timestamp-only sync with deletions excluded",
+  "forms": [
+    {
+      "id": "F1",
+      "route": "rule combination",
+      "change": "revision-bearing XML bytes",
+      "preserves": "SWR, generation-aware CAS",
+      "loss": "wire bytes include additional XML comment; collision premise remains"
+    },
+    {
+      "id": "F2",
+      "route": "rule combination",
+      "change": "revision-bearing manifest pointing to immutable XML",
+      "preserves": "same XML output with generation-aware selection",
+      "loss": "two R2 reads/storage lifecycle per selection"
+    }
+  ],
+  "conflicts": [
+    "C1 stale age and withdrawal policy unspecified",
+    "C2 global duplicate rebuild budget unspecified",
+    "C3 trigger map incomplete and adds writes",
+    "C4 epoch restore lifecycle unresolved",
+    "C5 current plain XML ETag guard may not bind revision"
+  ],
+  "modelScope": "bounded source/read/build/cursor races; no full SQL XML auth billing; provider assumptions require receiving witness",
+  "controls": [
+    {
+      "id": "E1",
+      "kind": "reconstruction",
+      "result": "Source SWR sketch reconstructed conditionally; R3/R5/R7 specify missing receiving constraints, not existing code."
+    },
+    {
+      "id": "E2",
+      "kind": "ablation",
+      "result": {
+        "M1": "untracked deletes and no cursor",
+        "M2": "all diagnostics cause expensive reloads or missing provenance",
+        "M3": "observed != applied, failed refresh loss",
+        "M4": "no reusable render identity and CAS",
+        "M5": "overlapping attempt overwrites and failed refresh",
+        "M6": "query count savings hide counter writes",
+        "R1": "source changes without revisions",
+        "R2": "same full scan every tick",
+        "R3": "change after read falsely acknowledged",
+        "R4": "304 path never refreshes stale object",
+        "R5": "mixed render stamped as current",
+        "R6": "older builder replaces newer",
+        "R7": "body ETag ABA",
+        "R8": "cannot claim global single-flight"
+      }
+    },
+    {
+      "id": "E3",
+      "kind": "overlap",
+      "result": [
+        "M1/M2 OLD+NEW effect relation",
+        "M3/M5 applied checkpoint and refresh lifetime",
+        "M4/M5 token identity and competing publication",
+        "M1/M4 source revision vs saved representation"
+      ]
+    },
+    {
+      "id": "E4",
+      "kind": "formal feed",
+      "result": "FeedSafe:168788 generated/57772 distinct; GenerationCASOnly:169076/57900; guarded-generation checks pass; original plain ETag ABA fails NoRegression, mixed renderer fails LegalPayload, unguarded old builder fails NoRegression, missed trigger fails Triggered, conditional skip fails ConditionalRevalidation."
+    },
+    {
+      "id": "E5",
+      "kind": "formal Studio",
+      "result": "StudioSafe:14018 generated/4841 distinct; latest-after-load and failed-load acknowledgment both fail AppliedIsInstalled."
+    },
+    {
+      "id": "E6",
+      "kind": "SQLite source-schema prototype",
+      "result": "27 candidate triggers; 24 named receipts including rollback, no-op, NULL transitions, direct repair, unchanged diagnostics, settings OLD/NEW key, delete, mutation work. Missing-state defect reproduced, one-table fail-closed repair checked; missing-delete control rejected."
+    },
+    {
+      "id": "E7",
+      "kind": "work observation",
+      "result": "100 source imports execute 100 additional counter-row updates; SQLite total_changes200. Not billed D1 rows. Formal counters saturate and establish no quota/global single-flight bound."
+    },
+    {
+      "id": "E8",
+      "kind": "range",
+      "result": "No independently supplied marginal case; untested"
+    },
+    {
+      "id": "E9",
+      "kind": "exclusion",
+      "result": "MAX(item.updated) timestamp-only sync with deletions excluded"
+    },
+    {
+      "id": "E10",
+      "kind": "encoding",
+      "result": "Fixture missing imported version fixed and receipt retained; initial TLA Boolean precedence fixed; non-atomic R2 metadata preflight modeled separately rather than assumed atomic."
+    }
+  ],
+  "evidence": [
+    {
+      "id": "S1",
+      "kind": "user",
+      "pointer": "Current conversation: keep cadence; reduce refactor; trigger changes; saved R2 XML + background check"
+    },
+    {
+      "id": "S2",
+      "kind": "candidate",
+      "pointer": "models/d1-polling-cache/design-specimen-v1.md P1–P10/M1–M6/R1–R8"
+    },
+    {
+      "id": "S3",
+      "kind": "code",
+      "pointer": "src/ui/polling.ts; src/ui/data.ts; src/reading-data.ts; src/api.ts:148-160"
+    },
+    {
+      "id": "S4",
+      "kind": "code",
+      "pointer": "src/protocol.ts:217-346; src/public-feed.ts:82-112; src/importer/store.ts:73-104"
+    },
+    {
+      "id": "S5",
+      "kind": "provider",
+      "pointer": "D1 Database API primary/default and session sequencing; R2 Workers conditional ETag; SQLite CREATE TRIGGER WHEN and UPDATE OF"
+    },
+    {
+      "id": "S6",
+      "kind": "oracle guidance",
+      "pointer": "docs/oracle-tests.md ORC-001/002/003/005/006/014"
+    }
+  ],
+  "loss": [
+    "formal payload is two bits representing fields, not actual RSS XML",
+    "two concurrent builders bounded revisions/attempts and preexisting artifact",
+    "Studio uses two views of one domain; no actual collection library optimistic merge/cancellation",
+    "no global lease, epoch lifecycle, timing, billed rows, exhaustive SQL dependency map or cloud receiving witness"
+  ],
+  "process": {
+    "version": 1,
+    "freeze": "exploratory analytical state frozen after controls; no exact-equivalence claim",
+    "admissions": "six primitives survive witnesses; ETag/TTL/counter column layout are representation parameters",
+    "sourceReconstruction": "conditional missing receiving constraints explicitly added",
+    "supportMap": {
+      "central": [
+        "M1",
+        "M3",
+        "M4",
+        "R1",
+        "R3",
+        "R6",
+        "R7",
+        "E4",
+        "E5",
+        "E6"
+      ],
+      "variants": [
+        "F1",
+        "F2",
+        "R7"
+      ],
+      "limits": [
+        "P7",
+        "P9",
+        "P10",
+        "R8",
+        "C1",
+        "C2",
+        "C3",
+        "C4",
+        "C5",
+        "E7",
+        "E8"
+      ]
+    }
+  }
+}

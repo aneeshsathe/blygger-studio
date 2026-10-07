@@ -281,7 +281,12 @@ button.link { background: none; border: none; padding: 0; font: inherit; color: 
 @media (prefers-reduced-motion: reduce) { .sheet, .backdrop, .toast { animation: none; } }
 
 .toast { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 70;
-  background: var(--ink); color: var(--card); padding: 9px 16px; border-radius: 999px; font-size: .85rem; box-shadow: 0 6px 20px rgba(0,0,0,.25); animation: up .2s ease-out; max-width: calc(100vw - 32px); text-align: center; }
+  background: var(--ink); color: var(--card); padding: 7px 8px 7px 16px; border-radius: 999px; font-size: .85rem; box-shadow: 0 6px 20px rgba(0,0,0,.25); animation: up .2s ease-out; max-width: calc(100vw - 32px); text-align: center;
+  display: flex; align-items: center; gap: 8px; }
+.toast[data-tone="ok"] { background: var(--ok); color: #fff; }
+.toast-x { background: none; border: 0; color: inherit; opacity: .75; font-size: .8rem; line-height: 1; padding: 4px 6px; border-radius: 999px; cursor: pointer; }
+.toast-x::before { content: "✕"; }
+.toast-x:hover, .toast-x:focus-visible { opacity: 1; background: rgba(255,255,255,.15); }
 
 /* ---------- LOGIN (server-rendered shell) ---------- */
 main.login { max-width: 360px; margin: 12vh auto 0; padding: 24px 20px; background: var(--card); border: 1px solid var(--rule); border-radius: var(--radius); box-shadow: var(--shadow); }

@@ -1,0 +1,170 @@
+{
+  "sqlite_version": "3.51.1",
+  "trigger_count": 27,
+  "receipts": [
+    {
+      "name": "create draft",
+      "domains": [
+        "feed",
+        "items",
+        "reading"
+      ]
+    },
+    {
+      "name": "publish state",
+      "domains": [
+        "feed",
+        "items",
+        "reading"
+      ]
+    },
+    {
+      "name": "working copy with unchanged timestamp",
+      "domains": [
+        "items",
+        "reading"
+      ]
+    },
+    {
+      "name": "no-op update",
+      "domains": []
+    },
+    {
+      "name": "insert subscription",
+      "domains": [
+        "feed",
+        "hoppers",
+        "reading",
+        "subscriptions"
+      ]
+    },
+    {
+      "name": "304 poll diagnostics",
+      "domains": [
+        "subscriptions"
+      ]
+    },
+    {
+      "name": "nullable diagnostic changes",
+      "domains": [
+        "subscriptions"
+      ]
+    },
+    {
+      "name": "diagnostic returns to null",
+      "domains": [
+        "subscriptions"
+      ]
+    },
+    {
+      "name": "rename provenance source",
+      "domains": [
+        "feed",
+        "hoppers",
+        "reading",
+        "subscriptions"
+      ]
+    },
+    {
+      "name": "old-dated arrival",
+      "domains": [
+        "feed",
+        "hoppers",
+        "reading"
+      ]
+    },
+    {
+      "name": "direct cron HTML repair",
+      "domains": [
+        "hoppers",
+        "reading"
+      ]
+    },
+    {
+      "name": "provenance kind changes",
+      "domains": [
+        "feed",
+        "hoppers",
+        "reading"
+      ]
+    },
+    {
+      "name": "published version",
+      "domains": [
+        "feed",
+        "items",
+        "reading"
+      ]
+    },
+    {
+      "name": "feed setting",
+      "domains": [
+        "feed",
+        "settings"
+      ]
+    },
+    {
+      "name": "update-state setting",
+      "domains": [
+        "settings"
+      ]
+    },
+    {
+      "name": "key moves out of feed set",
+      "domains": [
+        "feed",
+        "settings"
+      ]
+    },
+    {
+      "name": "withdrawal",
+      "domains": [
+        "feed",
+        "items",
+        "reading"
+      ]
+    },
+    {
+      "name": "physical delete",
+      "domains": [
+        "feed",
+        "hoppers",
+        "reading"
+      ]
+    },
+    {
+      "name": "transaction rollback restores source and revisions",
+      "passed": true
+    },
+    {
+      "name": "security budget does not dirty content",
+      "passed": true
+    },
+    {
+      "name": "missing state row permits untracked write",
+      "result": "gap reproduced; production needs fail-closed guard or enforced restoration"
+    },
+    {
+      "name": "missing-state repair rejects source mutation",
+      "passed": true,
+      "limits": "one-table repair witness; production coverage not established"
+    },
+    {
+      "name": "missing delete trigger mutant",
+      "result": "expected domain assertion failure"
+    },
+    {
+      "name": "100-row import write amplification",
+      "source_rows": 100,
+      "sqlite_total_changes": 200,
+      "counter_row_updates": 100,
+      "limits": "not D1 billed rows; index writes and provider accounting unmeasured"
+    }
+  ],
+  "limits": [
+    "prototype deliberately over-tracks some updates",
+    "not a complete dependency matrix",
+    "not production entry-point or D1/R2 witness",
+    "trigger billing unmeasured"
+  ]
+}

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixture";
 
 test("a forwarded nested Studio runs login, SDK saves, upload, and response creation", async ({ page }) => {
   const origin = "http://127.0.0.1:8789", studio = `${origin}/notes/b/studio`;

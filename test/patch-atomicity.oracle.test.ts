@@ -1,3 +1,26 @@
+/**
+ * Rejecting a patch must leave all its requested changes unapplied.
+ * A successful patch changes only supplied mutable fields. Status alone cannot
+ * show that validation prevented a partial write.
+ *
+ * Contract: docs/api.md defines partial-edit fields, domain checks and guarded409.
+ * RFC5789 §2 requires atomic application of the entire patch:
+ * https://www.rfc-editor.org/rfc/rfc5789.html#section-2
+ * Exact mutable fields and status choices are Blygger policy, not an RFC schema.
+ * Model: rejection preserves the complete before projection; acceptance replaces
+ * only requested fields. Controlled domain races preserve the concurrent writer's
+ * complete projection, not the stale projection read before that writer ran.
+ * History grammar: subsets of text/kind/response/stub-clear fields, plus one invalid
+ * response enum, malformed citation, immutable field or fragment-stub combination.
+ * Fixed races change kind, stub or withdrawal after validation but before the write.
+ * Driver: generated SDK through SELF for ordinary patches. Race probes call ownerApi
+ * with a D1 proxy that runs a real competing update at the guarded SQL boundary.
+ * Refinement: exact status and subsequent owner GET; the race seam must run once.
+ * Accepted content/kind/clear patches may change updated time, which this model
+ * normalizes. Other fields remain exact. Normalization does not prove clock behavior.
+ * Limits: no general concurrent text revision control, every field combination,
+ * provider-failure rollback or proof about GET visibility during an in-flight write.
+ */
 import { SELF, env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
@@ -7,13 +30,10 @@ import type { Env } from "../src/types.ts";
 import { BASE, login } from "./helpers.ts";
 import { atCheckpoint, campaign } from "./oracle-campaign.ts";
 
-/* Authority: docs/api.md partial edits; rejected patches cannot partly apply.
- * Model: replace requested draft fields only, keeping all other public facts.
- * Grammar: any subset of content/kind/responses/stub-clear; independently add
- * an invalid boolean enum, malformed stub, or immutable field. Plain drafts
- * only. Concurrent text edits and transaction rollback on provider failure are
- * outside this model. Driver: SDK -> real Worker; compare a subsequent read.
- */
+// Four booleans select supplied fields independently. The invalid axis overrides
+// one selected field, so a rejected patch can still contain valid sibling changes.
+// A fragment-stub case exercises domain rejection beyond JSON shape validation.
+// Sampling does not exhaust all eighty boolean/rejection cells.
 const input = fc.record({ text: fc.boolean(), kind: fc.boolean(), responses: fc.boolean(), clear: fc.boolean(), invalid: fc.constantFrom("none", "responses", "stub", "immutable", "domain") });
 const clientFor = (cookie: string) => createBlyggerClient({ baseUrl: BASE, headers: { cookie }, fetch: (request, init) => SELF.fetch(request instanceof Request ? request : new Request(request, init)) });
 async function patch(input: { text: boolean; kind: boolean; responses: boolean; clear: boolean; invalid: string }) {
@@ -32,6 +52,9 @@ async function patch(input: { text: boolean; kind: boolean; responses: boolean; 
   const result = await BlyggerApi.updateItem({ client, path: { id: draft.id }, body: body as never });
   atCheckpoint("PATCH acceptance", () => expect(result.response!.status).toBe(input.invalid === "none" ? 200 : 400));
   const after = await unwrap(BlyggerApi.getItem({ client, path: { id: draft.id } }));
+  // On rejection compare the entire owner projection, including timestamps.
+  // On acceptance normalize only updated when this patch may change it. The expected
+  // object then replaces explicit requested fields; omitted fields stay unchanged.
   if (input.invalid !== "none") atCheckpoint("PATCH rejection preserves all fields", () => expect(after).toEqual(before));
   else atCheckpoint("PATCH changes only requested fields", () => expect(input.text || input.kind || input.clear ? { ...after, updated: before.updated } : after).toEqual({ ...before, ...(input.text ? { content_md: "after" } : {}), ...(input.kind ? { kind: "fragment", authored_kind: "fragment" } : {}), ...(input.responses ? { responses: "hide" } : {}) }));
 }
@@ -43,6 +66,10 @@ describe("PATCH atomicity oracle", () => {
     const before = { content_md: "before", responses: "show" };
     expect(() => expect({ ...before, content_md: "after" }).toEqual(before)).toThrow();
   });
+  // The race starts after request validation and before the guarded write executes.
+  // A real competing request changes a premise. The stale patch must return409 and
+  // leave exactly that concurrent result. Counting the seam rules out a vacuous race.
+  // This direct ownerApi witness does not exercise top-level forwarding middleware.
   it.each(["kind", "stub", "withdraw"])("rejects the complete patch when a concurrent %s change invalidates its premise", async boundary => {
     const cookie = await login(), client = clientFor(cookie);
     const draft = await unwrap(BlyggerApi.createItem({ client, body: { kind: "thread", content_md: "before" } }));

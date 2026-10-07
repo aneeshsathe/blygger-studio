@@ -21,7 +21,8 @@ describe("media (§3.3)", () => {
     expect(status).toBe(201);
     expect(json.url).toMatch(/^media\/[0-9abcdefghjkmnpqrstvwxyz]{8}\.png$/);
 
-    const res = await getPublic(`/blyg/${json.url}`);
+    expect((await getPublic(`/blyg/${json.url}`)).status).toBe(404);
+    const res = await SELF.fetch(`${BASE}/blyg/${json.url}`, { headers: { cookie } });
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("image/png");
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);

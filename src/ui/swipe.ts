@@ -8,7 +8,7 @@
  *    stays the browser's and only a mostly-horizontal drag becomes a swipe;
  *  - with a mouse a swipe starts only from `mouseFrom` when given (an entry's
  *    byline and action bar), so dragging across an entry's text still selects
- *    it for "quote selection";
+ *    it, as text should;
  *  - a click that lands within CLICK_GUARD ms of a swipe *on this row* is
  *    swallowed — the release that ends a swipe must not also open the link
  *    under the finger — while a tap on any other row goes through.

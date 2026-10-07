@@ -12,6 +12,7 @@ export const ItemRowSchema = z.object({
   tk_provenance_json: z.string().nullable(),
   show_responses: z.number(),
   responses_override: z.number().nullable(),
+  highlight_override: z.number().nullable(),
   stub_of: z.string().nullable(),
   forked_from: z.string().nullable(),
   fork_cite: z.string().nullable(),
@@ -60,6 +61,7 @@ export const SubscriptionRowSchema = z.object({
   in_blogroll: z.number(),
   flags: z.string(),
   created: z.string(),
+  title_auto: z.number(),
 }).openapi("SubscriptionRow");
 
 export const ImportedItemRowSchema = z.object({
@@ -161,7 +163,9 @@ export const SettingsSchema = z.object({
   accept_mentions: z.boolean(),
   update_check: z.boolean(),
   show_responses_default: z.boolean(),
+  highlight_generated_default: z.boolean(),
   auto_change_notes: z.boolean(),
+  picker_typing: z.enum(["auto", "editor", "panel"]),
   update_feed_url: z.string(),
   update_notice_ack: z.boolean(),
 }).openapi("Settings");

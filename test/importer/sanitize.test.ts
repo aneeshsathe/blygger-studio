@@ -29,6 +29,26 @@ describe("sanitizeHtml()", () => {
     expect(out).not.toContain("<form");
   });
 
+  it("unwraps unlisted tags instead of deleting what they contain", async () => {
+    const out = await sanitizeHtml('<figure><picture><source srcset="a.webp"><img src="https://x.test/a.png" alt="A"></picture></figure><p><font color="red">legacy text</font> <video src="https://x.test/v.mp4">fallback</video></p>');
+    expect(out).toContain('<img src="https://x.test/a.png" alt="A">');
+    expect(out).toContain("legacy text");
+    expect(out).toContain("fallback");
+    expect(out).not.toMatch(/<(picture|source|font|video)\b/);
+  });
+
+  it("drops raw-text and foreign elements whole, so unwrapping cannot revive markup", async () => {
+    for (const tag of ["textarea", "title", "xmp", "noscript", "noembed", "noframes", "style", "template"]) {
+      const out = await sanitizeHtml(`<p>ok</p><${tag}><img src=x onerror=alert(1)></${tag}>`);
+      expect(out, tag).not.toContain("onerror");
+      expect(out, tag).not.toContain(`<${tag}`);
+    }
+    for (const tag of ["svg", "math"]) {
+      const out = await sanitizeHtml(`<${tag}><a href="javascript:alert(1)">x</a><style><img src=x onerror=alert(1)></style></${tag}>`);
+      expect(out, tag).toBe("");
+    }
+  });
+
   it("leaves ordinary safe markup untouched", async () => {
     const out = await sanitizeHtml('<p>hello <strong>world</strong> <a href="https://example.com">link</a></p>');
     expect(out).toContain("<strong>world</strong>");

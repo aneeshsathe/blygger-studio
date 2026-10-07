@@ -12,7 +12,7 @@
  *           every action.
  *
  * The compass is the rule that makes the positions teach: bottom = respond
- * (stub ↗ whole, quote selection a passage), sides = make your own thing (fork
+ * (stub ↗ whole, quote a passage), sides = make your own thing (fork
  * their words, link post ↗ your words), top = only look (history, open ↗).
  * Arrows point at the cited post, so "up" always means "towards origins".
  *
@@ -59,9 +59,9 @@ export const COMPASS: Point[] = [
     facts: facts(['yes', true], ['yes, as a stub', true], ['the whole post, frozen', true], ['yes, as a response', true]),
   },
   {
-    key: 'quote', label: 'quote selection', angle: 120, rel: 'quote', ghost: ['your response', 'quoting a passage'],
-    one: 'Respond, quoting only the passage you selected.',
-    long: "Select text in the post first. Like stub ↗ this opens a response, but it quotes just that passage, checked against their text. Use it to answer one sentence rather than the whole post.",
+    key: 'quote', label: 'quote a passage', angle: 120, rel: 'quote', ghost: ['your response', 'quoting a passage'],
+    one: 'Respond, quoting only the passage you choose.',
+    long: "Like stub ↗ this opens a response, in the stub editor, where you select the passage in the post as it will be quoted; publish checks it against their text. Use it to answer one sentence rather than the whole post.",
     facts: facts(['yes', true], ['yes, as a stub', true], ['just the passage', true], ['yes, as a response', true]),
   },
   {
@@ -85,7 +85,7 @@ export const COMPASS: Point[] = [
 ];
 const point = (key: ActionKey) => COMPASS.find((p) => p.key === key)!;
 
-/** What a reference looks like on the map: a partial stub is "quote selection". */
+/** What a reference looks like on the map: a partial stub is "quote a passage". */
 export function relOf(relation: LineageNode['relation'], partial: boolean): Rel {
   if (relation === 'fork') return 'fork';
   if (relation === 'stub' && !partial) return 'stub';

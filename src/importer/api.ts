@@ -1,3 +1,4 @@
+import { platformFetchFor } from "./http.ts";
 import type { SubscriptionRow, HopperRow } from "../types.ts";
 import { subscriptionResource, hopperResource } from "../contract/resources.ts";
 import { contractApp, readJson } from "../contract/app.ts";
@@ -8,11 +9,14 @@ import { routes } from "../contract/routes.ts";
 
 
 import { pollSubscription, reconcileIndex } from "./poll.ts";
+import { pollAll } from "./schedule.ts";
+import { listSubscriptions } from "./store.ts";
 import { resolve } from "./resolve.ts";
 import {
   addHopperItem,
   createHopper,
   createSubscription,
+  findSubscription,
   deleteHopper,
   deleteSignal,
   deleteSubscription,
@@ -37,16 +41,28 @@ function titleFromUrl(url: string): string {
  * Two-phase add-by-URL (§2.1/§4.2): without `confirm`, resolves and returns
  * the identity for the owner to confirm (surfacing any site-vs-origin
  * mismatch); with `confirm: true`, actually creates the subscription and
- * runs an initial backfill so the first read isn't empty.
+ * starts an initial backfill so the first read isn't empty. The backfill runs
+ * after the response: it fetches the whole archive item by item, which held
+ * the confirm button for many seconds on a large blyg.
  */
 importerApi.openapi(routes.createSubscription, async (c) => {
   const body = await readJson<{ url: string; confirm?: boolean; title?: string }>(c);
   if (!body.url.trim()) return c.json({ error: "url required" }, 400);
 
-  const result = await resolve(body.url.trim());
+  const result = await resolve(body.url.trim(), platformFetchFor(c.env));
   if (result.kind === "failure") {
     return c.json({ error: "could not resolve this URL to a blyg or a feed", tried: result.tried }, 422);
   }
+
+  // One subscription per source: a second one imports every item twice, and
+  // then any reference to those ids is ambiguous between the two (stub refuses).
+  const feedUrl =
+    result.kind === "blyg"
+      ? typeof result.manifest.feed === "string" ? new URL(result.manifest.feed, result.origin).toString() : `${result.origin}feed.xml`
+      : result.feedUrl;
+  const identity = result.kind === "blyg" ? result.origin : result.feedUrl;
+  const existing = await findSubscription(c.env.DB, identity, feedUrl);
+  if (existing) return c.json({ error: `already subscribed to ${existing.title || existing.origin}` }, 409);
 
   if (!body.confirm) {
     if (result.kind === "blyg") {
@@ -62,36 +78,34 @@ importerApi.openapi(routes.createSubscription, async (c) => {
   }
 
   const title = body.title?.trim() || undefined;
+  // The confirm dialog offers the source's own name; sending it back unchanged
+  // keeps the subscription following the source. Anything else is the owner's.
+  const sourceTitle = result.kind === "blyg" ? (typeof result.manifest.title === "string" ? result.manifest.title : titleFromUrl(result.origin)) : titleFromUrl(result.feedUrl);
+  const titleAuto = title === undefined || title === sourceTitle.trim();
   const sub =
     result.kind === "blyg"
-      ? await createSubscription(c.env.DB, {
-          kind: "blyg",
-          origin: result.origin,
-          feedUrl: typeof result.manifest.feed === "string" ? new URL(result.manifest.feed, result.origin).toString() : `${result.origin}feed.xml`,
-          title: title ?? (typeof result.manifest.title === "string" ? result.manifest.title : titleFromUrl(result.origin)),
-        })
-      : await createSubscription(c.env.DB, {
-          kind: "rss",
-          origin: result.feedUrl,
-          feedUrl: result.feedUrl,
-          title: title ?? titleFromUrl(result.feedUrl),
-        });
+      ? await createSubscription(c.env.DB, { kind: "blyg", origin: result.origin, feedUrl, title: title ?? sourceTitle, titleAuto })
+      : await createSubscription(c.env.DB, { kind: "rss", origin: result.feedUrl, feedUrl: result.feedUrl, title: title ?? sourceTitle, titleAuto });
   // Initial backfill (§3.2 step 4 / plan §7 open decision #2: import the full
   // archive on first subscribe) — a fresh subscription's null
   // last_index_sync_at makes the very first pollSubscription() call reconcile
   // unconditionally, which also bootstraps newest_guid/etag for future gap
-  // detection (§3.2) in one pass, for both kinds uniformly.
-  await pollSubscription(c.env.DB, sub);
+  // detection (§3.2) in one pass, for both kinds uniformly. If waitUntil cuts
+  // it short, the null last_poll_at and last_index_sync_at make the next
+  // scheduled poll due and reconcile again, so the backfill completes there.
+  c.executionCtx.waitUntil(pollSubscription(c.env.DB, sub, platformFetchFor(c.env)).catch(() => {}));
   c.header("Location", `/api/subscriptions/${sub.id}`);
-  return c.json(subscriptionResource((await getSubscription(c.env.DB, sub.id))!), 201);
+  return c.json(subscriptionResource(sub), 201);
 });
 
 importerApi.openapi(routes.updateSubscription, async (c) => {
   const sub = await getSubscription(c.env.DB, c.req.param("id"));
   if (!sub) return c.json({ error: "not found" }, 404);
-  const body = await readJson<{ in_blogroll?: boolean; title?: string; paused?: boolean }>(c);
+  const body = await readJson<{ in_blogroll?: boolean; title?: string | null; paused?: boolean }>(c);
   const assignments: string[] = [], values: (string | number)[] = [];
-  if (body.title !== undefined) { assignments.push("title = ?"); values.push(body.title); }
+  // A name of the owner's own stops the refresh; null hands it back to the source.
+  if (typeof body.title === "string") { assignments.push("title = ?", "title_auto = 0"); values.push(body.title); }
+  if (body.title === null) assignments.push("title_auto = 1", "last_index_sync_at = NULL");
   if (body.in_blogroll !== undefined) { assignments.push("in_blogroll = ?"); values.push(body.in_blogroll ? 1 : 0); }
   if (body.paused !== undefined) { assignments.push("status = ?"); values.push(body.paused ? "paused" : "active"); }
   if (!assignments.length) return c.json(subscriptionResource(sub));
@@ -99,12 +113,19 @@ importerApi.openapi(routes.updateSubscription, async (c) => {
   return fresh ? c.json(subscriptionResource(fresh)) : c.json({ error: "subscription no longer exists" }, 404);
 });
 
+/** Poll every subscription that is not paused, in the background; answers at once with how many. */
+importerApi.openapi(routes.pollAllSubscriptions, async (c) => {
+  const polling = (await listSubscriptions(c.env.DB)).filter((s) => s.status !== "paused").length;
+  c.executionCtx.waitUntil(pollAll(c.env.DB, platformFetchFor(c.env)).catch(() => {}));
+  return c.json({ polling });
+});
+
 /** Force an index reconciliation right now, regardless of the periodic schedule. */
 importerApi.openapi(routes.resyncSubscription, async (c) => {
   const sub = await getSubscription(c.env.DB, c.req.param("id"));
   if (!sub) return c.json({ error: "not found" }, 404);
   if (sub.kind !== "blyg") return c.json({ error: "resync only applies to blyg subscriptions" }, 409);
-  const result = await reconcileIndex(c.env.DB, sub);
+  const result = await reconcileIndex(c.env.DB, sub, platformFetchFor(c.env));
   return c.json({ ok: result.ok, changed: result.changed });
 });
 

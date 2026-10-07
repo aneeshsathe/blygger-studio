@@ -15,7 +15,7 @@
 // that constraint never actually ruled out a balanced *opener*, and Venkat
 // rejected the unbalanced spelling as unreadable.)
 import { describe, expect, it } from "vitest";
-import { parseScopes, previewStrip, setScopeOutput, stripToOutput, unresolvedScopes } from "../src/tk.ts";
+import { parseScopes, previewStrip, setScopeOutput, stripToOutput, unrequestedOutputDirectives, unresolvedScopes } from "../src/tk.ts";
 
 const ID_A = "0123456789abcdefghjkmnpqra"; // 26 chars, valid alphabet
 const ID_B = "0123456789abcdefghjkmnpqrb";
@@ -142,6 +142,33 @@ describe("source refs — quote-vs-source exclusion rule (§2.2)", () => {
     const md = `[TK]use ![[${ID_B}]] and ![[${ID_A}]] and ![[${ID_B}]] again[=]out[/TK]`;
     const { scopes } = parseScopes(md);
     expect(scopes[0].sourceIds).toEqual([ID_B, ID_A]);
+  });
+
+  // Decision #60: sources are what the generator was fed — the instruction.
+  // A directive in the output is content; it is a source only when the
+  // instruction also names it.
+  it("a ![[id]] only in the OUTPUT is not a source (decision #60)", () => {
+    const md = `[TK]summarize the thread[=]line one\n![[${ID_A}]]\nline two[/TK]`;
+    const { scopes } = parseScopes(md);
+    expect(scopes[0].sourceIds).toEqual([]);
+  });
+
+  it("an id in both instruction and output is a source once", () => {
+    const md = `[TK]quote ![[${ID_A}]] then riff[=]intro\n![[${ID_A}]]\noutro[/TK]`;
+    expect(parseScopes(md).scopes[0].sourceIds).toEqual([ID_A]);
+  });
+
+  it("unrequestedOutputDirectives names own-line output directives the instruction did not", () => {
+    const md = [
+      `[TK]riff on ![[${ID_A}]][=]x\n![[${ID_A}]]\n![[${ID_B}]]\ninline ![[${ID_B}]] text[/TK]`,
+      "",
+      `![[${ID_B}]]`,
+    ].join("\n");
+    // ID_A was asked for; ID_B on its own line in output was not. The
+    // inline occurrence and the directive outside any scope are not echoes.
+    expect(unrequestedOutputDirectives(md)).toEqual([ID_B]);
+    expect(unrequestedOutputDirectives(`[TK]plain[=]nothing to see[/TK]`)).toEqual([]);
+    expect(unrequestedOutputDirectives(`[TK]impyrt=\n![[${ID_B}]]\n[/TK]`)).toEqual([]);
   });
 
   it("scope with no source refs has an empty sourceIds array", () => {

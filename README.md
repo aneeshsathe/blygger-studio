@@ -5,7 +5,7 @@ a Cloudflare Worker that publishes a blyg, subscribes to others, and threads,
 transcludes and responds across them.
 
 **Protocol implemented:** `blyg 0.3`, level 2 · **Client version:** 0.10.0 ·
-`generator: blygger-studio/0.10.0` · [releases + upgrading](#releases-and-upgrading)
+`generator: blygger-studio/0.32.2` · [releases + upgrading](#releases-and-upgrading)
 
 > The [Blygger spec](https://github.com/blygger/blygger-spec) defines the protocol.
 > As of 2026-09-28, at least seven clients publish live blygs. Six are other
@@ -33,6 +33,14 @@ Older releases only have GitHub's source archives. You need:
 - A domain on that account to use a custom domain.
 
 SDK generation uses a pinned Hey API npm package.
+
+The Worker limits API work, AI calls and stored OAuth clients. Outbound fetches
+allow public destinations by default. See [security configuration](docs/auth-deployment-hardening.md#work-and-outbound-limits)
+for defaults and the explicit LAN opt-in.
+
+Draft uploads require an owner cookie or an API token with `owner:read`.
+Studio sends the cookie for previews. Publication makes used images public and
+keeps images needed by published snapshots and pins available.
 
 Contributors: see [tests and their limits](docs/testing.md) for verification
 commands, oracle replay, and the upgrade test.
@@ -209,8 +217,7 @@ const reading = await unwrap(BlyggerApi.listReading({ client, query: { offset: 0
 Sign into `/studio` first: API calls use its owner session cookie. The SDK does
 not create a login session. Node clients must supply a session cookie in
 `headers` or a custom transport. See [SDK usage](sdk/README.md). Never embed an
-owner cookie in browser source. Cross-origin apps and OAuth are not supported
-yet. Install the downloads locally. The SDK is not published to the npm registry.
+owner cookie in browser source. Cross-origin clients can use resource-bound bearer tokens from Studio’s access page. See [client access](docs/client-access.md) for scopes, revocation, and the mounted OAuth/MCP discovery profile. Install the downloads locally. The SDK is not published to the npm registry.
 
 The downloaded OpenAPI file describes `/api` paths. Its default server is
 `http://localhost:8787`. Select your deployed origin in the API tool or generator.
@@ -368,7 +375,7 @@ extra asset binding. For a mounted installation, forward `{mount}/*` and
 `/api/*`, including `{mount}/studio/app.js` and `{mount}/studio/app.css`.
 
 See [the migration plan](docs/migration.md) for the completed SPA cutover and the
-queued OAuth and MCP work.
+OAuth and MCP client access.
 
 ## Browser tests
 

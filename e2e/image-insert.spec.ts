@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page } from "./fixture";
 
 // Images go where the author is writing, not at the end (session 30, Venkat):
 // at the caret for the attach button, in place of a `/image` line, and where

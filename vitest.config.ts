@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
 
 const oracleTarget = process.env.ORACLE_TARGET, oracleSeed = process.env.ORACLE_SEED;
 if (process.env.ORACLE_PATH !== undefined && oracleSeed === undefined) throw new Error("ORACLE_PATH requires ORACLE_SEED");
-if (oracleSeed !== undefined && (!oracleTarget || !["item-lifecycle", "pagination", "patch-atomicity"].includes(oracleTarget) || !Number.isInteger(Number(oracleSeed)))) throw new Error("Replay requires a known ORACLE_TARGET and integer ORACLE_SEED");
+if (oracleSeed !== undefined && (!oracleTarget || !["item-lifecycle", "pagination", "patch-atomicity", "authorization", "oauth-storage", "polling-cache"].includes(oracleTarget) || !Number.isInteger(Number(oracleSeed)))) throw new Error("Replay requires a known ORACLE_TARGET and integer ORACLE_SEED");
 
 export default defineConfig({
   define: {
@@ -25,6 +25,11 @@ export default defineConfig({
             // Pin the default mount explicitly (matches wrangler.jsonc vars);
             // mount.test.ts exercises other mounts via makeApp() directly.
             MOUNT: "/blyg",
+            // The owner's per-minute API budget (0.28) is a production guard.
+            // Property tests issue far more than 120 writes a minute and failed
+            // about one run in six on it; tests of the budget set their own.
+            API_READ_LIMIT: "100000",
+            API_WRITE_LIMIT: "100000",
           },
         },
       };

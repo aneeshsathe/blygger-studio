@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixture';
 import { answerSheet } from './sheets.ts';
 import { expandRow, openCard } from './editor.ts';
 

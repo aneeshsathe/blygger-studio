@@ -26,7 +26,11 @@ import { absolutizeHtml, cdata, escapeXml, rfc822, unplacedMedia, visibleMedia }
  * origin + the deployment mount (decision #14: "" mount = domain root).
  */
 export function siteOrigin(settings: Settings, requestUrl: string, mount: string): string {
-  if (settings.site_url) return settings.site_url.endsWith("/") ? settings.site_url : settings.site_url + "/";
+  // A stored value from before 0.27's write check may be any string; only an
+  // http(s) URL can stand for this blyg's origin.
+  if (settings.site_url && URL.canParse(settings.site_url) && ["http:", "https:"].includes(new URL(settings.site_url).protocol)) {
+    return settings.site_url.endsWith("/") ? settings.site_url : settings.site_url + "/";
+  }
   return new URL(requestUrl).origin + mount + "/";
 }
 

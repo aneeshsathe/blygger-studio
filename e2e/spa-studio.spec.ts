@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixture';
 async function login(page: Page) {
   await page.goto('/studio/login'); await page.locator('[name=password]').fill('test-password');
   await page.getByRole('button', { name: 'log in', exact: true }).click();
@@ -32,7 +32,6 @@ test('SPA creates, edits, previews and publishes without document navigation', a
   // The editor has no tab bar (PWA phase 2A): back to compose, then reading.
   await page.getByRole('link', { name: '← compose', exact: true }).click();
   await page.getByRole('link', { name: 'reading', exact: true }).click();
-  await page.locator('.feeds a[href*="sub=all"]').click();
   await expect(page.locator('.reading-entry').first()).toBeVisible();
   const entry = page.locator('.reading-entry').filter({ has: page.locator(`a[href$="/edit/${id}"]`) });
   for (let n = 0; n < 6 && !await entry.count(); n++) { await page.getByRole('button', { name: 'older', exact: true }).click(); await expect(page).toHaveURL(new RegExp(`offset=${(n + 1) * 25}`)); }
@@ -97,9 +96,9 @@ test('route intent preloads reading before navigation and reuses the DB cache', 
   const before = reads.length;
   expect(before).toBe(1);
   await link.click();
-  // /reading is the sources list; its counts come from the preloaded page.
-  await expect(page.locator('.feeds').first()).toBeVisible();
-  await expect(page.locator('.feeds a[href*="sub=all"] .fn')).not.toHaveText('');
+  // /reading is the feed, rendered from the preloaded page.
+  await expect(page.locator('.reading-entry').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^all/ })).toContainText('items');
   expect(reads).toHaveLength(before);
 });
 

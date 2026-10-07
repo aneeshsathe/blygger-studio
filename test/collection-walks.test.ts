@@ -1,3 +1,17 @@
+/**
+ * A complete static walk must not lose rows when timestamps tie across pages.
+ * Signals own a generated oracle; this fixed witness checks the other collections.
+ *
+ * Contract: docs/api.md collection envelopes and established per-collection order.
+ * Model: literal ordered fixture IDs, sliced by requested offset and width. Search
+ * uses distinct timestamps because this witness claims no search tie-break policy.
+ * History grammar: eleven items and related subscriptions/hoppers/mentions, width
+ * three, verified versus pending inbound neighbors and an own-reading projection.
+ * Driver: SDK calls through SELF; D1 sets deliberate timestamp ties and fixture rows.
+ * Refinement: exact ordered IDs and envelope on every page and the complete walk.
+ * Limits: identity/order witness rather than complete row-value validation, all
+ * collection filters, cost bounds or a snapshot across concurrent writes.
+ */
 import { SELF, env } from "cloudflare:test";
 import { expect, it } from "vitest";
 import { BlyggerApi as api, createBlyggerClient, unwrap } from "../sdk/dist/browser.js";

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixture";
 import { answerSheet } from "./sheets.ts";
 import { editorMenu, expandRow, openCard } from "./editor.ts";
 
@@ -349,7 +349,7 @@ test("auto change notes: a draft is shown for editing before a new version publi
   expect(errors).toEqual([]);
 });
 
-test("the composer list's publish asks for the note on a new version too", async ({ page }, info) => {
+test("the composer list's publish asks for the note on a new version too", async ({ page }) => {
   await page.goto("/studio/login");
   await page.locator('[name="password"]').fill("test-password");
   await page.getByRole("button", { name: "log in", exact: true }).click();
@@ -368,7 +368,6 @@ test("the composer list's publish asks for the note on a new version too", async
     await row.getByRole("button", { name: "publish", exact: true }).click();
     await expect(page.locator("#note-confirm-text")).toHaveValue("Reworded the opening.");
     await expect(page.locator(".dialog-popup")).toContainText("Version 2");
-    await page.locator(".dialog-popup").screenshot({ path: info.outputPath("note-confirm-" + info.project.name + ".png") });
     await page.locator("#note-confirm-ok").click();
     expect((await published).postDataJSON()).toMatchObject({ note: "Reworded the opening.", note_generated: true });
   } finally {

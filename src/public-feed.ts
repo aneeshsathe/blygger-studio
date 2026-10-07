@@ -1,10 +1,10 @@
 import type { ItemRow, MediaRow, VersionRow, Transclusion } from "./types.ts";
 
-export type FeedItem = Pick<ItemRow, "id" | "kind" | "created" | "updated" | "version" | "forked_from" | "fork_cite">;
+export type FeedItem = Pick<ItemRow, "id" | "kind" | "created" | "updated" | "version" | "forked_from" | "fork_cite" | "highlight_override">;
 
-/** Public presentation needs item metadata, never the working draft. */
+/** Public presentation needs item metadata, never the working copy. */
 export async function listFeedItems(db: D1Database, limit: number): Promise<FeedItem[]> {
-  return (await db.prepare(`SELECT id, kind, created, updated, version, forked_from, fork_cite
+  return (await db.prepare(`SELECT id, kind, created, updated, version, forked_from, fork_cite, highlight_override
     FROM items WHERE status IN ('public','withdrawn') ORDER BY updated DESC, rowid DESC LIMIT ?`)
     .bind(limit).all<FeedItem>()).results;
 }
@@ -16,7 +16,7 @@ export interface FeedProvenance {
 
 export const sourceKey = (origin: string, id: string) => JSON.stringify([origin, id]);
 
-export type FeedVersion = Pick<VersionRow, "item_id" | "content_html" | "note" | "transclusions" | "stub_of" | "stub_cite">;
+export type FeedVersion = Pick<VersionRow, "item_id" | "content_html" | "note" | "transclusions" | "stub_of" | "stub_cite" | "generated_json">;
 
 export interface FeedCardData {
   latest: FeedVersion | null;
@@ -31,7 +31,7 @@ export async function loadFeedData(db: D1Database, items: FeedItem[], avatarId: 
   const selected = JSON.stringify(items.map(({ id, version }) => ({ id, version })));
   const ids = JSON.stringify(items.filter(i => i.kind !== "withdrawn").map(i => i.id));
   const [versions, pins, media, avatar] = await db.batch([
-    db.prepare(`SELECT v.item_id, v.content_html, v.note, v.transclusions, v.stub_of, v.stub_cite FROM json_each(?) s JOIN versions v
+    db.prepare(`SELECT v.item_id, v.content_html, v.note, v.transclusions, v.stub_of, v.stub_cite, v.generated_json FROM json_each(?) s JOIN versions v
       ON v.item_id = json_extract(s.value, '$.id') AND v.version = json_extract(s.value, '$.version')`).bind(selected),
     db.prepare(`SELECT v.item_id, v.version FROM json_each(?) s JOIN versions v
       ON v.item_id = json_extract(s.value, '$.id') WHERE v.pinned = 1 ORDER BY v.version`).bind(selected),

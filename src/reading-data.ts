@@ -50,7 +50,7 @@ export async function readingData(db: D1Database, requestedOffset: number, limit
       if (!item) return null;
       const withdrawn = item.kind === "withdrawn";
       const kind = item.kind === "thread" || (withdrawn && item.previous_transclusions) ? "thread" : "fragment";
-      const input: OwnEntryInput = { id: item.id, kind, withdrawn, updated: item.updated, contentHtml: withdrawn ? "" : item.content_html ?? "" };
+      const input: OwnEntryInput = { id: item.id, kind, withdrawn, updated: item.updated, contentHtml: withdrawn ? "" : await sanitizeHtml(item.content_html ?? "") };
       return { ...buildReadingFeed([input], [])[0], key: `own:${item.id}` };
     }
     const row = importedById.get(JSON.stringify([identity.sub, identity.id]));

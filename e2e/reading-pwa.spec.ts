@@ -1,9 +1,9 @@
-import { test, expect, type Locator, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from './fixture';
 import { answerSheet } from './sheets.ts';
 
 // Reading, NetNewsWire-style (PWA redesign phase 2B): the sources list, a
 // source's timeline, the inspector sheet, an entry's ⋯ sheet, add-to-hopper,
-// the select-to-quote pill and the swipes. Every test leaves the shared
+// the stub editor's passage chooser and the swipes. Every test leaves the shared
 // fixture (e2e-server.ts) as it found it; both projects run against it.
 const NATIVE = '00000000000000000000000001';
 async function login(page: Page) {
@@ -36,8 +36,17 @@ const nativeEntry = (page: Page) => page.locator('.reading-entry').filter({ hasT
 test('the sources list groups sources, hoppers and subscriptions, and opens a timeline', async ({ page }) => {
   await login(page);
   await page.getByRole('navigation', { name: 'studio' }).getByRole('link', { name: 'reading', exact: true }).click();
+  // Reading lands on the feed; Sources is its peer tab.
   await expect(page).toHaveURL(/\/studio\/reading$/);
-  await expect(page.getByRole('heading', { name: 'reading', exact: true })).toBeVisible();
+  const tabs = page.getByRole('group', { name: 'reading view' });
+  await expect(tabs.getByRole('button')).toHaveText(['Feed', 'Sources']);
+  await expect(tabs.locator('[aria-pressed=true]')).toHaveText('Feed');
+  await expect(page.getByRole('heading', { name: /^all/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'subscribe', exact: true })).toBeVisible();
+  await tabs.getByRole('button', { name: 'Sources', exact: true }).click();
+  await expect(page).toHaveURL(/\/studio\/reading\?view=sources$/);
+  await expect(page.getByRole('heading', { name: /^sources/ })).toContainText('2 subscriptions');
+  await expect(page.getByRole('button', { name: 'subscribe', exact: true })).toBeVisible();
   await expect(page.locator('.list-h > span:first-child')).toHaveText(['sources', /^hoppers · \d+$/, /^subscriptions · 2$/]);
   const sources = page.getByRole('list', { name: 'sources' });
   await expect(sources.locator('.ft')).toHaveText(['all', 'my blyg']);
@@ -56,8 +65,8 @@ test('the sources list groups sources, hoppers and subscriptions, and opens a ti
   await expect(page.locator('.reading-entry')).toHaveCount(2);
   await expect(page.getByRole('button', { name: 'about this source', exact: true })).toBeVisible();
   await expect(page.locator('.pager')).toContainText('page 1 of 1');
-  await page.getByRole('link', { name: '← sources', exact: true }).click();
-  await expect(page).toHaveURL(/\/studio\/reading$/);
+  await tabs.getByRole('button', { name: 'Sources', exact: true }).click();
+  await expect(page).toHaveURL(/\/studio\/reading\?view=sources$/);
   // "all" and "my blyg" are timelines too, with no inspector.
   await page.locator('.feeds a[href*="sub=own"]').click();
   await expect(page.getByRole('heading', { name: /^my blyg/ })).toBeVisible();
@@ -66,7 +75,7 @@ test('the sources list groups sources, hoppers and subscriptions, and opens a ti
 
 test('/subs redirects to reading, where the subscribe sheet lives', async ({ page }) => {
   await login(page); await page.goto('/studio/subs');
-  await expect(page).toHaveURL(/\/studio\/reading$/);
+  await expect(page).toHaveURL(/\/studio\/reading\?view=sources$/);
   await page.getByRole('button', { name: 'subscribe', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'subscribe' });
   await expect(sheet.locator('#add-sub-url')).toBeFocused();
@@ -83,8 +92,59 @@ test('/subs redirects to reading, where the subscribe sheet lives', async ({ pag
   await expect(sheet).toHaveCount(0);
 });
 
-test('the source inspector toggles the blogroll, pauses and resumes, and confirms a delete', async ({ page }) => {
+test('every reading card shows its source URL, opening in a new tab, as the ⋯ sheet names it', async ({ page }) => {
+  await login(page); await page.goto('/studio/reading?sub=all');
+  const cards = page.locator('.reading-entry');
+  await expect(cards.first()).toBeVisible();
+  const count = await cards.count();
+  await expect(page.locator('.reading-entry .entry-src')).toHaveCount(count);
+  for (const link of await page.locator('.entry-src').all()) await expect(link).toHaveAttribute('target', '_blank');
+  await page.goto('/studio/reading?sub=parity-native');
+  const link = nativeEntry(page).locator('.entry-src');
+  const sheet = await entryMenu(page, nativeEntry(page));
+  await expect(sheet.getByRole('button', { name: `${(await link.textContent())!.replace('↗ ', '')} ↗` })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.goto('/studio/hoppers/parity-hopper');
+  await expect(page.locator('.reading-entry .entry-src').first()).toHaveAttribute('target', '_blank');
+});
+
+test('subscribing to a source already subscribed shows the refusal in the sheet', async ({ page }) => {
   await login(page); await page.goto('/studio/reading');
+  await page.route('**/api/subscriptions', route => route.request().method() === 'POST'
+    ? route.fulfill({ status: 409, json: { error: 'already subscribed to Small Hours' } })
+    : route.continue());
+  await page.getByRole('button', { name: 'subscribe', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'subscribe' });
+  await sheet.locator('#add-sub-url').fill('https://smallhours.example/');
+  await sheet.getByRole('button', { name: 'subscribe', exact: true }).click();
+  await expect(sheet).toContainText('already subscribed to Small Hours');
+  await expect(sheet.getByRole('button', { name: 'confirm subscribe' })).toHaveCount(0);
+});
+
+test('confirm subscribe shows progress and closes the sheet on the reply', async ({ page }) => {
+  await login(page); await page.goto('/studio/reading');
+  const existing = await page.evaluate(async () => (await (await fetch('/api/subscriptions')).json()).items[0]);
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/subscriptions', async route => {
+    if (route.request().method() !== 'POST') return route.continue();
+    if (!route.request().postDataJSON().confirm) return route.fulfill({ json: { needsConfirm: true, kind: 'blyg', title: 'Small Hours' } });
+    await held;
+    return route.fulfill({ status: 201, json: existing });
+  });
+  await page.getByRole('button', { name: 'subscribe', exact: true }).click();
+  const sheet = page.getByRole('dialog', { name: 'subscribe' });
+  await sheet.locator('#add-sub-url').fill('https://smallhours.example/');
+  await sheet.getByRole('button', { name: 'subscribe', exact: true }).click();
+  await sheet.getByRole('button', { name: 'confirm subscribe', exact: true }).click();
+  await expect(sheet.getByRole('button', { name: 'subscribing…' })).toBeDisabled();
+  release();
+  await expect(sheet).toHaveCount(0);
+  await expect(page.getByText('subscribed', { exact: true })).toBeVisible();
+});
+
+test('the source inspector toggles the blogroll, pauses and resumes, and confirms a delete', async ({ page }) => {
+  await login(page); await page.goto('/studio/reading?view=sources');
   const row = page.locator('.feed[data-id="parity-rss"]');
   const inspector = page.getByRole('dialog', { name: 'Legacy source' });
   const inspect = async () => { await row.getByRole('button', { name: 'about Legacy source', exact: true }).click(); await expect(inspector).toBeVisible(); };
@@ -113,7 +173,7 @@ test('the source inspector toggles the blogroll, pauses and resumes, and confirm
   await expect(page.getByRole('note')).toHaveCount(0);
   expect((await api(page, 'GET', '/subscriptions/parity-rss')).json.status).not.toBe('paused');
   // delete asks first; cancelling deletes nothing
-  await page.getByRole('link', { name: '← sources', exact: true }).click();
+  await page.getByRole('group', { name: 'reading view' }).getByRole('button', { name: 'Sources', exact: true }).click();
   await inspect();
   const deletes: string[] = [];
   await page.route('**/api/subscriptions/parity-rss', route => {
@@ -132,7 +192,7 @@ test('the source inspector toggles the blogroll, pauses and resumes, and confirm
 });
 
 test('a hopper reads as a timeline from the sources list', async ({ page }) => {
-  await login(page); await page.goto('/studio/reading');
+  await login(page); await page.goto('/studio/reading?view=sources');
   await page.getByRole('list', { name: 'hoppers' }).getByRole('link', { name: /Frozen hopper/ }).click();
   await expect(page).toHaveURL(/\/reading\?hopper=parity-hopper&offset=0$/);
   await expect(page.getByRole('heading', { name: /^Frozen hopper/ })).toContainText(/\d+ items/);
@@ -204,33 +264,88 @@ test('+ add to hopper… offers the hoppers and a new one, and adds the entry', 
   await api(page, 'DELETE', `/hoppers/${hopper.id}`);
 });
 
-test('selecting text in an entry shows the quote pill, which starts a partial-quote stub', async ({ page }) => {
-  await login(page); await page.goto('/studio/reading?sub=all');
-  const select = (entry: Locator) => entry.locator('.content').evaluate(node => {
-    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT); const text = walker.nextNode()!;
-    const range = document.createRange(); range.setStart(text, 0); range.setEnd(text, Math.min(5, text.textContent!.length));
+test('a stub opens quoting the whole post, explains itself until dismissed, and quotes a passage chosen in the editor', async ({ page }) => {
+  await login(page); await page.goto('/studio/reading?sub=parity-native');
+  // Select-to-quote left the reading view (session 37): selecting text offers nothing.
+  await nativeEntry(page).locator('.content').evaluate(node => {
+    const range = document.createRange(); range.selectNodeContents(node);
     const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
   });
-  const pill = page.getByRole('button', { name: '❝ quote selection', exact: true });
-  await page.goto('/studio/reading?sub=parity-rss');
-  await select(page.locator('.reading-entry').first());
-  await expect(pill).toHaveCount(0); // a legacy feed has nothing to quote from
-  await page.goto('/studio/reading?sub=parity-native');
+  await expect(page.locator('.quote-pill')).toHaveCount(0);
+  const stubOnce = async () => {
+    await page.goto('/studio/reading?sub=parity-native');
+    await nativeEntry(page).getByRole('button', { name: 'stub ↗', exact: true }).click();
+    await expect(page).toHaveURL(/\/edit\//);
+  };
+  await stubOnce();
+  await expect(page.locator('#md-input')).toHaveValue(`![[${NATIVE}]]\n\n`);
+  const help = page.getByRole('dialog', { name: 'How stubs work' });
+  await expect(help).toContainText('quote post');
+  await expect(help).toContainText('inline reply');
+  await help.getByRole('checkbox', { name: /show this again/ }).check();
+  await help.getByRole('button', { name: 'got it', exact: true }).click();
+  await expect(help).toHaveCount(0);
+  await expect(page.locator('.stub-hint')).toContainText('Quoting the whole post');
+
+  await page.getByRole('button', { name: 'quote a passage instead', exact: true }).click();
+  const post = page.locator('.stub-post');
+  await expect(post).toContainText('Frozen');
+  const pill = page.getByRole('button', { name: '❝ quote only this', exact: true });
   await expect(pill).toHaveCount(0);
-  await select(nativeEntry(page));
-  await expect(pill).toBeVisible();
-  await page.evaluate(() => window.getSelection()!.removeAllRanges());
-  await expect(pill).toHaveCount(0);
-  await select(nativeEntry(page));
-  const created = page.waitForResponse(response => response.url().endsWith('/api/items') && response.request().method() === 'POST');
+  await post.evaluate(node => {
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    let text = walker.nextNode();
+    while (text && !text.textContent!.includes('Frozen')) text = walker.nextNode();
+    const at = text!.textContent!.indexOf('Frozen');
+    const range = document.createRange(); range.setStart(text!, at); range.setEnd(text!, at + 'Frozen'.length);
+    const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
+  });
   await pill.click();
-  expect((await created).request().postDataJSON()).toEqual({ mode: 'response', source: { subscription_id: 'parity-native', remote_id: NATIVE }, selection: 'Froze' });
-  await expect(page).toHaveURL(/\/edit\//);
-  await expect(page.locator('#md-input')).toHaveValue(`![[${NATIVE}]]\n> Froze\n\n`);
+  await expect(page.locator('#md-input')).toHaveValue(`![[${NATIVE}]]\n> Frozen\n\n`);
+  await expect(page.locator('.stub-hint')).toContainText('Quoting a passage');
+  await expect(page.locator('#preview-body .blyg-partial')).toContainText('Frozen');
+
+  // A second passage is added after the cursor, not over the first: a running commentary.
+  await page.locator('#md-input').fill(`![[${NATIVE}]]\n> Frozen\n\nMy point.`);
+  await page.locator('#md-input').evaluate((el: HTMLTextAreaElement) => { el.selectionStart = el.selectionEnd = el.value.length; });
+  await page.getByRole('button', { name: 'quote another passage', exact: true }).click();
+  await expect(post).toContainText('source text');
+  await post.evaluate(node => {
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    let text = walker.nextNode();
+    while (text && !text.textContent!.includes('source text')) text = walker.nextNode();
+    const at = text!.textContent!.indexOf('source text');
+    const range = document.createRange(); range.setStart(text!, at); range.setEnd(text!, at + 'source text'.length);
+    const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
+  });
+  await page.getByRole('button', { name: '❝ add as another quote', exact: true }).click();
+  await expect(page.locator('#md-input')).toHaveValue(`![[${NATIVE}]]\n> Frozen\n\nMy point.\n\n![[${NATIVE}]]\n> source text\n\n`);
+  await expect(page.locator('.stub-hint')).toContainText('Quoting 2 passages');
+  await expect(page.getByRole('button', { name: 'quote whole post', exact: true })).toHaveCount(0);
+  await expect(page.locator('#preview-body .blyg-partial')).toHaveCount(2);
+
+  await page.locator('#md-input').fill(`![[${NATIVE}]]\n> Frozen\n\n`);
+  await page.getByRole('button', { name: 'quote whole post', exact: true }).click();
+  await expect(page.locator('#md-input')).toHaveValue(`![[${NATIVE}]]\n\n`);
+
+  // Dismissed on this device: the next stub opens without it, and the link brings it back.
+  await stubOnce();
+  await expect(page.locator('.stub-hint')).toBeVisible();
+  await expect(help).toHaveCount(0);
+  await page.getByRole('button', { name: 'how stubs work', exact: true }).click();
+  await expect(help).toBeVisible();
+});
+
+test('the swipe hint is for touch: shown with a finger, hidden with a mouse', async ({ page }) => {
+  await login(page); await page.goto('/studio/reading?view=sources');
+  await expect(page.locator('.feed').first()).toBeVisible();
+  const coarse = await page.evaluate(() => matchMedia('(pointer: coarse)').matches);
+  const hint = page.getByText('Swipe a source ← for its info');
+  if (coarse) await expect(hint).toBeVisible(); else await expect(hint).toBeHidden();
 });
 
 test('swipes: a source ← opens its inspector, an entry → thumbs it, and the next tap still lands', async ({ page }) => {
-  await login(page); await page.goto('/studio/reading');
+  await login(page); await page.goto('/studio/reading?view=sources');
   const native = page.locator('.feed[data-id="parity-native"]');
   const legacy = page.locator('.feed[data-id="parity-rss"]');
   // Hopper rows above fill in their counts asynchronously; let the list settle.
@@ -238,7 +353,7 @@ test('swipes: a source ← opens its inspector, an entry → thumbs it, and the 
   // ← on a source: its inspector; a short drag does nothing.
   await swipe(page, native.getByRole('link'), -40);
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page).toHaveURL(/\/studio\/reading$/);
+  await expect(page).toHaveURL(/\/studio\/reading\?view=sources$/);
   await swipe(page, native.getByRole('link'), -140);
   await expect(page.getByRole('dialog', { name: 'Native source' })).toBeVisible();
   await page.keyboard.press('Escape');
@@ -246,7 +361,7 @@ test('swipes: a source ← opens its inspector, an entry → thumbs it, and the 
   // → on a source pauses it; the release does not open the source under it…
   await swipe(page, legacy.getByRole('link'), 140);
   await expect(legacy.locator('.fs')).toHaveText('paused');
-  await expect(page).toHaveURL(/\/studio\/reading$/);
+  await expect(page).toHaveURL(/\/studio\/reading\?view=sources$/);
   // …but a tap on another row right after the swipe goes through.
   await native.getByRole('link').click();
   await expect(page).toHaveURL(/sub=parity-native/);

@@ -50,7 +50,13 @@ export async function targetItemId(db: D1Database, target: URL, ourOrigin: strin
   if (target.origin !== origin.origin) return null;
   const base = origin.pathname.replace(/\/$/, "");
   let path = target.pathname;
-  if (base && path.startsWith(base)) path = path.slice(base.length);
+  // §15.3 step 1 (revision of 2026-10-06, decision #61): the target lies
+  // within our full origin, path included. On a path-mounted blyg, a URL on
+  // the same host but outside the mount names something else.
+  if (base) {
+    if (!path.startsWith(`${base}/`)) return null;
+    path = path.slice(base.length);
+  }
   const m = /^\/(?:([ft])\/([^/]+)\/?|items\/([^/]+)\.json)$/.exec(path);
   const id = m?.[2] ?? m?.[3];
   if (!id) return null;
@@ -183,10 +189,14 @@ export interface VerifyResult {
  * fetches (§2.3.5): the page, and the document its `rel="alternate"` names —
  * or one, when the source URL *is* the document.
  *
- * The identity rule is the load-bearing one: the document's asserted `origin`
- * must sit on the same host as the URL we actually fetched. That is 0.2
- * §12.2 applied inbound, and it is what stops a mirror or an impostor from
- * speaking in a real blyg's name.
+ * The identity rule is the load-bearing one: the item document must have been
+ * fetched from exactly `{origin}items/{id}.json` for its own asserted `origin`
+ * and `id` (§15.4 step 2, revision of 2026-10-06, decision #61). That is §12.2
+ * applied inbound with the full origin, path included — so neither a mirror,
+ * nor another blyg path-mounted on the same host, can speak in a real blyg's
+ * name — and because a pinned file's URL is never the live document's, a
+ * pin that still carries `stub_of` stops verifying once the live document is
+ * a withdrawal endcap.
  */
 export async function verifyMention(
   db: D1Database,
@@ -231,8 +241,12 @@ export async function verifyMention(
 
   const asserted = normalizeOrigin(doc.origin);
   if (!asserted) return fail("item document declares no origin");
-  if (new URL(asserted).origin !== new URL(finalUrl).origin) {
-    return fail(`origin mismatch: document claims ${asserted} but was served from ${new URL(finalUrl).origin}`);
+  if (typeof doc.id !== "string" || !doc.id) return fail("item document declares no id");
+  const expected = new URL(`items/${encodeURIComponent(doc.id)}.json`, asserted);
+  const served = new URL(finalUrl);
+  served.hash = "";
+  if (served.href !== expected.href) {
+    return fail(`origin mismatch: document claims ${expected.href} but was served from ${served.href}`);
   }
   if (doc.kind === "withdrawn") return fail("source item is withdrawn", "gone");
 

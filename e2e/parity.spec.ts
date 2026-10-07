@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixture';
 import { answerSheet } from './sheets.ts';
 import { editorMenu, expandRow, openCard } from './editor.ts';
 // An entry's ⋯ sheet (an untitled menu sheet is named "actions").
@@ -29,13 +29,12 @@ test('reading preserves retained snapshots and restricts legacy actions', async 
   await expect(legacy.locator('.entry-title a')).toHaveAttribute('href', 'https://legacy.example/post');
   const menu = await entryMenu(page, legacy);
   await expect(menu.getByRole('button', { name: 'copy [[id]]', exact: true })).toHaveCount(0);
-  await expect(menu.getByRole('button', { name: 'quote selection', exact: true })).toHaveCount(0);
   await expect(menu.getByRole('button', { name: 'link post ↗', exact: true })).toHaveCount(0);
   await expect(menu.getByRole('button', { name: 'history' })).toHaveCount(0);
   await expect(menu).toContainText('https://legacy.example/post');
   await page.keyboard.press('Escape');
-  // The timeline leads back to the sources list, where the source is listed.
-  await page.getByRole('link', { name: '← sources', exact: true }).click();
+  // The Sources tab leads to the sources list, where the source is listed.
+  await page.getByRole('group', { name: 'reading view' }).getByRole('button', { name: 'Sources', exact: true }).click();
   await expect(page.locator('.feed[data-id="parity-rss"]')).toContainText('Legacy source');
 });
 test('hopper uses stored HTML instead of re-previewing remote markdown', async ({ page }) => {
@@ -155,10 +154,10 @@ test('palette pages all candidates and applies bracket grammar in each composer'
   }, token);
   await page.reload();
   await page.locator('#composer-text').fill(`[[${token}`);
-  await expect(page.getByRole('option')).toHaveCount(20);
+  await expect(page.getByRole('listbox', { name: 'items' }).getByRole('option')).toHaveCount(20);
   await page.getByRole('button', { name: 'load more (20 of 23)' }).click();
-  await expect(page.getByRole('option')).toHaveCount(23);
-  await page.getByRole('option').last().click();
+  await expect(page.getByRole('listbox', { name: 'items' }).getByRole('option')).toHaveCount(23);
+  await page.getByRole('listbox', { name: 'items' }).getByRole('option').last().click();
   await expect(page.locator('#composer-text')).toHaveValue(/^\[\[[0-9a-z]{26}\]\]$/);
   await page.locator('#composer-text').fill(`![[${token}`);
   await expect(page.getByRole('listbox')).toHaveCount(0);
@@ -166,8 +165,8 @@ test('palette pages all candidates and applies bracket grammar in each composer'
   await page.getByRole('radio', { name: 'thread', exact: true }).click();
   await page.locator('#composer-full').click();
   await page.locator('#md-input').fill(`![[${token}`);
-  await expect(page.getByRole('option')).toHaveCount(20);
-  await page.getByRole('option').first().click();
+  await expect(page.getByRole('listbox', { name: 'items' }).getByRole('option')).toHaveCount(20);
+  await page.getByRole('listbox', { name: 'items' }).getByRole('option').first().click();
   await expect(page.locator('#md-input')).toHaveValue(/^!\[\[[0-9a-z]{26}\]\]$/);
   await expect(page.locator('#palette-search')).toHaveCount(0);
 });
@@ -213,15 +212,11 @@ test('reading copy actions sit in the ⋯ sheet beside copy url, never beside st
   const entry = page.locator('.reading-entry').filter({ hasText: 'Native title' });
   await expect(entry.locator('.entry-bar')).not.toContainText('copy [[id]]');
   await expect(entry.locator('.entry-bar')).not.toContainText(/respond|reply|answer/);
-  let menu = await entryMenu(page, entry);
+  const menu = await entryMenu(page, entry);
   // link post ↗, fork and history may carry an action tip after their label (lineage.tsx, option C).
-  await expect(menu.getByRole('button')).toHaveText([/quote selection/, /link post ↗/, /fork/, /copy \[\[id\]\]$/, /copy url$/, /share…$/, /source\.example.*↗/, /history/]);
-  await expect(menu).not.toContainText(/stub|respond|reply|answer/);
-  await menu.getByRole('button', { name: /quote selection/ }).click();
-  await expect(page.getByRole('alert')).toContainText('Select text');
-  await expect(page).toHaveURL(/\/reading\?/);
+  await expect(menu.getByRole('button')).toHaveText([/link post ↗/, /fork/, /copy \[\[id\]\]$/, /copy url$/, /share…$/, /source\.example.*↗/, /history/]);
+  await expect(menu).not.toContainText(/stub|quote|respond|reply|answer/);
   const created = page.waitForResponse(response => response.url().endsWith('/api/items') && response.request().method() === 'POST');
-  menu = await entryMenu(page, entry);
   await menu.getByRole('button', { name: 'link post ↗', exact: true }).click();
   const response = await created;
   expect(response.request().postDataJSON()).toEqual({ kind: 'fragment', content_md: '[[00000000000000000000000001]]\n\n' });
@@ -269,7 +264,7 @@ test('mentions group verified pointers, retain hidden rows and show source guida
 test('subscription changes roll back on failure and stay durable on success', async ({ page }) => {
   // /subs is gone: each source's inspector sheet in reading manages it.
   await login(page); await page.goto('/studio/subs');
-  await expect(page).toHaveURL(/\/studio\/reading$/);
+  await expect(page).toHaveURL(/\/studio\/reading\?view=sources$/);
   const row = page.locator('.feed[data-id="parity-native"]');
   const inspector = page.getByRole('dialog', { name: 'Native source' });
   const inspect = async () => { await row.getByRole('button', { name: 'about Native source', exact: true }).click(); await expect(inspector).toBeVisible(); };
@@ -377,17 +372,17 @@ test('palette keeps results on failure and rejects late results for an old query
     }
   });
   await page.locator('#composer-text').fill('[[oldquery');
-  await expect(page.getByRole('option')).toHaveCount(20);
+  await expect(page.getByRole('listbox', { name: 'items' }).getByRole('option')).toHaveCount(20);
   await page.getByRole('button', { name: 'load more (20 of 21)' }).click();
   await expect(page.getByRole('alert')).toContainText('search unavailable');
-  await expect(page.getByRole('option')).toHaveCount(20);
+  await expect(page.getByRole('listbox', { name: 'items' }).getByRole('option')).toHaveCount(20);
   reject = false;
   await page.getByRole('button', { name: 'retry search', exact: true }).click();
   await started;
   await page.locator('#composer-text').fill('[[newquery');
-  await expect(page.getByRole('option')).toHaveText(['New result only']);
+  await expect(page.getByRole('listbox', { name: 'items' }).getByRole('option').locator('.picker-excerpt')).toHaveText(['New result only']);
   release();
-  await expect(page.getByRole('option')).toHaveText(['New result only']);
+  await expect(page.getByRole('listbox', { name: 'items' }).getByRole('option').locator('.picker-excerpt')).toHaveText(['New result only']);
 });
 
 test('whole-fragment TK wrapping keeps text and publication warnings remain visible', async ({ page }) => {
@@ -406,25 +401,3 @@ test('whole-fragment TK wrapping keeps text and publication warnings remain visi
   await expect(page.locator('.publish-warning')).toHaveText('Mention delivery is waiting for a site URL.');
 });
 
-test('quote selection rejects cross-entry ranges and accepts an entry excerpt', async ({ page }) => {
-  await login(page); await page.goto('/studio/reading?sub=parity-native');
-  const native = page.locator('.reading-entry').filter({ hasText: 'Native title' });
-  // The range below spans the first two entries' text; wait until both have
-  // rendered, or evaluateAll can run against an empty list (flaked locally).
-  await expect(page.locator('.reading-entry .content').nth(1)).not.toBeEmpty();
-  await page.locator('.reading-entry .content').evaluateAll(nodes => {
-    const texts = nodes.map(node => { const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT); return walker.nextNode()!; });
-    const range = document.createRange(); range.setStart(texts[0], 0); range.setEnd(texts[1], Math.min(5, texts[1].textContent!.length));
-    const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
-  });
-  await (await entryMenu(page, native)).getByRole('button', { name: /quote selection/ }).click();
-  await expect(page.getByRole('alert')).toContainText('Select text in this entry');
-  await native.locator('.content').evaluate(node => {
-    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT); const text = walker.nextNode()!;
-    const range = document.createRange(); range.setStart(text, 0); range.setEnd(text, Math.min(5, text.textContent!.length));
-    const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
-  });
-  await (await entryMenu(page, native)).getByRole('button', { name: /quote selection/ }).click();
-  await expect(page).toHaveURL(/\/edit\//);
-  await expect(page.locator('#md-input')).toHaveValue('![[00000000000000000000000001]]\n> Froze\n\n');
-});

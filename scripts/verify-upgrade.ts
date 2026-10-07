@@ -16,7 +16,12 @@ let primaryFailure: unknown;
 try {
   git(["rev-parse", "v0.8.3"]);
   git(["clone", "--quiet", "--shared", root, upstream]);
-  const files = [...git(["ls-files", "-z"]).split("\0"), ...git(["ls-files", "--others", "--exclude-standard", "-z"]).split("\0").filter(file => /^(test|e2e|scripts|docs)\//.test(file))];
+  // The candidate can rename a migration after HEAD. Remove tracked files that
+  // the working snapshot deleted, so the fixture does not apply both names.
+  for (const file of git(["ls-files", "-z"], upstream).split("\0").filter(Boolean)) {
+    if (!existsSync(join(root, file))) rmSync(join(upstream, file));
+  }
+  const files = [...git(["ls-files", "-z"]).split("\0"), ...git(["ls-files", "--others", "--exclude-standard", "-z"]).split("\0").filter(file => /^(src|migrations|test|e2e|scripts|docs)\//.test(file))];
   for (const file of files.filter(Boolean)) if (existsSync(join(root, file))) {
     mkdirSync(dirname(join(upstream, file)), { recursive: true });
     cpSync(join(root, file), join(upstream, file));
@@ -74,8 +79,19 @@ const result = spawnSync(cmd, forwarded, { stdio: 'inherit' }); process.exit(res
   assert.ok(calls.some(call => call.tool === "npx" && call.args.join(" ") === "wrangler d1 migrations apply DB --remote"));
   const schema = JSON.parse(execFileSync(process.execPath, [wranglerCli, "d1", "execute", "DB", "--local", "--persist-to", localD1, "--command", "SELECT name FROM sqlite_master WHERE type='index' AND name IN ('signals_poll_order','items_public_order','versions_public_pins','media_item_created','subscriptions_origin') ORDER BY name", "--json"], { cwd: installed, encoding: "utf8", env: { ...process.env, WRANGLER_LOG_PATH: join(temp, "wrangler.log") } }));
   assert.deepEqual(schema[0].results, ["items_public_order", "media_item_created", "signals_poll_order", "subscriptions_origin", "versions_public_pins"].map(name => ({ name })));
+  // The old install must acquire the native provider schema and shared limiter,
+  // not merely the unrelated content indexes checked above.
+  const authTables = ["user", "session", "account", "verification", "jwks", "oauthClient", "oauthResource", "oauthClientResource", "oauthRefreshToken", "oauthAccessToken", "oauthConsent", "oauthClientAssertion", "rateLimit", "oauth_records", "oauth_revocations", "oauth_state", "oauth_authorizations", "security_budgets", "security_registrations"];
+  const executeLocal = (command: string) => JSON.parse(execFileSync(process.execPath, [wranglerCli, "d1", "execute", "DB", "--local", "--persist-to", localD1, "--command", command, "--json"], { cwd: installed, encoding: "utf8", env: { ...process.env, WRANGLER_LOG_PATH: join(temp, "wrangler.log") } }))[0].results;
+  const upgradedAuth = executeLocal(`SELECT name FROM sqlite_master WHERE type='table' AND name IN (${authTables.map(name => `'${name}'`).join(",")}) ORDER BY name`);
+  assert.deepEqual(upgradedAuth, [...authTables].sort().map(name => ({ name })));
+  const rateColumns = executeLocal('PRAGMA table_info("rateLimit")');
+  assert.deepEqual(rateColumns.map((column: { name: string }) => column.name), ["id", "key", "count", "lastRequest"]);
+  assert.ok(rateColumns.every((column: { notnull: number }) => column.notnull === 1), "Native limiter columns must be non-null after upgrade");
+  const state = executeLocal('SELECT epoch FROM oauth_state WHERE id=1');
+  assert.deepEqual(state, [{ epoch: 0 }], "Migration initializes the revoke-all epoch");
   assert.match(output, /When you are ready:  npm run deploy/);
-  console.log("0.8.3 upgrade script: local release merge, install build, local migration, typecheck, SDK/Worker smoke, and declined deploy verified");
+  console.log("0.8.3 upgrade script: local release merge, install build, local migration including native auth/shared limiter, typecheck, SDK/Worker smoke, and declined deploy verified");
 } catch (error) { primaryFailure = error; throw error; }
 finally {
   try { rmSync(temp, { recursive: true, force: true }); }

@@ -27,7 +27,7 @@ export async function verifyPersistence(worker: string, temp: string) {
   try {
     const login = await fetch(`${fixture.baseUrl}/studio/login`, { method: "POST", body: new URLSearchParams({ password: "test" }), redirect: "manual" });
     const token = login.headers.get("set-cookie")?.match(/blyg_session=([^;]+)/)?.[1]; assert.ok(token);
-    let client = createBlyggerClient({ baseUrl: fixture.baseUrl, auth: token });
+    let client = createBlyggerClient({ baseUrl: fixture.baseUrl, auth: scheme => scheme.in === 'cookie' ? token : undefined });
     await unwrap(BlyggerApi.updateSettings({ client, body: { site_url: "https://restart.example/" } }));
     const draft = await unwrap(BlyggerApi.createItem({ client, body: { content_md: "Unpublished restart draft" } }));
     const published = await unwrap(BlyggerApi.createItem({ client, body: { kind: "thread", content_md: "Frozen citation", stub_of: { url: "https://source.example/article" } } }));
@@ -46,13 +46,16 @@ export async function verifyPersistence(worker: string, temp: string) {
     await fixture.stop();
     fixture = undefined;
     fixture = await start(worker, join(temp, "persistent-storage"), false);
-    client = createBlyggerClient({ baseUrl: fixture.baseUrl, auth: token });
+    client = createBlyggerClient({ baseUrl: fixture.baseUrl, auth: scheme => scheme.in === 'cookie' ? token : undefined });
     assert.equal((await unwrap(BlyggerApi.getItem({ client, path: { id: draft.id } }))).content_md, "Unpublished restart draft");
     assert.deepEqual(await unwrap(BlyggerApi.getItem({ client, path: { id: published.id } })), before);
     const retainedPin = await fetch(`${fixture.baseUrl}/items/${published.id}/v1.json`);
     assert.equal(retainedPin.status, 200);
     assert.equal(await retainedPin.text(), pinned);
-    const upload = await fetch(`${fixture.baseUrl}/${media.url}`);
+    // An unpublished upload is private: the owner reads its bytes, anonymous
+    // readers do not, and a restart changes neither.
+    assert.equal((await fetch(`${fixture.baseUrl}/${media.url}`)).status, 404);
+    const upload = await fetch(`${fixture.baseUrl}/${media.url}`, { headers: { cookie: `blyg_session=${token}` } });
     assert.equal(upload.status, 200); assert.equal(upload.headers.get("content-type"), "image/png");
     assert.deepEqual(new Uint8Array(await upload.arrayBuffer()), new Uint8Array([0, 1, 255]));
     console.log("Fresh Worker process retained D1 drafts/history/pins/citations, auth cookie, and R2 upload bytes");

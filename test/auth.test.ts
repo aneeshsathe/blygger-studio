@@ -55,6 +55,13 @@ describe("auth (§3.2)", () => {
     expect(await verifySession(env, undefined)).toBe(false);
   });
 
+  // Cookie order is not authority: OAuth adds cookies beside the owner cookie.
+  // The signed owner credential must survive an unrelated cookie before it.
+  it("verifies an owner cookie after another cookie", async () => {
+    const cookie = await login();
+    expect(await verifySession(env, `other=value; ${cookie}`)).toBe(true);
+  });
+
   it("guards /api with 401 JSON", async () => {
     const res = await SELF.fetch(`${BASE}/api/items`, { method: "POST", body: "{}" });
     expect(res.status).toBe(401);

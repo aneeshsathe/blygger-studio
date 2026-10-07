@@ -1,4 +1,4 @@
-import { test, expect, type Locator, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from './fixture';
 
 // The lineage glyph, hex view and action ring (lineage.tsx), and the tips
 // that fade (option C). Fixture (e2e-server.ts): the native item quotes its
@@ -61,10 +61,10 @@ test('the hex view shows ancestors, previews a ghost per vertex, and commits on 
   await previewAt(page, graph.locator('[data-vertex=stub]'));
   await expect(graph.locator('[data-ghost=stub]')).toContainText('your response');
   await expect(explain.locator('.lg-facts')).toContainText('a response?yes');
-  // quote selection with nothing selected explains how, and cannot run.
+  // quote a passage says the passage is chosen in the stub editor, and can run.
   await previewAt(page, graph.locator('[data-vertex=quote]'));
-  await expect(explain).toContainText('Select the passage in the post first');
-  await expect(explain.getByRole('button', { name: 'quote selection' })).toBeDisabled();
+  await expect(explain).toContainText('in the stub editor');
+  await expect(explain.getByRole('button', { name: 'quote a passage' })).toBeEnabled();
 
   // fork: preview, then press again to do it — the fork page for this item.
   const fork = graph.locator('[data-vertex=fork]');
@@ -97,7 +97,7 @@ test('pressing the hexagon opens the ring, whose slices animate what they make',
   await expect(sheet.locator('[data-vertex]')).toHaveCount(0);
   await previewAt(page, ring.locator('[data-wedge=quote]'));
   const explain = sheet.locator('.lg-explain');
-  await expect(explain.getByRole('img', { name: 'sketch: what quote selection makes' })).toBeVisible();
+  await expect(explain.getByRole('img', { name: 'sketch: what quote a passage makes' })).toBeVisible();
   await expect(explain.locator('.lg-facts')).toContainText('their words in yoursjust the passage');
   await previewAt(page, ring.locator('[data-wedge=link]'));
   await expect(explain.getByRole('img', { name: 'sketch: what link post ↗ makes' })).toContainText('nothing is sent');
@@ -175,18 +175,14 @@ test('tips: pointing at stub ↗ draws its ghost and a coach line until it has b
   await expect(nativeEntry(page).locator('[data-coach=stub]')).toBeVisible();
 });
 
-test('quote selection from the lineage uses the text selected when the glyph was pressed', async ({ page }) => {
+test('quote selection opens the stub editor', async ({ page }) => {
+  // Since 0.31 a passage is chosen in the stub editor, not in the reading view.
   await page.goto('/studio/reading?sub=parity-native');
-  const entry = nativeEntry(page);
-  await entry.locator('.content').evaluate(node => {
-    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT); const text = walker.nextNode()!;
-    const range = document.createRange(); range.setStart(text, 0); range.setEnd(text, 6);
-    const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
-  });
-  const sheet = await openLineage(page, entry);
+  const sheet = await openLineage(page, nativeEntry(page));
   await previewAt(page, sheet.locator('[data-vertex=quote]'));
   const created = page.waitForResponse(response => response.url().endsWith('/api/items') && response.request().method() === 'POST');
-  await sheet.locator('.lg-explain').getByRole('button', { name: 'quote selection' }).click();
-  expect((await created).request().postDataJSON()).toEqual({ mode: 'response', source: { subscription_id: 'parity-native', remote_id: NATIVE }, selection: 'Frozen' });
+  await sheet.locator('.lg-explain').getByRole('button', { name: 'quote a passage' }).click();
+  expect((await created).request().postDataJSON()).toEqual({ mode: 'response', source: { subscription_id: 'parity-native', remote_id: NATIVE } });
   await expect(page).toHaveURL(/\/edit\//);
+  await expect(page.locator('[data-action=choose-passage]')).toBeVisible();
 });

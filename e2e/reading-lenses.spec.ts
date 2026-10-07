@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixture';
 
 // Reading lenses and the signals page (0.25.0). The fixture is shared by both
 // projects, so the test clears the thumb it sets (the log keeps its entries:
@@ -27,7 +27,7 @@ test('lenses filter by kind, keep themselves across screens, and show the two pl
   const thread = (await api(page, 'POST', '/items', { content_md: `# Lens thread ${stamp}\n\n![[${frag}]]`, kind: 'thread' })).json.id;
   await api(page, 'POST', `/items/${thread}/publish`, {});
 
-  await page.goto('/studio/reading');
+  await page.goto('/studio/reading?view=sources');
   const bar = page.getByRole('group', { name: 'reading lens' });
   await expect(bar.getByRole('button')).toHaveText(['All', 'Threads', 'Fragments', 'Background', 'Smart Feed']);
 
@@ -49,7 +49,11 @@ test('lenses filter by kind, keep themselves across screens, and show the two pl
   await bar.getByRole('button', { name: 'Background' }).click();
   await expect(page.locator('.lens-placeholder')).toContainText('with ignyr in the changelog');
   await bar.getByRole('button', { name: 'Smart Feed' }).click();
-  await expect(page.locator('.lens-placeholder')).toContainText('Feed sorted and filtered by your AI agent.');
+  await expect(page.locator('.lens-placeholder')).toContainText('Coming soon. Feed sorted and filtered by your AI agent.');
+  // The placeholders keep the screen's head: tabs, title and count, ＋.
+  await expect(page.getByRole('group', { name: 'reading view' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^my blyg/ })).toContainText(/\d+ items/);
+  await expect(page.getByRole('button', { name: 'subscribe', exact: true })).toBeVisible();
   await page.locator('.lens-placeholder').getByRole('link', { name: 'Settings' }).click();
   await expect(page).toHaveURL(/\/studio\/settings$/);
 });

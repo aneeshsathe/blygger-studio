@@ -1,11 +1,29 @@
-import { test, expect, type Page } from "@playwright/test";
+/**
+ * Saving must preserve the owner's newest text when HTTP delivery fails or lags.
+ * Publishing must wait for a successful save. An old acknowledgment must not reload
+ * an editor over newer input. Happy-path saving cannot expose those distinctions.
+ *
+ * Contract: the established Studio save behavior documented in docs/testing.md.
+ * These UI ordering and recovery laws are local policy, not an HTTP retry guarantee.
+ * Model: submitted text order, acknowledged text and publication-request count.
+ * Failure can precede commit or follow it; an error does not imply that D1 rolled back.
+ * History grammar: fragment/thread, four rejected statuses, lost response after real
+ * commit, failed autosave/publication and a held older save before newer input.
+ * Driver: real Chromium UI against the compiled Worker. Playwright controls HTTP
+ * failure/delivery and browser time; successful neighboring requests still reach D1.
+ * Refinement: editor text, save/error UI, observed PATCH bodies and subsequent API
+ * reads. Publication count and version remain zero when save fails. The ordering
+ * probe records fetch invocation before delivery, so queued requests remain visible.
+ * Limits: controlled HTTP schedules, not concurrent D1 writers, every network
+ * failure or independent browser engines. Desktop/mobile are Chromium profiles.
+ */
+import { test, expect, type Page } from "./fixture";
 import { acceptSheets } from "./sheets.ts";
 
-/* Contract: a failed save keeps the current editor/text; publishing requires a
- * successful save. Saves from one editor apply in input order. This oracle
- * controls HTTP delivery, not D1 concurrency across clients. Its independent
- * model is the submitted text sequence, observed through actual UI + API.
- */
+// Each case represents an independent browser, with one stable fixture edge IP.
+// Preserve its real login budget throughout the case; do not disable throttling.
+
+
 async function editor(page: Page, kind: "fragment" | "thread") {
   await page.goto("/studio/login");
   await page.locator('[name="password"]').fill("test-password");
@@ -41,6 +59,9 @@ for (const kind of ["fragment", "thread"] as const) {
     await expect(page.locator("#md-input")).toHaveValue("unsaved text");
     expect((await page.evaluate(async id => (await fetch(`/api/items/${id}`)).json() as Promise<{ content_md: string; version: number }>, id)).content_md).toBe("unsaved text");
   });
+  // Commit and acknowledgment are separate events. route.fetch commits through the
+  // real Worker, then route.abort withholds the response. Preserve local text and
+  // allow a later successful save without assuming the first failure meant rollback.
   test(`${kind} retains text when a committed save loses its response`, async ({ page }) => {
     const id = await editor(page, kind);
     await acceptSheets(page);
@@ -63,6 +84,8 @@ for (const kind of ["fragment", "thread"] as const) {
     await page.locator("#save-draft-btn").click(); await acknowledged;
     await expect(page.locator("#md-input")).toHaveValue("committed but unacknowledged");
   });
+  // Publication is gated by save acknowledgment. Count actual publish requests,
+  // not just a hidden UI button, and read version zero after the rejected PATCH.
   test(`${kind} never publishes after a failed save`, async ({ page }) => {
     const id = await editor(page, kind);
     await acceptSheets(page);
@@ -106,6 +129,9 @@ for (const kind of ["fragment", "thread"] as const) {
     await page.locator("#publish-btn").click();
     await expect(page.locator('[data-action="view-version"]')).toHaveCount(1);
   });
+  // Hold an older save until newer editor input exists. Releasing that save must
+  // not replace the newer input; the next autosave must persist that newer text.
+  // The held-request promise establishes order without relying on network timing.
   test(`${kind} does not reload over edits entered while manual save is pending`, async ({ page }) => {
     const id = await editor(page, kind);
     let release!: () => void, started!: () => void;
@@ -128,6 +154,9 @@ for (const kind of ["fragment", "thread"] as const) {
       expect((await page.evaluate(async id => (await fetch(`/api/items/${id}`)).json() as Promise<{ content_md: string }>, id)).content_md).toBe("newer");
     } finally { release(); }
   });
+  // Serialization is a work law as well as a final-value law. While the first PATCH
+  // is held, only one fetch may start. After release, record both bodies in order
+  // and compare the final API text. Correct final text alone would miss overlap.
   test(`${kind} serializes an older pending autosave before the next edit`, async ({ page }) => {
     const id = await editor(page, kind);
     const bodies: string[] = [];

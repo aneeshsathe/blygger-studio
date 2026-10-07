@@ -13,7 +13,7 @@
 // One reference per (holder, target): a stub thread both `stub_of`s and
 // transcludes its target, which is one act, not two. Relation priority is
 // fork > stub > transclusion, and a partial transclusion marks the edge
-// partial — "quote selection" is a stub whose transclusion is partial.
+// partial — "quote a passage" is a stub whose transclusion is partial.
 
 import { normalizeOrigin } from "./stub.ts";
 import { previewFromHtml, stripTransclusionQuotes } from "./preview.ts";

@@ -1,3 +1,24 @@
+/**
+ * Published history moves forward; restoring an old version changes the draft.
+ * A pin keeps its published snapshot even after editing, withdrawal and restoration.
+ * A final-content-only assertion could miss a rewound counter or rewritten history.
+ *
+ * Contract: docs/api.md defines restore-without-publish and permanent pins. The
+ * established restore-version acceptance tests define the forward-only counter.
+ * These are local content laws, not HTTP or OAuth requirements.
+ * Model: working copy content, status, dirty flag, authored kind and immutable versions.
+ * Withdrawal appends an empty withdrawn snapshot; restore copies text without
+ * removing any version. Pinning changes visibility of one existing snapshot.
+ * History grammar: fragment/thread, plain nonempty text and at most ten generated
+ * choices. Legal operations depend on model state; restore/pin target nonempty
+ * published snapshots. A fixed history forces repeated pin and restore-after-withdraw.
+ * Driver: named generated SDK operations through SELF to the real Worker and D1.
+ * Refinement: after creation and every awaited action, compare owner working state,
+ * ordered history, public current projection, pin visibility and pinned wire bytes.
+ * Limits: no TK, transclusions, forks, deletion, concurrent publication or arbitrary
+ * Markdown rendering. Retaining first pin bytes is a metamorphic check, not an
+ * independent expected encoding. docs/testing.md records this bounded domain.
+ */
 import { SELF } from "cloudflare:test";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
@@ -5,18 +26,14 @@ import { BlyggerApi, createBlyggerClient, unwrap } from "../sdk/dist/browser.js"
 import { BASE, login } from "./helpers.ts";
 import { atCheckpoint, campaign } from "./oracle-campaign.ts";
 
-/* Authority: model.ts's documented forward-only restore and permanent pins,
- * docs/api.md, and crud/restore-version acceptance tests. Plain nonempty text
- * only; no TK, transclusions, forks, deletion, or concurrent writers are claimed.
- * Model: working text + status + immutable snapshots + pinned version numbers.
- * Grammar: choose an action legal in the current model, retaining repeated pins
- * and restore-after-withdraw. Driver: named SDK methods against the real Worker.
- * Checkpoint: after each awaited action, compare owner and public observations.
- * The expected side imports no production model, schema, or projector.
- */
 type Snapshot = { content: string; pinned: boolean; kind: "fragment" | "thread" | "withdrawn" };
 type Model = { content: string; status: "draft" | "public" | "withdrawn"; dirty: boolean; kind: "fragment" | "thread"; versions: Snapshot[] };
 type Action = { op: "edit" | "publish" | "withdraw" | "restore" | "pin"; value?: string; version?: number };
+// History is append-only. Publication and withdrawal add snapshots; restore never
+// rewinds the counter. Working copy content and public status remain separate because an
+// edit or restore can leave the latest published snapshot unchanged.
+// Pinned flags affect visibility, not snapshot content. Retaining both facts lets
+// later public reads distinguish a restored draft from rewritten history.
 function step(model: Model, action: Action) {
   if (action.op === "edit") { model.content = action.value!; model.dirty = true; }
   if (action.op === "publish") { model.versions.push({ content: model.content, pinned: false, kind: model.kind }); model.status = "public"; model.dirty = false; }
@@ -32,6 +49,10 @@ async function run(kind: Model["kind"], actions?: Action[], instructions?: { cho
   const created = await unwrap(BlyggerApi.createItem({ client, body: { kind, content_md: "initial" } }));
   const id = created.id, model: Model = { content: "initial", status: "draft", dirty: true, kind, versions: [] };
   const pinnedSnapshots = new Map<number, string>();
+  // Observe all promised views at the same settled-action boundary. Checking only
+  // owner text would miss a wrong public projection; checking only the latest public
+  // version would miss a changed old pin. Keep the first pin response as an immutable
+  // baseline while the model independently checks its content, kind and visibility.
   async function compare() {
     const owner = await unwrap(BlyggerApi.getItem({ client, path: { id } }));
     atCheckpoint("lifecycle owner working copy", () => expect({ content: owner.content_md, status: owner.status, dirty: owner.dirty, version: owner.version, kind: owner.authored_kind }).toEqual({ content: model.content, status: model.status, dirty: model.dirty, version: model.versions.length, kind }));
@@ -60,6 +81,10 @@ async function run(kind: Model["kind"], actions?: Action[], instructions?: { cho
   const queue = actions ?? instructions!.map(() => null);
   for (const [index, supplied] of queue.entries()) {
     const restorable = model.versions.flatMap((v, i) => v.content ? [i + 1] : []);
+    // Choose operations from model state, not production eligibility helpers.
+    // Withdrawal requires a public item; restore/pin require a nonempty snapshot.
+    // Modulo selection bounds choices without skipping failed production actions.
+    // This grammar excludes restoring withdrawal tombstones and malformed versions.
     const legal: Action["op"][] = ["edit", "publish", ...(model.status === "public" ? ["withdraw" as const] : []), ...(restorable.length ? ["restore" as const, "pin" as const] : [])];
     const token = instructions?.[index];
     const action = supplied ?? { op: legal[token!.choice % legal.length], value: `text ${token!.text}`, version: restorable[token!.version % restorable.length] };

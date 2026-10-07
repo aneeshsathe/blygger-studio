@@ -3,6 +3,7 @@
 
 import { attachedQuote } from "./directives.ts";
 import { codeRanges, htmlCodeRanges, inRanges, lineOffsets, type Range } from "./code-ranges.ts";
+import { sanitizeHtml } from "./importer/sanitize.ts";
 import { blygItemUrl } from "./importer/util.ts";
 import { excerptFromHtml, renderMarkdown, selectionText } from "./markdown.ts";
 import type { ImportedItemRow, ItemRow, TextQuoteSelector, Transclusion, VersionRow } from "./types.ts";
@@ -391,12 +392,16 @@ export async function resolveTransclusions(db: D1Database, contentMd: string, se
  * time (see resolveTransclusions above); not a protocol surface.
  */
 export async function previewTransclusions(db: D1Database, contentMd: string, selfId?: string): Promise<ResolveResult> {
-  return walk(
+  const result = await walk(
     db,
     contentMd,
     (err) => `<blockquote class="blyg-transclusion unresolved"><p>⚠ unresolvable: ${escapeHtml(err.reason)}</p></blockquote>`,
     selfId,
   );
+  // Publish bakes the target's HTML verbatim (§5.2, §10.2), so the walk does
+  // not sanitize. The preview is displayed in the owner's studio, and every
+  // display sanitizes at render, as the public pages do with the baked thread.
+  return { ...result, html: await sanitizeHtml(result.html) };
 }
 
 // --- `[[id]]` plain internal links (§16.2, decision #32) ---

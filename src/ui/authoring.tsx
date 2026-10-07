@@ -32,7 +32,7 @@ import {
   useSettings,
 } from './components.tsx';
 import { Sheet, confirm, menu, prompt, toast } from './sheets.tsx';
-import { paletteTrigger, paletteInsert } from '../palette.ts';
+import { BracketPicker } from './picker.tsx';
 import { Draft } from './draft.ts';
 import { stripStaleUploads, uploadToken } from './upload-tokens.ts';
 import { FRAGMENT_MAX_CHARS as MAX } from '../client.ts';
@@ -40,6 +40,7 @@ import { insertLink, isUrl, linkToast } from './links.ts';
 import type { Resolve } from './plain-text.ts';
 import { itemTitle, permalink, plainText, textWithLink } from './plain-text.ts';
 import { OcrScan } from './ocr.tsx';
+import { addStubQuote, passageCount, stubQuoteForm, withStubQuote } from './stub-quote.ts';
 import './authoring.css';
 
 type Kind = 'fragment' | 'thread';
@@ -939,7 +940,8 @@ export function Compose() {
             Full Editor →
           </Button>
           <span className={over ? 'counter over' : 'counter'} id="composer-count">
-            {text.length} / {MAX}
+            {/* Only fragments have a length limit; a thread shows its count alone. */}
+            {kind === 'thread' ? `${text.length} chars` : `${text.length} / ${MAX}`}
           </span>
         </ToolRow>
         {over ? (
@@ -1097,7 +1099,29 @@ function ItemRow({
     parseScopes(withoutDirectives).scopes,
   );
   const html = renderMarkdown(stripped.text);
-  const preview = previewFromHtml(html);
+  const own = previewFromHtml(html);
+  // An item that only quotes or links has no prose of its own, and read
+  // "(empty draft)" here. Ask the preview endpoint once for what the reader
+  // and public pages show (quotes baked, links resolved); until it answers,
+  // say what the item does.
+  const LINK = /(?<!!)\[\[[^\]\n]+\]\]/g;
+  const links = (item.content_md.match(LINK) ?? []).length;
+  // Bare [[id]] tokens are not prose: without them, is anything left?
+  const prose = links ? previewFromHtml(renderMarkdown(stripped.text.replace(LINK, ''))) : own;
+  const ownEmpty = !prose.title && !prose.body;
+  const [resolved, setResolved] = useState<ReturnType<typeof previewFromHtml> | null>(null);
+  useEffect(() => {
+    if (!ownEmpty || !(count || links)) return;
+    let live = true;
+    unwrap(BlyggerApi.preview({ client, body: { content_md: item.content_md, item_id: item.id, kind: item.kind === 'thread' ? 'thread' : 'fragment' } }))
+      .then((r) => live && setResolved(previewFromHtml(r.html)))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [ownEmpty, item.content_md]);
+  const preview = ownEmpty && resolved && (resolved.title || resolved.body) ? resolved : own;
+  const doesOnly = count ? `Only quotes ${count} item${count === 1 ? '' : 's'}` : links ? `Only links ${links} item${links === 1 ? '' : 's'}` : null;
   const mutate = (fn: () => Promise<unknown>) =>
     void action.run(async () => {
       if (draft.current!.dirty && !(await save())) return;
@@ -1136,7 +1160,7 @@ function ItemRow({
         <span className={`dot ${dot}`} title={item.status} />
         <span className="item-main">
           <span className={preview.title || preview.body ? 'item-title' : 'item-title empty'}>
-            {preview.title || preview.body || '(empty draft)'}
+            {preview.title || preview.body || doesOnly || '(empty draft)'}
           </span>
           {preview.title && preview.body ? (
             <span className="item-excerpt">{preview.body}</span>
@@ -1273,7 +1297,13 @@ function ItemRow({
                       danger: true,
                     })
                   )
-                    mutate(() => items.delete(item.id).isPersisted.promise);
+                    // Not mutate(): its follow-up refetch of this item 404s on
+                    // the draft just deleted and showed "not found" as an error.
+                    void action.run(async () => {
+                      await items.delete(item.id).isPersisted.promise;
+                      await changed('items', 'reading');
+                      toast('Draft discarded', { tone: 'ok' });
+                    });
                 }}
               >
                 discard
@@ -1550,6 +1580,7 @@ function Editor({ item }: { item: Detail }) {
       await changed('items');
       leaving.current = true;
       await navigate({ to: '/' });
+      toast('Draft discarded', { tone: 'ok' });
     } finally {
       setReplacing(false);
     }
@@ -1579,7 +1610,10 @@ function Editor({ item }: { item: Detail }) {
         }),
       ),
     );
-    if (draft.current!.revision === revision) edit(result.text);
+    // `text` is the scope's output alone; the draft is the whole document with
+    // it spliced in, which the server has already saved. Replacing the draft
+    // with `text` threw away everything around the scope (0.10.0–0.27.1).
+    if (draft.current!.revision === revision) edit(result.content_md);
   };
   const pin = async (version: number) => {
     if (
@@ -1741,6 +1775,16 @@ function Editor({ item }: { item: Detail }) {
             clear stub
           </Button>
         </p>
+      ) : null}
+      {item.stub_of && 'id' in item.stub_of && isThread ? (
+        <StubQuote
+          itemId={item.id}
+          target={item.stub_of.id}
+          text={text}
+          edit={edit}
+          input={input}
+          fresh={item.version === 0}
+        />
       ) : null}
       {item.forked_from ? (
         <p className="stub-head">
@@ -1931,6 +1975,49 @@ function Editor({ item }: { item: Detail }) {
               </Button>
             </div>
           ) : null}
+          <div className="field tk-highlight">
+            <span id="tk-highlight-label">
+              Highlight generated portions on the public page:
+            </span>
+            <div
+              className="segmented"
+              role="group"
+              aria-labelledby="tk-highlight-label"
+            >
+              {(
+                [
+                  [
+                    'default',
+                    `default (${settings?.highlight_generated_default ? 'on' : 'off'})`,
+                  ],
+                  ['show', 'on'],
+                  ['hide', 'off'],
+                ] as const
+              ).map(([value, label]) => (
+                <Button
+                  key={value}
+                  className={item.highlight === value ? 'seg is-active' : 'seg'}
+                  aria-pressed={item.highlight === value}
+                  disabled={action.busy}
+                  onClick={() =>
+                    item.highlight === value
+                      ? undefined
+                      : operation(() =>
+                          unwrap(
+                            BlyggerApi.updateItem({
+                              client,
+                              path: { id: item.id },
+                              body: { highlight: value },
+                            }),
+                          ),
+                        )
+                  }
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </div>
         </Card>
         <Card
           id="attachments"
@@ -2242,6 +2329,279 @@ function QuotedSnapshots({
     </Card>
   );
 }
+/** Per device, like the picker's choices: a dismissed explanation stays dismissed here. */
+const STUB_HELP_KEY = 'blygger.stub-help.dismissed';
+function stubHelpDismissed() {
+  try {
+    return localStorage.getItem(STUB_HELP_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+function dismissStubHelp() {
+  try {
+    localStorage.setItem(STUB_HELP_KEY, '1');
+  } catch {
+    // Storage blocked: the explanation just shows again next time.
+  }
+}
+/**
+ * The stub's quote, chosen in the editor (session 37). A stub opens quoting
+ * the whole post; selecting text in the quoted post below writes that passage
+ * under the directive (§10.1's partial grammar), and "quote whole post" takes
+ * it out again. Replaces select-to-quote in the reading view, where the
+ * passage had to be chosen before there was a draft to choose it for.
+ *
+ * The post is shown as publish would bake it whole — the preview of a lone
+ * directive — so a passage chosen from it is checked against the same text.
+ */
+function StubQuote({
+  itemId,
+  target,
+  text,
+  edit,
+  input,
+  fresh,
+}: {
+  itemId: string;
+  target: string;
+  text: string;
+  edit: (text: string) => void;
+  input: RefObject<HTMLTextAreaElement | null>;
+  fresh: boolean;
+}) {
+  const form = stubQuoteForm(text, target);
+  // More than one passage is a running commentary; the chooser then adds
+  // rather than replaces, and "quote whole post" would destroy it, so it goes.
+  const passages = passageCount(text, target);
+  const [open, setOpen] = useState(false);
+  const [post, setPost] = useState<{ html: string; error?: string }>();
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [help, setHelp] = useState(() => fresh && !stubHelpDismissed());
+  const [never, setNever] = useState(false);
+  const panel = useRef<HTMLDivElement>(null);
+  const addButton = useRef<HTMLButtonElement>(null);
+  const replaceButton = useRef<HTMLButtonElement>(null);
+  const helpTop = useRef<HTMLParagraphElement>(null);
+  const latest = useRef({ text, chosen });
+  latest.current = { text, chosen };
+  useEffect(() => {
+    if (!open || post) return;
+    getPreview(`![[${target}]]`, itemId, 'thread')
+      .then((result) =>
+        setPost(
+          result.errors?.length
+            ? { html: '', error: result.errors[0].reason }
+            : { html: result.html },
+        ),
+      )
+      .catch((error) =>
+        setPost({ html: '', error: error instanceof Error ? error.message : String(error) }),
+      );
+  }, [open, post, target, itemId]);
+  useEffect(() => {
+    if (!open) return;
+    const inside = (node: Node | null) => !!node && !!panel.current?.contains(node);
+    const check = () => {
+      const selection = window.getSelection();
+      setChosen(
+        selection &&
+          !selection.isCollapsed &&
+          inside(selection.anchorNode) &&
+          inside(selection.focusNode) &&
+          selection.toString().trim()
+          ? selection.toString()
+          : null,
+      );
+    };
+    document.addEventListener('selectionchange', check);
+    return () => document.removeEventListener('selectionchange', check);
+  }, [open]);
+  const quotePassage = (how: 'replace' | 'add') => {
+    const { text, chosen } = latest.current;
+    if (!chosen) return;
+    const caret = input.current?.selectionStart ?? text.length;
+    edit(how === 'add' ? addStubQuote(text, target, chosen, caret) : withStubQuote(text, target, chosen));
+    window.getSelection()?.removeAllRanges();
+    setChosen(null);
+    setOpen(false);
+    toast(how === 'add' ? 'added another quote' : 'quoting the passage');
+  };
+  useEffect(() => {
+    // Pressing a button must not collapse the selection it quotes. React's
+    // touch listeners are passive, so these are native (as the old pill's were).
+    const cleanups = (
+      [
+        [addButton.current, 'add'],
+        [replaceButton.current, 'replace'],
+      ] as const
+    ).map(([element, how]) => {
+      if (!element) return () => {};
+      const touch = (event: TouchEvent) => {
+        event.preventDefault();
+        quotePassage(how);
+      };
+      const mouse = (event: MouseEvent) => event.preventDefault();
+      element.addEventListener('touchstart', touch, { passive: false });
+      element.addEventListener('mousedown', mouse);
+      return () => {
+        element.removeEventListener('touchstart', touch);
+        element.removeEventListener('mousedown', mouse);
+      };
+    });
+    return () => cleanups.forEach((cleanup) => cleanup());
+  });
+  const closeHelp = () => {
+    if (never) dismissStubHelp();
+    setHelp(false);
+  };
+  return (
+    <div className="stub-quote" data-form={form ?? 'none'}>
+      <p className="hint stub-hint">
+        {form === 'whole'
+          ? 'Quoting the whole post. Write above the quote for a quote post, below it for a reply, or nothing for a repost.'
+          : passages > 1
+            ? `Quoting ${passages} passages: a running commentary. Choose another to add it after the cursor.`
+            : form === 'passage'
+              ? 'Quoting a passage: the > lines under the quote. Write above it, below it, or both.'
+              : 'Not quoting the post: this is a response by link.'}{' '}
+        {passages <= 1 && form !== 'whole' ? (
+          <button
+            type="button"
+            className="link-btn"
+            data-action="quote-whole"
+            onClick={() => edit(withStubQuote(text, target, null))}
+          >
+            quote whole post
+          </button>
+        ) : null}{' '}
+        <button
+          type="button"
+          className="link-btn"
+          data-action="choose-passage"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+        >
+          {open ? 'done choosing' : form === 'passage' ? 'quote another passage' : 'quote a passage instead'}
+        </button>{' '}
+        ·{' '}
+        <button
+          type="button"
+          className="link-btn"
+          data-action="stub-help"
+          onClick={() => setHelp(true)}
+        >
+          how stubs work
+        </button>
+      </p>
+      {open ? (
+        <div className="stub-chooser">
+          <p className="hint">
+            Select the passage to quote in the post below. It must be one
+            unbroken stretch of the original.
+          </p>
+          {post?.error ? (
+            <Failure error={post.error} />
+          ) : post ? (
+            <div ref={panel} className="stub-post preview">
+              <Html html={post.html} />
+            </div>
+          ) : (
+            <p className="hint">loading the post…</p>
+          )}
+          {chosen !== null ? (
+            <div className="quote-pills">
+              {passages > 0 ? (
+                <button
+                  ref={addButton}
+                  type="button"
+                  className="quote-pill"
+                  data-action="add-passage"
+                  onClick={() => quotePassage('add')}
+                >
+                  ❝ add as another quote
+                </button>
+              ) : null}
+              <button
+                ref={replaceButton}
+                type="button"
+                className={passages > 0 ? 'quote-pill quote-pill-alt' : 'quote-pill'}
+                data-action="quote-passage"
+                onClick={() => quotePassage('replace')}
+              >
+                {passages > 0 ? 'replace the first quote' : '❝ quote only this'}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      <Sheet
+        open={help}
+        onClose={closeHelp}
+        title="How stubs work"
+        className="stub-help"
+        initialFocus={helpTop}
+      >
+        <div className="sheet-body prose">
+          <p ref={helpTop} tabIndex={-1}>
+            A stub is your post in response to one other post, and its author
+            is notified. One action covers what other platforms split into
+            four:
+          </p>
+          <table className="stub-grid">
+            <thead>
+              <tr>
+                <th />
+                <th>whole post</th>
+                <th>a passage</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>your words above</th>
+                <td>quote post</td>
+                <td>commentary on an excerpt</td>
+              </tr>
+              <tr>
+                <th>your words below</th>
+                <td>reply</td>
+                <td>inline reply</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>Leave out your own words and a whole-post stub is a repost.</p>
+          <p>
+            <strong>Quoting part of a post.</strong> Put the passage right
+            under <code>![[id]]</code>, with <code>&gt;</code> at the start of
+            every line, blank ones included:
+          </p>
+          <pre><code>{'![[id]]\n> First paragraph you are quoting.\n>\n> Second paragraph.\n\nYour reply.'}</code></pre>
+          <p>
+            Or choose <em>quote a passage instead</em> and select it in the
+            post. A passage must be one unbroken stretch of the original, and
+            is published as plain text. Quote several passages, each under its
+            own <code>![[id]]</code>, for a running commentary.
+          </p>
+          <p>
+            Stubs are for responding: stubbing everything a source posts with
+            nothing to say about it is a misuse (§10.6).
+          </p>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={never}
+              onChange={(event) => setNever(event.target.checked)}
+            />{' '}
+            don&rsquo;t show this again
+          </label>
+        </div>
+        <div className="sheet-actions">
+          <Sheet.Close className="btn btn-primary">got it</Sheet.Close>
+        </div>
+      </Sheet>
+    </div>
+  );
+}
 const getPreview = (
   text: string,
   id: string,
@@ -2255,176 +2615,3 @@ const getPreview = (
       signal,
     }),
   );
-function BracketPicker({
-  input,
-  text,
-  change,
-  allowTransclude = false,
-}: {
-  input: React.RefObject<HTMLTextAreaElement | null>;
-  text: string;
-  change: (text: string) => void;
-  allowTransclude?: boolean;
-}) {
-  const [hits, setHits] = useState<
-    {
-      id: string;
-      excerpt: string;
-    }[]
-  >([]);
-  const [selected, setSelected] = useState(0);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<unknown>();
-  const request = useRef<AbortController | undefined>(undefined);
-  const [caret, setCaret] = useState(text.length);
-  useEffect(() => {
-    const element = input.current;
-    const update = () => setCaret(element?.selectionStart ?? text.length);
-    element?.addEventListener('selectionchange', update);
-    element?.addEventListener('keyup', update);
-    element?.addEventListener('click', update);
-    update();
-    return () => {
-      element?.removeEventListener('selectionchange', update);
-      element?.removeEventListener('keyup', update);
-      element?.removeEventListener('click', update);
-    };
-  }, [input, text]);
-  const trigger = paletteTrigger(text, caret, allowTransclude);
-  const query = trigger?.query;
-  const loadPage = async (
-    offset: number,
-    controller: AbortController,
-    query: string,
-  ) => {
-    if (controller.signal.aborted) return;
-    setLoading(true);
-    setError(undefined);
-    try {
-      const result = await unwrap(
-        BlyggerApi.search({
-          client,
-          query: { q: query, offset, limit: 20 },
-          signal: controller.signal,
-        }),
-      );
-      if (controller.signal.aborted || request.current !== controller) return;
-      setHits((current) =>
-        offset === 0
-          ? result.items
-          : [
-              ...current,
-              ...result.items.filter(
-                (item) => !current.some((hit) => hit.id === item.id),
-              ),
-            ],
-      );
-      setTotal(result.total);
-    } catch (failure) {
-      if (!controller.signal.aborted && request.current === controller)
-        setError(failure);
-    } finally {
-      if (request.current === controller) setLoading(false);
-    }
-  };
-  useEffect(() => {
-    setSelected(0);
-    setHits([]);
-    setTotal(0);
-    setError(undefined);
-    setLoading(false);
-    if (query === undefined) return;
-    const controller = new AbortController();
-    request.current = controller;
-    const timer = setTimeout(() => void loadPage(0, controller, query), 150);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-      if (request.current === controller) request.current = undefined;
-    };
-  }, [query]);
-  const loadMore = () => {
-    const controller = request.current;
-    if (controller && query !== undefined)
-      void loadPage(hits.length, controller, query);
-  };
-  const pick = (id: string) => {
-    if (!trigger) return;
-    const next = paletteInsert(text, caret, trigger, id);
-    change(next.text);
-    request.current?.abort();
-    setHits([]);
-    requestAnimationFrame(() => {
-      input.current?.focus();
-      input.current?.setSelectionRange(next.caret, next.caret);
-    });
-  };
-  useEffect(() => {
-    const element = input.current;
-    if (!element) return;
-    const key = (event: KeyboardEvent) => {
-      if (!hits.length) return;
-      if (event.key === 'ArrowDown') {
-        event.preventDefault();
-        setSelected((i) => Math.min(i + 1, hits.length - 1));
-      }
-      if (event.key === 'ArrowUp') {
-        event.preventDefault();
-        setSelected((i) => Math.max(i - 1, 0));
-      }
-      if (event.key === 'Escape') {
-        request.current?.abort();
-        setHits([]);
-        setError(undefined);
-      }
-      if (event.key === 'Enter' && hits[selected]) {
-        event.preventDefault();
-        pick(hits[selected].id);
-      }
-    };
-    element.addEventListener('keydown', key);
-    return () => element.removeEventListener('keydown', key);
-  });
-  return trigger && (hits.length || error) ? (
-    <div className="palette">
-      <Failure error={error} />
-      <ul role="listbox" aria-label="items">
-        {hits.map((hit, i) => (
-          <li
-            role="option"
-            aria-selected={i === selected}
-            className={i === selected ? 'sel' : ''}
-            key={hit.id}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              pick(hit.id);
-            }}
-          >
-            {hit.excerpt}
-          </li>
-        ))}
-      </ul>
-      {error ? (
-        <Button
-          className="btn btn-ghost btn-mini"
-          disabled={loading}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={loadMore}
-        >
-          retry search
-        </Button>
-      ) : null}
-      {hits.length < total ? (
-        <Button
-          className="btn btn-ghost btn-mini"
-          disabled={loading}
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={loadMore}
-        >
-          load more ({hits.length} of {total})
-        </Button>
-      ) : null}
-    </div>
-  ) : null;
-}

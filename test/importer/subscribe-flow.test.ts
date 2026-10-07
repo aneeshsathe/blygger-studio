@@ -8,7 +8,7 @@ import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { reconcileIndex } from "../../src/importer/poll.ts";
 import { resolve } from "../../src/importer/resolve.ts";
-import { createSubscription, listImportedItems } from "../../src/importer/store.ts";
+import { createSubscription, findSubscription, listImportedItems } from "../../src/importer/store.ts";
 import { indexBody, itemDocBody, makeFixtureFetch, manifestBody } from "./fixtures.ts";
 
 describe("full subscribe loop (fixture blyg)", () => {
@@ -53,5 +53,15 @@ describe("full subscribe loop (fixture blyg)", () => {
     expect(byId["frag-1"]).toMatchObject({ state: "current", version: 2, content_md: "first fragment, v2" });
     expect(byId["frag-2"]).toMatchObject({ state: "current", version: 1, content_md: "second fragment" });
     expect(byId["gone"]).toMatchObject({ state: "tombstone", version: 3, content_md: "" });
+  });
+
+  it("finds an existing subscription to the same source, so a second subscribe is refused", async () => {
+    const blyg = await createSubscription(env.DB, { kind: "blyg", origin: "https://dup.example/", feedUrl: "https://dup.example/feed.xml", title: "Dup" });
+    const rss = await createSubscription(env.DB, { kind: "rss", origin: "https://legacy-dup.example/rss", feedUrl: "https://legacy-dup.example/rss", title: "Legacy" });
+    // Same blyg by origin; the same blyg's feed subscribed as plain RSS; the same RSS feed.
+    expect((await findSubscription(env.DB, "https://dup.example/", "https://dup.example/feed.xml"))?.id).toBe(blyg.id);
+    expect((await findSubscription(env.DB, "https://dup.example/feed.xml", "https://dup.example/feed.xml"))?.id).toBe(blyg.id);
+    expect((await findSubscription(env.DB, "https://legacy-dup.example/rss", "https://legacy-dup.example/rss"))?.id).toBe(rss.id);
+    expect(await findSubscription(env.DB, "https://other.example/", "https://other.example/feed.xml")).toBeNull();
   });
 });

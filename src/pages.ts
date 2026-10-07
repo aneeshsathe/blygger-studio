@@ -8,6 +8,7 @@
 
 import { listBlogrollSubscriptions, listPublicHoppers } from "./importer/store.ts";
 import { listPublicResponses } from "./mentions/store.ts";
+import { sanitizeHtml } from "./importer/sanitize.ts";
 import { blygItemUrl } from "./importer/util.ts";
 import { parseStoredCite, parseStoredFork, parseStoredStub } from "./stub.ts";
 import { excerptFromHtml } from "./markdown.ts";
@@ -16,7 +17,7 @@ import { authoredKind, getMedia, itemShowsResponses, listMediaForItem, published
 import type { ItemRow, MediaRow, Settings, SubscriptionRow, Transclusion, VersionRow } from "./types.ts";
 import { loadFeedData, sourceKey, type FeedCardData, type FeedProvenance, type FeedItem } from "./public-feed.ts";
 import { WEBMENTION_PATH } from "./types.ts";
-import { escapeHtml, formatDateIn, unplacedMedia, visibleMedia } from "./util.ts";
+import { escapeHtml, escapeHref, formatDateIn, unplacedMedia, visibleMedia } from "./util.ts";
 import { graphemePrefix } from "./text.ts";
 
 
@@ -56,7 +57,9 @@ export function themeCss(name: string): string {
   --ink: ${t.ink};
   --ink-soft: ${t.inkSoft};
   --rule: ${t.rule};
-  --pencil: ${t.pencil};`;
+  --pencil: ${t.pencil};
+  --gen-bg: ${t.genBg};
+  --gen-rule: ${t.genRule};`;
   return `
 /* theme: ${t.label} — author-chosen, so it overrides the reader's light/dark
    preference rather than being overridden by it. */
@@ -70,6 +73,10 @@ ${vars}
 }
 `;
 }
+
+/** Lucide's "bot" icon (ISC licence), used only as a mask, so its stroke colour is irrelevant. Declared before STYLE_CSS,
+ * which calls generatedHighlightRules while the module loads. */
+const ROBOT = `url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%221.8%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M12 8V4H8%22/%3E%3Crect width=%2216%22 height=%2212%22 x=%224%22 y=%228%22 rx=%222%22/%3E%3Cpath d=%22M2 14h2M20 14h2M15 13v2M9 13v2%22/%3E%3C/svg%3E")`;
 
 export const STYLE_CSS = `/* blyg — one hand-written stylesheet, no build step, no web fonts.
  *
@@ -103,6 +110,9 @@ export const STYLE_CSS = `/* blyg — one hand-written stylesheet, no build step
   --ink-soft: #5c686b;
   --rule: #dde3e5;
   --pencil: #23608c;
+  /* Highlighted generated spans: a tint and a hairline, quiet enough to read through. */
+  --gen-bg: #eef3f7;
+  --gen-rule: #c9d8e4;
   --block-pad: 0rem;
   --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, "Times New Roman", serif;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -118,6 +128,8 @@ export const STYLE_CSS = `/* blyg — one hand-written stylesheet, no build step
     --ink-soft: #95a2a5;
     --rule: #2b3436;
     --pencil: #8cc0e4;
+    --gen-bg: #1a2429;
+    --gen-rule: #2f4552;
   }
 }
 * { box-sizing: border-box; }
@@ -394,7 +406,61 @@ article.fragment, article.thread, .thread-card { overflow-wrap: break-word; }
   .version-line .vnav { gap: 0.3rem; }
   .version-line .vstep { padding: 0.45rem 0.6rem; }
 }
+/* The robot badge is a button only where highlighting is on (see
+   generatedHighlightRules); elsewhere it is not rendered at all. */
+.gen-badge { display: none; }
+/* The disclosure box the robot opens (GEN_INFO_SCRIPT): one per page, fixed
+   to the viewport so a clipped feed card cannot cut it off. */
+.gen-pop { position: fixed; z-index: 50; box-sizing: border-box; width: max-content; max-width: min(20rem, calc(100vw - 1rem)); padding: 0.6rem 0.75rem; background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: 8px; box-shadow: 0 6px 24px rgb(0 0 0 / 0.18); font: var(--apparatus); }
+.gen-pop[hidden] { display: none; }
+.gen-pop .gen-pop-h { margin: 0 0 0.25rem; font-weight: 600; color: var(--pencil); }
+.gen-pop p { margin: 0 0 0.4rem; }
+.gen-pop dl { display: grid; grid-template-columns: auto 1fr; gap: 0.1rem 0.6rem; margin: 0; }
+.gen-pop dt { color: var(--ink-soft); }
+.gen-pop dd { margin: 0; overflow-wrap: anywhere; }
+${generatedHighlightRules(".gen-on")}`;
+
+/**
+ * Generated spans ([TK], §5.7) drawn as a tinted, hairline-outlined box. The
+ * markup is the protocol's own `blyg-tk-gen` and is never changed; whether a
+ * page highlights it is presentation. `scope` selects the articles it applies
+ * to: `.gen-on` (an item's own override) always, and every article not
+ * opted out when the blyg's default is on.
+ *
+ * A generated block wears a small robot badge on its bottom edge, near the
+ * left: Brady Dale's convention on bradydale.com, adopted so the mark reads
+ * the same across blygs. An inline span, which can wrap, gets the robot
+ * before its first word. GEN_INFO_SCRIPT makes the badge a button (hover or
+ * tap for the disclosure) and marks the span .gen-ready; until then, or with
+ * scripts off, the same robot is drawn by pseudo-elements. Either way the
+ * icon is a mask filled with --ink-soft, so it follows the theme.
+ */
+function generatedHighlightRules(scope: string): string {
+  const icon = `background: var(--ink-soft); -webkit-mask: ${ROBOT} center / contain no-repeat; mask: ${ROBOT} center / contain no-repeat;`;
+  const square = `box-sizing: border-box; width: 30px; height: 26px; border: 1px solid color-mix(in srgb, var(--ink-soft) 55%, var(--gen-rule)); border-radius: 6px; background: var(--paper);`;
+  return `${scope} .blyg-tk-gen { background: var(--gen-bg); box-shadow: inset 0 0 0 1px var(--gen-rule); border-radius: 4px; }
+${scope} div.blyg-tk-gen { position: relative; padding: 0.5rem 0.75rem 1.15rem; margin: 0.75rem 0 1.5rem; }
+${scope} div.blyg-tk-gen > :first-child:not(.gen-badge), ${scope} div.blyg-tk-gen > .gen-badge + * { margin-top: 0; }
+${scope} div.blyg-tk-gen > :last-child { margin-bottom: 0; }
+${scope} div.blyg-tk-gen:not(.gen-ready)::before { content: ""; position: absolute; left: 0.65rem; bottom: -13px; ${square} }
+${scope} div.blyg-tk-gen:not(.gen-ready)::after { content: ""; position: absolute; left: calc(0.65rem + 6px); bottom: -10px; width: 18px; height: 18px; ${icon} }
+/* An inline span that wraps keeps its box on every line it touches. */
+${scope} span.blyg-tk-gen { padding: 0.05rem 0.2rem; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+${scope} span.blyg-tk-gen:not(.gen-ready)::before { content: ""; display: inline-block; width: 0.9em; height: 0.9em; margin-right: 0.2em; vertical-align: -0.1em; ${icon} }
+${scope} .gen-badge { display: inline-block; position: relative; margin: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; }
+${scope} .gen-badge::after { content: ""; position: absolute; ${icon} }
+${scope} div.blyg-tk-gen > .gen-badge { position: absolute; left: 0.65rem; bottom: -13px; ${square} }
+${scope} div.blyg-tk-gen > .gen-badge::after { inset: 3px 5px; }
+${scope} span.blyg-tk-gen > .gen-badge { width: 0.9em; height: 0.9em; margin-right: 0.2em; vertical-align: -0.1em; }
+${scope} span.blyg-tk-gen > .gen-badge::after { inset: 0; }
+${scope} .gen-badge:focus-visible { outline: 2px solid var(--pencil); outline-offset: 2px; }
 `;
+}
+
+/** Appended to style.css: the blyg-wide default, which an item's gen-off overrides. */
+export function generatedHighlightCss(on: boolean): string {
+  return on ? `\n/* generated spans highlighted by default */\n${generatedHighlightRules("article:not(.gen-off)")}` : "";
+}
 
 /**
  * Per-page head extras. Grouped into one object rather than growing `layout`'s
@@ -462,6 +528,157 @@ function metaTags(meta: PageMeta): string {
   push("twitter:card", meta.image ? "summary_large_image" : "summary");
   return tags.length ? tags.join("\n") + "\n" : "";
 }
+
+/**
+ * The robot badge on a generated span opens a small box saying what the
+ * author disclosed about it (0.27.0): hover for a peek, tap or click to keep
+ * it open, Escape or a click elsewhere to close. Same three properties as
+ * VERSION_NAV_SCRIPT: an enhancement (scripts off, the CSS still draws the
+ * robot), dumb-host safe (it reads only data-generated, already on the page),
+ * and it invents nothing (every line comes from the version's generated[]).
+ *
+ * The details are version-level, as §5.7 is: a version that generated three
+ * passages discloses one array for all three, and the box says so rather than
+ * pretending to know which passage came from which model. A span inside a
+ * quoted item belongs to that item's disclosure, not this one's, so the box
+ * says only that.
+ *
+ * The wording is "the author marked this", never "this is": generated[] is
+ * self-asserted (§5.7 rule 6), and a badge must not read as verification.
+ */
+export const GEN_INFO_SCRIPT = `
+(function () {
+  // A page with no generated text yet may gain some when a version swaps in.
+  if (!document.querySelector(".blyg-tk-gen, .version-line")) return;
+  var pop = null, current = null, pinned = false, timer = 0;
+
+  function decorate(el) {
+    if (el.classList.contains("gen-ready")) return;
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "gen-badge";
+    b.setAttribute("aria-label", "AI-generated text: what the author disclosed");
+    b.setAttribute("aria-expanded", "false");
+    el.insertBefore(b, el.firstChild);
+    el.classList.add("gen-ready");
+  }
+  function decorateIn(root) {
+    if (root.classList && root.classList.contains("blyg-tk-gen")) decorate(root);
+    var found = root.querySelectorAll ? root.querySelectorAll(".blyg-tk-gen") : [];
+    for (var i = 0; i < found.length; i++) decorate(found[i]);
+  }
+
+  function add(parent, tag, text, cls) {
+    var el = document.createElement(tag);
+    if (cls) el.className = cls;
+    if (text) el.textContent = text;
+    parent.appendChild(el);
+    return el;
+  }
+  function day(iso) {
+    var d = new Date(iso);
+    return isNaN(d) ? iso : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }
+  function fill(badge) {
+    pop.textContent = "";
+    add(pop, "p", "AI-generated", "gen-pop-h");
+    var span = badge.parentNode;
+    if (span.closest("blockquote.blyg-transclusion")) {
+      add(pop, "p", "The quoted author marked this text as machine-generated. Its details are in the quoted item.");
+      return;
+    }
+    add(pop, "p", "The author marked this text as machine-generated. Self-reported, not verified.");
+    var holder = span.closest("[data-generated]"), list = [];
+    try { list = holder ? JSON.parse(holder.getAttribute("data-generated")) || [] : []; } catch (e) { list = []; }
+    var models = [], dates = [], sources = {};
+    for (var i = 0; i < list.length; i++) {
+      var g = list[i];
+      if (!g) continue;
+      if (g.model && models.indexOf(g.model) === -1) models.push(g.model);
+      if (g.at) dates.push(g.at);
+      for (var j = 0; g.sources && j < g.sources.length; j++) sources[g.sources[j].id] = true;
+    }
+    dates.sort();
+    var dl = add(pop, "dl");
+    add(dl, "dt", models.length > 1 ? "Models" : "Model");
+    add(dl, "dd", models.length ? models.join(", ") : "not stated");
+    if (dates.length) {
+      add(dl, "dt", "Generated");
+      var first = day(dates[0]), last = day(dates[dates.length - 1]);
+      add(dl, "dd", first === last ? first : first + " to " + last);
+    }
+    var n = Object.keys(sources).length;
+    if (n) {
+      add(dl, "dt", "Drew on");
+      add(dl, "dd", n + (n === 1 ? " item" : " items") + " from this blyg");
+    }
+    if (list.length > 1) add(pop, "p", "These details cover all " + list.length + " generated passages in this version.").style.marginTop = "0.4rem";
+  }
+  function place(badge) {
+    var r = badge.getBoundingClientRect();
+    var w = pop.offsetWidth, h = pop.offsetHeight;
+    var left = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
+    var top = r.bottom + 6;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    pop.style.left = left + "px";
+    pop.style.top = top + "px";
+  }
+  function open(badge, keep) {
+    clearTimeout(timer);
+    if (!pop) {
+      pop = document.createElement("div");
+      pop.className = "gen-pop";
+      pop.id = "gen-pop";
+      pop.setAttribute("role", "tooltip");
+      pop.hidden = true;
+      document.body.appendChild(pop);
+      pop.addEventListener("mouseenter", function () { clearTimeout(timer); });
+      pop.addEventListener("mouseleave", function () { if (!pinned) later(); });
+    }
+    if (current && current !== badge) current.setAttribute("aria-expanded", "false");
+    current = badge;
+    pinned = keep;
+    fill(badge);
+    pop.hidden = false;
+    place(badge);
+    badge.setAttribute("aria-expanded", "true");
+    badge.setAttribute("aria-describedby", "gen-pop");
+  }
+  function close() {
+    clearTimeout(timer);
+    if (pop) pop.hidden = true;
+    if (current) current.setAttribute("aria-expanded", "false");
+    current = null;
+    pinned = false;
+  }
+  function later() { clearTimeout(timer); timer = setTimeout(close, 200); }
+  function badgeAt(e) { return e.target.closest ? e.target.closest(".gen-badge") : null; }
+
+  document.addEventListener("click", function (e) {
+    var b = badgeAt(e);
+    if (b) { e.preventDefault(); if (pinned && current === b) close(); else open(b, true); return; }
+    if (pop && !pop.hidden && !pop.contains(e.target)) close();
+  });
+  document.addEventListener("mouseover", function (e) { var b = badgeAt(e); if (b && !pinned) open(b, false); });
+  document.addEventListener("mouseout", function (e) { if (badgeAt(e) && !pinned) later(); });
+  document.addEventListener("focusin", function (e) { var b = badgeAt(e); if (b && !pinned) open(b, false); });
+  document.addEventListener("focusout", function (e) { if (badgeAt(e) && !pinned) later(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+  window.addEventListener("scroll", function () { if (current && pop && !pop.hidden) place(current); }, { passive: true });
+  window.addEventListener("resize", function () { if (current && pop && !pop.hidden) place(current); });
+
+  decorateIn(document);
+  // The version carousel swaps a version's body in place; decorate it too.
+  if (window.MutationObserver) {
+    new MutationObserver(function (records) {
+      for (var i = 0; i < records.length; i++)
+        for (var j = 0; j < records[i].addedNodes.length; j++)
+          if (records[i].addedNodes[j].nodeType === 1) decorateIn(records[i].addedNodes[j]);
+      if (current && !document.contains(current)) close();
+    }).observe(document.body, { childList: true, subtree: true });
+  }
+})();
+`;
 
 export const VERSION_NAV_SCRIPT = `
 /**
@@ -538,7 +755,14 @@ export const VERSION_NAV_SCRIPT = `
     // each version's own note, and it is already being fetched.
     var noteEl = article.querySelector(".version-note");
     var cache = {};
-    cache[live] = { html: content.innerHTML, note: noteEl ? noteEl.textContent : "" };
+    // Each version's generated[] travels with its body too: the robot badge's
+    // info box reads it from data-generated (GEN_INFO_SCRIPT).
+    cache[live] = { html: content.innerHTML, note: noteEl ? noteEl.textContent : "", gen: content.getAttribute("data-generated") };
+    function setBody(entry) {
+      content.innerHTML = entry.html;
+      if (entry.gen) content.setAttribute("data-generated", entry.gen);
+      else content.removeAttribute("data-generated");
+    }
     var at = versions.indexOf(live);
 
     function setNote(text) {
@@ -584,15 +808,20 @@ export const VERSION_NAV_SCRIPT = `
 
     function show(v) {
       at = versions.indexOf(v);
-      if (cache[v] !== undefined) { content.innerHTML = cache[v].html; render(); return; }
+      if (cache[v] !== undefined) { setBody(cache[v]); render(); return; }
       content.setAttribute("aria-busy", "true");
-      fetch(mount + "/items/" + id + "/v" + v + ".json")
-        .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.json(); })
-        .then(function (data) {
-          // The quotes are the server's rendering of a note, reproduced here
-          // so a swapped-in note looks like the one that was there before it.
-          cache[v] = { html: data.content_html || "", note: data.note ? "“" + data.note + "”" : "" };
-          content.innerHTML = cache[v].html;
+      // Protocol snapshots stay immutable. Read the server's safe presentation
+      // instead of inserting legacy content_html from public JSON into the DOM.
+      fetch(mount + "/" + kind + "/" + id + "/v" + v + "/")
+        .then(function (r) { if (!r.ok) throw new Error(String(r.status)); return r.text(); })
+        .then(function (html) {
+          var page = new DOMParser().parseFromString(html, "text/html");
+          var body = page.querySelector("article .item-content");
+          if (!body) throw new Error("Missing version presentation");
+          var note = page.querySelector("article .version-note");
+          var holder = page.querySelector("article[data-generated]");
+          cache[v] = { html: body.innerHTML, note: note ? note.textContent : "", gen: holder ? holder.getAttribute("data-generated") : null };
+          setBody(cache[v]);
           content.removeAttribute("aria-busy");
           render();
         })
@@ -645,7 +874,7 @@ ${metaTags({ ...meta, ogTitle: meta.ogTitle ?? title })}<link rel="stylesheet" h
 ${meta.webmention ? `<link rel="webmention" href="${meta.webmention}">\n` : ""}${meta.alternateJson ? `<link rel="alternate" type="application/json" href="${meta.alternateJson}">\n` : ""}${meta.canonical ? `<link rel="canonical" href="${meta.canonical}">\n` : ""}${meta.hasBlogroll ? `<link rel="blogroll" href="${mount}/blogroll.opml">\n` : ""}</head>
 <body>
 ${body}
-</body>
+${body.includes("blyg-tk-gen") || body.includes("version-line") ? `<script>${GEN_INFO_SCRIPT}</script>\n` : ""}</body>
 </html>
 `;
 }
@@ -733,7 +962,7 @@ async function masthead(db: D1Database, settings: Settings, mount: string, loade
   if (settings.author_links.length) {
     lines.push(
       `<p class="author-links">${settings.author_links
-        .map((l) => `<a href="${escapeHtml(l.url)}" rel="me">${escapeHtml(l.label)}</a>`)
+        .map((l) => `<a href="${escapeHref(l.url)}" rel="me">${escapeHtml(l.label)}</a>`)
         .join(" &middot; ")}</p>`,
     );
   }
@@ -823,10 +1052,11 @@ export function renderFragment(
   // lines of apparatus over a one-line fragment inverts that.
   compactCitations = false,
   tz: string,
+  generatedJson: string | null = null,
 ): string {
-  return `<article class="fragment">
+  return `<article class="fragment${highlightClass(item)}">
 ${forkLineage(item, tz, { compact: compactCitations })}
-<div class="item-content">
+<div class="item-content"${generatedAttr(generatedJson)}>
 ${contentHtml}
 </div>
 ${mediaHtml(media, mount, contentHtml)}
@@ -852,6 +1082,7 @@ async function fragmentBlock(db: D1Database, item: FeedItem, mount: string, tz: 
     loaded ? loaded.pins : await pinnedVersions(db, item.id),
     titleLink,
     tz,
+    latest?.generated_json ?? null,
   );
 }
 
@@ -908,7 +1139,7 @@ export async function transclusionProvenance(db: D1Database, transclusions: Tran
     // transclusion are the same blockquote to a reader, differing only in
     // being shorter — which is indistinguishable from the source being short.
     const what = t.selector ? "excerpt of" : "snapshot of";
-    out.push(`<p class="provenance"><a href="${link.href}">${link.label}</a> · ${what} v${t.version}</p>`);
+    out.push(`<p class="provenance"><a href="${escapeHref(link.href)}">${link.label}</a> · ${what} v${t.version}</p>`);
   }
   return out;
 }
@@ -985,18 +1216,18 @@ async function threadCard(db: D1Database, item: FeedItem, mount: string, tz: str
   const latest = loaded ? loaded.latest : await publishedVersion(db, item);
   const href = `${mount}/t/${item.id}/`;
   const transclusions = parseTransclusions(latest?.transclusions);
-  const html = injectProvenance(latest?.content_html ?? "", await transclusionProvenance(db, transclusions, mount, provenance));
+  const html = injectProvenance(await sanitizeHtml(latest?.content_html ?? ""), await transclusionProvenance(db, transclusions, mount, provenance));
   const media = loaded ? loaded.media : await listMediaForItem(db, item.id);
   // The kind line is apparatus, on its own line above the item, never inline
   // with the author's first sentence (session 30). The quote count says what
   // the card may be cutting off.
   const quoted = transclusions.length;
   const kindLine = `<p class="card-kind">thread${quoted ? ` <span class="quote-count">· ${quoted} quoted</span>` : ""}</p>`;
-  return `<article class="fragment thread-card">
+  return `<article class="fragment thread-card${highlightClass(item)}">
 ${stubCitation(latest, tz, { compact: true })}
 ${forkLineage(item, tz, { compact: true })}
 ${kindLine}
-<div class="item-content card-clip">
+<div class="item-content card-clip"${generatedAttr(latest?.generated_json)}>
 ${linkLeadingTitle(html, href)}
 </div>
 ${mediaHtml(media, mount, html)}
@@ -1008,12 +1239,12 @@ ${itemMeta(item, latest?.note ?? null, loaded ? loaded.pins : await pinnedVersio
 async function threadBlock(db: D1Database, item: ItemRow, mount: string, tz: string): Promise<string> {
   const latest = await publishedVersion(db, item);
   const transclusions = parseTransclusions(latest?.transclusions);
-  const html = injectProvenance(latest?.content_html ?? "", await transclusionProvenance(db, transclusions, mount));
+  const html = injectProvenance(await sanitizeHtml(latest?.content_html ?? ""), await transclusionProvenance(db, transclusions, mount));
   const media = await listMediaForItem(db, item.id);
-  return `<article class="thread">
+  return `<article class="thread${highlightClass(item)}">
 ${stubCitation(latest, tz)}
 ${forkLineage(item, tz)}
-<div class="item-content">
+<div class="item-content"${generatedAttr(latest?.generated_json)}>
 ${html}
 </div>
 ${mediaHtml(media, mount, html)}
@@ -1042,14 +1273,14 @@ export function stubCitation(row: Pick<VersionRow, "stub_of" | "stub_cite"> | nu
     // Summary contexts (feed card, RSS description) get the shortest true
     // form: who it answers, linked. The full citation lives on the permalink.
     const who = cite?.source ? `<cite>${escapeHtml(cite.source)}</cite>` : escapeHtml(url);
-    return `<p class="stub-cite compact"><span class="label">In response to</span> <a href="${escapeHtml(url)}">${who} ↗</a></p>`;
+    return `<p class="stub-cite compact"><span class="label">In response to</span> <a href="${escapeHref(url)}">${who} ↗</a></p>`;
   }
   const parts: string[] = [];
   if (cite?.source) parts.push(`<cite>${escapeHtml(cite.source)}</cite>`);
   if (cite?.author) parts.push(escapeHtml(cite.author));
   if (cite?.excerpt) parts.push(`&ldquo;${escapeHtml(cite.excerpt)}&rdquo;`);
   if ("id" in stub) parts.push(`item <code>${escapeHtml(stub.id)}</code>, v${stub.version}`);
-  parts.push(`&lt;<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>&gt;`);
+  parts.push(`&lt;<a href="${escapeHref(url)}">${escapeHtml(url)}</a>&gt;`);
   if (cite?.retrieved) parts.push(`retrieved ${formatDate(cite.retrieved, tz)}`);
   return `<p class="stub-cite"><span class="label">In response to</span><br>${parts.join(" &middot; ")}</p>`;
 }
@@ -1068,6 +1299,26 @@ export function stubCitation(row: Pick<VersionRow, "stub_of" | "stub_cite"> | nu
  * which is the only kind of URL a lineage pointer is allowed to name, because
  * it is the only one somebody promised to keep serving.
  */
+/**
+ * An item's own decision about highlighting its generated spans, as a class on
+ * its <article>. No class means it follows the blyg's default, which lives in
+ * style.css (`generatedHighlightCss`), so a page never needs the settings to
+ * render an item and the default changes every page at once.
+ */
+/**
+ * The version's generated[] disclosure (§5.7) on the element holding its
+ * content, for the robot badge's info box (GEN_INFO_SCRIPT). Version-level by
+ * design: the spec promises no span-level mapping. The version carousel
+ * replaces it with the swapped-in version's own array.
+ */
+function generatedAttr(json: string | null | undefined): string {
+  return json ? ` data-generated="${escapeHtml(json)}"` : "";
+}
+
+function highlightClass(item: { highlight_override?: number | null }): string {
+  return item.highlight_override === 1 ? " gen-on" : item.highlight_override === 0 ? " gen-off" : "";
+}
+
 export function forkLineage(item: Pick<ItemRow, "forked_from" | "fork_cite">, tz: string, opts: { compact?: boolean } = {}): string {
   const fork = parseStoredFork(item.forked_from);
   if (!fork) return "";
@@ -1075,14 +1326,14 @@ export function forkLineage(item: Pick<ItemRow, "forked_from" | "fork_cite">, tz
   const url = cite?.url ?? `${fork.origin}items/${fork.id}/v${fork.version}.json`;
   if (opts.compact) {
     const who = cite?.source ? `<cite>${escapeHtml(cite.source)}</cite>` : escapeHtml(url);
-    return `<p class="stub-cite compact"><span class="label">Forked from</span> <a href="${escapeHtml(url)}">${who} ↗</a></p>`;
+    return `<p class="stub-cite compact"><span class="label">Forked from</span> <a href="${escapeHref(url)}">${who} ↗</a></p>`;
   }
   const parts: string[] = [];
   if (cite?.source) parts.push(`<cite>${escapeHtml(cite.source)}</cite>`);
   if (cite?.author) parts.push(escapeHtml(cite.author));
   if (cite?.excerpt) parts.push(`&ldquo;${escapeHtml(cite.excerpt)}&rdquo;`);
   parts.push(`item <code>${escapeHtml(fork.id)}</code>, pinned v${fork.version}`);
-  parts.push(`&lt;<a href="${escapeHtml(url)}">${escapeHtml(url)}</a>&gt;`);
+  parts.push(`&lt;<a href="${escapeHref(url)}">${escapeHtml(url)}</a>&gt;`);
   if (cite?.retrieved) parts.push(`retrieved ${formatDate(cite.retrieved, tz)}`);
   return `<p class="stub-cite"><span class="label">Forked from</span><br>${parts.join(" &middot; ")}</p>`;
 }
@@ -1500,7 +1751,7 @@ export async function pinnedVersionPage(
   const tz = settings.timezone;
   const live = `${mount}/${isThread ? "t" : "f"}/${item.id}/`;
   const html = isThread
-    ? injectProvenance(row.content_html, await transclusionProvenance(db, parseTransclusions(row.transclusions), mount))
+    ? injectProvenance(await sanitizeHtml(row.content_html), await transclusionProvenance(db, parseTransclusions(row.transclusions), mount))
     : row.content_html;
   const noteHtml = row.note ? `<p class="version-note">&ldquo;${escapeHtml(row.note)}&rdquo;</p>` : "";
   // A pin is a frozen artifact of a response, so it carries the citation that
@@ -1510,10 +1761,10 @@ export async function pinnedVersionPage(
 ${await pageTop(db, settings, mount)}
 <p class="pinned-banner">📌 Pinned v${row.version} — a frozen snapshot from ${formatDate(row.published_at, tz)}.
 <a href="${live}">latest version</a> &middot; <a href="${mount}/items/${item.id}/v${row.version}.json">citable JSON</a></p>
-<article class="${isThread ? "thread" : "fragment"}">
+<article class="${isThread ? "thread" : "fragment"}${highlightClass(item)}"${generatedAttr(row.generated_json)}>
 ${cite}
 ${forkLineage(item, tz)}
-${html}
+<div class="item-content">${html}</div>
 ${noteHtml}
 <p class="timestamps"><span>Published: ${formatDate(row.published_at, tz)}</span></p>
 </article>

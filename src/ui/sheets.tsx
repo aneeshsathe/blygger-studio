@@ -60,6 +60,8 @@ export interface MenuOptions {
 export interface ToastOptions {
   /** ms on screen (default 2400). */
   duration?: number;
+  /** "ok" for a completed action the person asked for (green); default is neutral. */
+  tone?: 'ok';
 }
 
 type Request =
@@ -70,6 +72,7 @@ interface ToastState {
   id: number;
   message: string;
   duration: number;
+  tone?: 'ok';
 }
 
 let queue: Request[] = [];
@@ -110,7 +113,7 @@ export function menu(options: MenuOptions): Promise<string | null> {
 }
 /** A short, non-blocking message at the bottom of the screen (replaces alert). */
 export function toast(message: string, options: ToastOptions = {}) {
-  currentToast = { id: nextId++, message, duration: options.duration ?? 2400 };
+  currentToast = { id: nextId++, message, duration: options.duration ?? 2400, tone: options.tone };
   emit();
 }
 
@@ -347,9 +350,17 @@ function Toast() {
     }, state.duration);
     return () => clearTimeout(timer);
   }, [state]);
+  const dismiss = () => {
+    if (currentToast?.id === state?.id) {
+      currentToast = null;
+      emit();
+    }
+  };
   return state ? (
-    <div className="toast" role="status" aria-live="polite" key={state.id}>
-      {state.message}
+    <div className="toast" role="status" aria-live="polite" key={state.id} data-tone={state.tone}>
+      <span>{state.message}</span>
+      {/* The ✕ is drawn by CSS so the toast's text stays exactly its message. */}
+      <button type="button" className="toast-x" aria-label="dismiss message" onClick={dismiss} />
     </div>
   ) : null;
 }

@@ -67,6 +67,20 @@ export function MorePage() {
       ) : null}
       <ul className="nav-list">
         <li>
+          <Link to="/access">
+            <span className="mi" aria-hidden="true">
+              ⚿
+            </span>
+            <span className="ml">
+              client access
+              <span className="md">OAuth clients, MCP apps and manual tokens</span>
+            </span>
+            <span className="chev" aria-hidden="true">
+              ›
+            </span>
+          </Link>
+        </li>
+        <li>
           <Link to="/settings">
             <span className="mi" aria-hidden="true">
               ⚙

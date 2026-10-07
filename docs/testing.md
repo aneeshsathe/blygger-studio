@@ -17,10 +17,14 @@ npm run release:build
 npm run release:verify
 ```
 
+Read the [project glossary](glossary.md) before naming model states or observations. The [auth oracle map](auth-oracles.md) and [security oracle map](auth-security-oracles.md) describe the OAuth/MCP tests and their limits.
+
+The lifecycle, pagination and PATCH oracles keep their laws beside the model and comparisons. The collection-walk witness and browser save oracle also state their fixture boundaries and omissions. Replay, cleanup and mutation harnesses explain what evidence they preserve; a failed setup is not a caught product bug. Use the glossary's terms when changing any of these files.
+
 ## Independent oracles
 
 The three generated oracles follow the
-[TanStack oracle-testing guide](https://github.com/TanStack/db/blob/main/docs/contributing/oracle-tests.md).
+[oracle-writing guide](oracle-tests.md).
 Their models do not import production transitions, comparators, schemas, or
 resource projectors. They call the generated SDK against the actual Worker.
 
@@ -151,7 +155,7 @@ repository revision containing this file, within the stated domains.
 | ORC-005 | Real SDK/Worker executions compare public results after awaited actions. exact arrays retain duplicates, omissions, and order. Campaigns record execution. |
 | ORC-006 | Each checker rejects explicit wrong answers. Four production mutations fail at named semantic checkpoints. Browser tests failed on the prior editor code at the intended save/publish/order checkpoints, then passed after the fix. |
 | ORC-007 | Equal-budget fixed/random campaigns and direct target/seed/path replay. replay calibration is executable. No commands generator. |
-| ORC-008 | Lifecycle retains working text, status, snapshots, kind, and pins: edit/read, withdraw, restore, publish, and repeated pin distinguish those states. Other models are stateless recomputations. |
+| ORC-008 | Lifecycle retains working copy content, status, snapshots, kind, and pins: edit/read, withdraw, restore, publish, and repeated pin distinguish those states. Other models are stateless recomputations. |
 | ORC-009 | Model `content` maps to API `content_md`. snapshot index + 1 maps to the public version number. Authored kind remains distinct from withdrawal kind. |
 | ORC-010 | Named checkpoint failures retain the original input/cause and reject reductions with another checkpoint. Worker isolation owns cleanup. upgrade temporary repositories use `finally`. |
 | ORC-011 | Owner and public lifecycle reads provide separate observations. No second independent implementation is claimed. shared-fault risks in unmodeled rendering remain open. |
@@ -219,3 +223,7 @@ and empty-page fixtures. No copy of the old renderer remains in production.
 These budgets cover database work for the homepage. Published HTML size, the
 number of pins and attachments, browser image loads, and database latency can
 still affect response time. Archive and RSS generation have separate read paths.
+
+## Remaining oracle prose pass
+
+Lifecycle, pagination, PATCH atomicity, collection walks, browser save, replay, cleanup and mutation witnesses now state their laws, driver boundaries and limits beside the executable checks. The Worker rerun passed22 tests across six files. All40 save-oracle browser cases passed across desktop/mobile Chromium. Separate browser cases now use separate stable fixture edge addresses, so they retain real throttling without exhausting one shared login budget. Production policy and executable assertions did not change. AST comparison against HEAD confirmed comment-only changes in the six tracked Worker oracle/harness files touched by this pass.

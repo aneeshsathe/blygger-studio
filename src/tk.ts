@@ -64,6 +64,27 @@ function extractSourceIds(scopeText: string): string[] {
   return ids;
 }
 
+const OWN_LINE_DIRECTIVE = new RegExp(`^[ \\t]*!\\[\\[([${ID_ALPHABET}]{26})\\]\\][ \\t]*$`, "gm");
+
+/**
+ * Ids that sit on their own line in a scope's generated output without being
+ * named by its instruction (decision #60). At publish such a line is an
+ * ordinary transclusion directive — it bakes a quote and notifies the quoted
+ * origin — which is right when the author put it there and a surprise when a
+ * model echoed it, so publish warns rather than refuses.
+ */
+export function unrequestedOutputDirectives(contentMd: string): string[] {
+  const { scopes } = parseScopes(contentMd);
+  const found: string[] = [];
+  for (const s of scopes) {
+    if (s.imported || s.output === null) continue;
+    for (const m of s.output.matchAll(OWN_LINE_DIRECTIVE)) {
+      if (!s.sourceIds.includes(m[1]) && !found.includes(m[1])) found.push(m[1]);
+    }
+  }
+  return found;
+}
+
 const BLANK_BEFORE = /(^|\n[ \t]*\n)[ \t]*$/;
 const BLANK_AFTER = /^[ \t]*(\n[ \t]*\n|$)/;
 
@@ -128,7 +149,11 @@ export function parseScopes(contentMd: string): { scopes: TkScope[]; errors: TkP
       end,
       instruction,
       output,
-      sourceIds: imported ? [] : extractSourceIds(contentMd.slice(tkIdx, end)),
+      // Sources are what the generator was fed: the instruction's directives
+      // only (decision #60). A directive in the *output* is content — on its own
+      // line it becomes a real quote at publish — and is a source only if the
+      // instruction also names it.
+      sourceIds: imported ? [] : extractSourceIds(contentMd.slice(tkIdx + 4, instrEnd)),
       outputStart,
       block: isBlockPosition(contentMd, tkIdx, end),
       ...(imported ? { imported } : {}),

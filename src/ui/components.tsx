@@ -16,6 +16,7 @@ import {
   updates,
 } from './data.ts';
 import { readState } from '../versions.ts';
+import { displayUrl } from '../importer/util.ts';
 import { Sheet } from './sheets.tsx';
 import { applyTheme } from './theme.ts';
 export { Button };
@@ -42,6 +43,15 @@ export function useUpdateState() {
         update_checked_at: row.update_checked_at || '',
       })
     : undefined;
+}
+/** Every reading card's citation line: where the entry lives, in a new tab. */
+export function SourceLink({ url }: { url?: string | null }) {
+  return url ? (
+    <a className="entry-src" href={url} target="_blank" rel="noreferrer">
+      <span aria-hidden="true">↗ </span>
+      {displayUrl(url)}
+    </a>
+  ) : null;
 }
 export function Html({ html, id }: { html: string; id?: string }) {
   return <div id={id} dangerouslySetInnerHTML={{ __html: html }} />;
@@ -76,6 +86,7 @@ export function Modal({
     </Sheet>
   );
 }
+
 
 /* ---------------- CHROME ----------------
  * A screen tells the Layout how to frame it with useChrome():
@@ -124,6 +135,7 @@ const tabs = [
   { label: 'mentions', to: '/mentions', icon: '↩' },
   { label: 'updates', to: '/updates', icon: '↻' },
   { label: 'more', to: '/more', icon: '⋯' },
+
 ] as const;
 type Tab = (typeof tabs)[number]['label'];
 /** Which tab owns a studio path (relative to the basepath). */
@@ -134,7 +146,7 @@ export function tabFor(path: string): Tab | null {
   if (p === '/hoppers' || p.startsWith('/hoppers/')) return 'hoppers';
   if (p === '/mentions') return 'mentions';
   if (p === '/updates') return 'updates';
-  if (p === '/more' || p === '/settings' || p === '/syntax' || p === '/signals') return 'more';
+  if (p === '/more' || p === '/settings' || p === '/syntax' || p === '/signals' || p === '/access') return 'more';
   return null;
 }
 function relativePath(pathname: string) {

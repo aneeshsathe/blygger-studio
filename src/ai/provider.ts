@@ -7,6 +7,7 @@
 // against the wire API is the natural fit here, not the Node-oriented
 // `@anthropic-ai/sdk`.
 
+import { admitAi } from "../security-budgets.ts";
 import { getSettings } from "../model.ts";
 import type { Env, Settings } from "../types.ts";
 import { providerFor, type AiPurpose } from "./models.ts";
@@ -32,6 +33,7 @@ export const SCOPE_MARK_END = "<<<END-TK-SCOPE>>>";
 
 /** Thrown on any provider failure — surfaced verbatim by the /generate endpoint, no retry loop (§5). */
 export class ProviderError extends Error {}
+export class AiBudgetError extends ProviderError {}
 
 /** Wrap `[start, end)` of `contentMd` with the scope markers, for `documentContext`. */
 export function markDocument(contentMd: string, start: number, end: number): string {
@@ -128,6 +130,7 @@ export async function complete(
   if (!provider) throw new ProviderError(`no provider is known for model "${model}": add it to models.json (or models.local.json)`);
   const apiKey = (env as unknown as Record<string, unknown>)[provider.spec.key_secret];
   if (typeof apiKey !== "string" || !apiKey) throw new ProviderError(`${provider.spec.key_secret} is not configured (the ${provider.spec.label} API key)`);
+  if (!await admitAi(env)) throw new AiBudgetError('daily AI call budget exceeded');
   switch (provider.spec.api) {
     case "anthropic-messages":
       return anthropic(apiKey, model, system, user, fetchImpl);

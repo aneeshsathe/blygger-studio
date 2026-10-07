@@ -24,6 +24,15 @@ function assertParses(src: string, where: string) {
 }
 
 describe("every inline script parses", () => {
+  it("the generated-text badge script, on a page with generated text", async () => {
+    const cookie = await login();
+    const id = await createAndPublish(cookie, "mine [TK]impyrt=generated words[/TK]");
+    const html = await (await getPublic(`/blyg/f/${id}/`)).text();
+    const bodies = scriptBodies(html);
+    expect(bodies.some((b) => b.includes("gen-badge"))).toBe(true);
+    bodies.forEach((b, i) => assertParses(b, `generated page script ${i}`));
+  });
+
   it("public pages that render an item", async () => {
     const cookie = await login();
     const id = await createAndPublish(cookie, "an item with versions");

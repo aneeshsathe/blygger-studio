@@ -305,15 +305,19 @@ describe("inbound: a fork mention verifies only against a real pin (§2.3.5)", (
     const pinnedTarget = await publishAndPin(cookie, "worth forking");
     const unpinnedTarget = await createAndPublish(cookie, "not pinned");
 
-    const sourcePage = `${THEIRS}f/${newId()}/`;
+    // Each source is the item document at its real URL: §15.4 step 2
+    // (decision #61) verifies only a document served from {origin}items/{id}.json.
+    const srcId = newId();
+    const sourcePage = `${THEIRS}items/${srcId}.json`;
     const good = await upsertAndVerify(env.DB, sourcePage, `${OURS}f/${pinnedTarget}/`, pinnedTarget, OURS, {
-      [sourcePage]: JSON.stringify({ blyg: "0.3", id: "src", kind: "fragment", origin: THEIRS, version: 1, forked_from: { origin: OURS, id: pinnedTarget, version: 1 } }),
+      [sourcePage]: JSON.stringify({ blyg: "0.3", id: srcId, kind: "fragment", origin: THEIRS, version: 1, forked_from: { origin: OURS, id: pinnedTarget, version: 1 } }),
     });
     expect(good).toMatchObject({ status: "verified", relation: "fork" });
 
-    const badPage = `${THEIRS}f/${newId()}/`;
+    const srcId2 = newId();
+    const badPage = `${THEIRS}items/${srcId2}.json`;
     const bad = await upsertAndVerify(env.DB, badPage, `${OURS}f/${unpinnedTarget}/`, unpinnedTarget, OURS, {
-      [badPage]: JSON.stringify({ blyg: "0.3", id: "src2", kind: "fragment", origin: THEIRS, version: 1, forked_from: { origin: OURS, id: unpinnedTarget, version: 1 } }),
+      [badPage]: JSON.stringify({ blyg: "0.3", id: srcId2, kind: "fragment", origin: THEIRS, version: 1, forked_from: { origin: OURS, id: unpinnedTarget, version: 1 } }),
     });
     expect(bad.status).toBe("failed");
     expect(bad.reason).toContain("not pinned");

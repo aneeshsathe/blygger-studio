@@ -27,6 +27,7 @@ function sub(overrides: Partial<SubscriptionRow>): SubscriptionRow {
     in_blogroll: 0,
     flags: "[]",
     created: "2026-08-01T00:00:00Z",
+    title_auto: 1,
     ...overrides,
   };
 }
@@ -78,6 +79,7 @@ describe("runScheduledPoll()", () => {
     const freshSub = await createSubscription(env.DB, { kind: "blyg", origin: "https://fresh.example/", feedUrl: "https://fresh.example/feed.xml", title: "Fresh" });
     const now = Date.now();
     await env.DB.prepare("UPDATE subscriptions SET last_poll_at = ? WHERE id = ?").bind(new Date(now - 60_000).toISOString(), freshSub.id).run();
+    await env.DB.prepare("UPDATE subscriptions SET last_index_sync_at = ? WHERE id = ?").bind(new Date(now).toISOString(), dueSub.id).run();
 
     const { fetch, calls } = makeFixtureFetch({ "https://due.example/feed.xml": { status: 304 } });
     const result = await runScheduledPoll(env.DB, fetch, now);

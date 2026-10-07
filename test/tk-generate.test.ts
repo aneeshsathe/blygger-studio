@@ -32,6 +32,9 @@ describe("runGenerateScope — success path (§5)", () => {
 
     const updated = await getItem(env.DB, item.id);
     expect(updated!.content_md).toBe("Intro.\n\n[TK]write a haiku about spring[=]blossoms in the rain[/TK]\n\nOutro.");
+    // The whole working copy comes back too, exactly as saved: the editor
+    // replaces its draft with it (it once used `text`, losing Intro and Outro).
+    expect(result.ok && result.content_md).toBe(updated!.content_md);
     expect(updated!.dirty).toBe(1);
 
     const provenance = getTkProvenance(updated!);

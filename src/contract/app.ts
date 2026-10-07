@@ -1,8 +1,13 @@
+import { requestError } from '../request-error.ts';
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { MiddlewareHandler } from "hono";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import type { Env } from "../types.ts";
+
+declare module 'hono' {
+  interface ContextVariableMap { draftOnlyMedia: boolean }
+}
 
 export function contractApp() {
   const app = new OpenAPIHono<{ Bindings: Env }>({ strict: false, defaultHook: (result, c) => {
@@ -15,7 +20,7 @@ export function contractApp() {
   } });
   app.onError((error, c) => {
     if (error instanceof HTTPException) return c.json({ error: error.message }, error.status);
-    console.error(error);
+    console.error('API request failed', requestError(error, c));
     return c.json({ error: "internal server error" }, 500);
   });
   return app;

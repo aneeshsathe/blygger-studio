@@ -11,7 +11,7 @@ export async function verifySdkConsumer(temp: string, archive: string, baseUrl: 
   execFileSync("npm", ["install", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", "--cache", join(temp, "npm-cache"), "--userconfig", join(temp, "empty-npmrc"), resolve(archive)], { cwd: consumer, stdio: "pipe" });
   const smoke = `import assert from 'node:assert/strict';
 import { BlyggerApi, createBlyggerClient, unwrap } from '@blygger/sdk';
-const client = createBlyggerClient({baseUrl: process.env.TEST_URL, auth: process.env.TEST_TOKEN});
+const client = createBlyggerClient({baseUrl: process.env.TEST_URL, auth: scheme => scheme.in === 'cookie' ? process.env.TEST_TOKEN : undefined});
 const created = await unwrap(BlyggerApi.createItem({client, body: {content_md: 'Installed Node consumer'}}));
 assert.equal((await unwrap(BlyggerApi.getItem({client, path: {id: created.id}}))).content_md, 'Installed Node consumer');
 const media = await unwrap(BlyggerApi.uploadMedia({client, body: {file: new File(['consumer'], 'consumer.png', {type: 'image/png'})}}));

@@ -17,7 +17,7 @@ const worker = join(output, workerName);
 mkdirSync(worker);
 // The shipped model list, without any local models.local.json.
 execFileSync("node", ["--import", "tsx", "scripts/build-models.ts"], { stdio: "inherit", env: { ...process.env, BLYG_MODELS_SHIPPED_ONLY: "1" } });
-await build({ entryPoints: ["src/index.ts"], outfile: join(worker, "worker.js"), bundle: true, platform: "neutral", mainFields: ["module", "main"], format: "esm", target: "es2022", loader: { ".txt": "text" } });
+await build({ entryPoints: ["src/index.ts"], outfile: join(worker, "worker.js"), bundle: true, platform: "neutral", conditions: ["workerd"], external: ["cloudflare:*", "node:*"], mainFields: ["module", "main"], format: "esm", target: "es2022", loader: { ".txt": "text" } });
 // Use the committed generic template, never a contributor's local deployment config.
 const config = execFileSync("git", ["show", "HEAD:wrangler.jsonc"], { encoding: "utf8" });
 writeFileSync(join(worker, "wrangler.jsonc"), config.replace('"main": "src/index.ts"', '"main": "worker.js",\n  "no_bundle": true'));

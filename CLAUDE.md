@@ -106,7 +106,7 @@ are single-account and the personal one has no D1 scope, so the migration prefli
 cannot run from either; an env token silently overrides the OAuth session, so **unset it**
 before deploying. One OAuth session reaches both accounts.
 
-## `/api` is a documented contract, still owner-cookie only
+## `/api` is a documented contract with owner and delegated access (OAuth/MCP merged 0.28.0, session 36)
 
 **Since 0.10.0** (#21, Kyle Mathews): 39 operations defined once in `src/contract/` (Zod →
 OpenAPI 3.1 → `openapi.json`, served to the owner at `/api/openapi.json`), resource-shaped
@@ -136,9 +136,11 @@ Password reset rides with his auth middleware (#31: after tokens, MUST offer rev
 Upstreaming Blygger Desktop's reading-rows and read-state extensions is fine — studio-private.
 Reasoning: `../blygger-spec/docs/v0.4-plan.md` §8.1.
 
-Auth is unchanged by all of the above: one owner cookie (`verifySession`, a 30-day HMAC over a single shared
-`OWNER_PASSWORD`). There is exactly one principal and no scopes, tokens, revocation or
-audit, and `/api` gets no CORS.
+The owner still signs in with the existing password and 30-day owner cookie.
+Delegated clients use scoped OAuth grants or named manual bearer tokens. Studio
+lists grants and supports individual revocation and revoke-all. REST and MCP
+share the same permission rules. See `docs/client-access.md` for the current
+contract and `docs/auth-security-oracles.md` for its security checks.
 
 **Third-party authoring tools are already writing to it** — a native macOS studio, a
 Drafts action, an Obsidian plugin. Making this a real contract (tokens, scopes,
@@ -152,6 +154,30 @@ Fable. Do not harden it in a way that breaks the tools now depending on it witho
 saying so.
 
 ## Status
+
+**0.32.2** (session 38, 2026-10-06): security fix for mention verification (#61): the item document must come from exactly `{origin}items/{id}.json`, so same-host path-mounted impostors and pinned stub files fail, and a target outside the mount is refused. TK sources come from the instruction only, and publish warns on an unrequested own-line directive in TK output (#60). `page` stability test (#56). No migrations.
+
+**0.32.1** (session 37, 2026-10-06): Kyle Mathews' #40, the D1 polling cache: Studio checks `/api/changes` revision counters (27 triggers, **migration 0024**) before reloading; `feed.xml` is served from R2 with ETags/304s, stale-while-revalidate, warmed by a minute cron. Three crons now (`* * * * *`, `*/15 * * * *`, `0 0 * * *`); a pre-0.32 `*/15`-only config still gets the daily work at 00:00 UTC. **0.32.0 was never released:** its 0024 used `SELECT CASE … END;` trigger guards, which D1's remote executor cuts at the first `END;` (local apply passes); `test/migration-remote-shape.test.ts` now rejects that shape. Before a D1 restore, see `docs/d1-polling-cache-operations.md`.
+
+**0.31.0** (session 37): one response action. *Quote selection* and the reading-view pill are gone; a stub opens quoting the whole post; passages are chosen in the stub editor (`src/ui/stub-quote.ts`), with further passages added after the cursor for a running commentary; a "How stubs work" sheet. No migration.
+
+**0.30.1** (session 37): a `304` poll skipped the daily index sync and name refresh, so ETag-honouring blygs whose first sync failed never synced again; live preview spends the read budget. No migration.
+
+**0.30.0** (session 36, 2026-10-05): subscription names follow their source (**migration 0023**, `subscriptions.title_auto`; manifest title at the daily sync, RSS channel title every poll, owner names protected); resync all feeds (`POST /api/subscriptions/poll`); "Draft discarded" toast; long stubs quote their opening; thread counter without the limit; quote-only compose rows resolved. The first release after 0.28.2: 0.28.3 and 0.29.0 were deployed but their tags failed `release:check` and were deleted.
+
+**0.29.0** (session 36): the `[[`/`![[` picker is a panel with full-text SQL search (`source`, `sub`, `sort`), and the `picker_typing` setting (automatic / editor / picker). No migration.
+
+**0.28.3** (session 36): the outbound DNS check used `redirect: 'error'`, which the Workers runtime rejects, so every poll and Webmention failed on both nodes for ~70 minutes after 0.28 deployed. Now `'manual'`. No migration.
+
+**0.28.0–0.28.2** (session 36): Kyle Mathews' #34 — OAuth grants, manual tokens, MCP, four scopes, the Access page, and a security pass (allowlist sanitizer, SVG sandbox, private draft media, outbound-destination checks, owner/grant work budgets; **migrations 0021, 0022**; needs `nodejs_compat`). 0.28.1 unwraps unlisted tags (0.28.0 deleted their content); 0.28.2 bakes transclusions verbatim again (sanitize at render). **The owner budgets bite in practice:** 120 writes/min throttled live preview (raised in the private config; `fix/preview-budget` moves preview to the read budget) and 20 AI calls/day applied to the owner (interim 200). Follow-ups are on studio#39.
+
+**0.27.2** (session 35, 2026-10-05): the editor's TK generate kept only the scope's output since 0.10.0; the generate route now also returns the spliced `content_md`. No migration.
+
+**0.27.1** (session 35, 2026-10-05): 0.27.0 released. Every Release run since v0.21.2 had failed (an e2e screenshot to a machine-local path; the mutation tree missing `build/models.json`), so 0.21.2–0.27.0 have no downloads. No migration.
+
+**0.27.0** (session 35, 2026-10-05): highlight generated portions on public pages. A `highlight_generated_default` setting and a per-item `highlight` override (**migration 0020**, `items.highlight_override`). The default lives in `style.css` and an override is a `gen-on`/`gen-off` class on the `<article>`. Themes have `genBg`/`genRule`. Robot badge (Brady Dale's convention); `GEN_INFO_SCRIPT` opens a version-level disclosure box from `data-generated`.
+
+**0.26.1** (session 35, 2026-10-05): subscribe backfills under `waitUntil`; duplicate subscriptions 409; a source-URL citation line on every reading card; reading lands on the feed, with Feed/Sources tabs and one `ReadingHead` under every lens; Smart Feed "Coming soon". No migration.
 
 **0.26.0** (session 34, 2026-10-04): one model per AI function (`ai_model_tk`/`_changelog`/`_feed`, falling back to the pre-0.26 `ai_model`, kept one release as a write alias) from an editable **`models.json`** (gitignored `models.local.json` overrides, merged at build into `build/models.json`; releases ship the base list only); OpenAI Responses and Gemini generateContent adapters beside Anthropic, all raw HTTP (`src/ai/provider.ts`, `src/ai/models.ts`); secrets `AI_PROVIDER_KEY`/`OPENAI_API_KEY`/`GOOGLE_AI_KEY`; `GET /api/ai/models`; the `feed_prompt` setting (stored, unused until the smart feed's agent). No migration.
 

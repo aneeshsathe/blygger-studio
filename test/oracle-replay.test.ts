@@ -1,3 +1,17 @@
+/**
+ * Replay must reproduce the reduced failure, not merely fail again.
+ * The harness depends on this when it promotes a generated history to evidence.
+ *
+ * Contract: docs/oracle-tests.md ORC-007 requires direct seed and shrink-path replay.
+ * Model: capture the counterexample and error from a deliberately false rule, then
+ * require exact agreement when replay uses those captured inputs.
+ * History grammar: nonempty arrays of integers zero through ten; the wrong rule
+ * claims every integer is zero. Driver: the real fast-check check/shrink/replay API.
+ * Refinement: both runs fail with the same reduced counterexample and error.
+ * Limits: a harness calibration, not a product oracle. It does not exercise the
+ * Worker campaign registry or fc.commands replayPath. Captured auth/storage replay
+ * is covered separately by scripts/verify-auth-oracle-mutations.ts.
+ */
 import fc from "fast-check";
 import { expect, it } from "vitest";
 

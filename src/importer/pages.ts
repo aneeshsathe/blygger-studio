@@ -4,7 +4,7 @@
 
 import { layout, pageTop } from "../pages.ts";
 import type { HopperRow, ImportedItemRow, Settings, SubscriptionRow } from "../types.ts";
-import { escapeHtml } from "../util.ts";
+import { escapeHtml, escapeHref } from "../util.ts";
 import { sanitizeHtml } from "./sanitize.ts";
 import { blygItemUrl } from "./util.ts";
 
@@ -21,17 +21,17 @@ export async function publicHopperPage(db: D1Database, settings: Settings, hoppe
     if (withdrawn && row.pinned_version_retained === null) {
       blocks.push(`<article class="fragment withdrawn">
 <p>Withdrawn by origin — no longer citable.</p>
-<p class="provenance">from <a href="${sub.origin}">${subLabel}</a></p>
+<p class="provenance">from <a href="${escapeHref(sub.origin)}">${subLabel}</a></p>
 </article>`);
       continue;
     }
-    const html = row.l0 ? row.content_html : await sanitizeHtml(row.content_html);
+    const html = await sanitizeHtml(row.content_html);
     // L0 content already embeds its own source link inline; blyg imports get a constructed permalink on the origin.
     const sourceLink = row.l0 ? "" : blygItemUrl(sub.origin, row.kind, row.remote_id, row.page);
     const pinNote = withdrawn
-      ? `<p class="provenance">withdrawn by origin — retained via a pinned version: <a href="${sub.origin}items/${row.remote_id}/v${row.pinned_version_retained}.json">v${row.pinned_version_retained}</a></p>`
+      ? `<p class="provenance">withdrawn by origin — retained via a pinned version: <a href="${escapeHref(`${sub.origin}items/${row.remote_id}/v${row.pinned_version_retained}.json`)}">v${row.pinned_version_retained}</a></p>`
       : "";
-    const attribution = `<p class="provenance">from <a href="${sub.origin}">${subLabel}</a>${sourceLink ? ` — <a href="${sourceLink}">source ↗</a>` : ""}</p>`;
+    const attribution = `<p class="provenance">from <a href="${escapeHref(sub.origin)}">${subLabel}</a>${sourceLink ? ` — <a href="${escapeHref(sourceLink)}">source ↗</a>` : ""}</p>`;
     blocks.push(`<article class="fragment">
 ${html}
 ${pinNote}

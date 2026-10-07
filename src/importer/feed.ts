@@ -48,7 +48,7 @@ export interface ParsedFeedEntry {
   };
 }
 
-export type ParsedFeed = { ok: true; manifestUrl: string | null; entries: ParsedFeedEntry[] } | { ok: false };
+export type ParsedFeed = { ok: true; manifestUrl: string | null; entries: ParsedFeedEntry[]; /** RSS `<channel><title>` or Atom `<feed><title>`, trimmed. */ title?: string } | { ok: false };
 
 function textOf(v: unknown): string | undefined {
   if (typeof v === "string") return v;
@@ -170,13 +170,13 @@ export function parseFeed(xml: string): ParsedFeed {
   const channel = (parsed as Record<string, any>)?.rss?.channel;
   if (channel && typeof channel === "object") {
     const manifestUrl = textOf(channel["blyg:manifest"]) ?? null;
-    return { ok: true, manifestUrl, entries: collectEntries(channel.item, parseEntry) };
+    return { ok: true, manifestUrl, entries: collectEntries(channel.item, parseEntry), title: textOf(channel.title)?.trim() || undefined };
   }
 
   const feed = (parsed as Record<string, any>)?.feed;
   if (feed && typeof feed === "object") {
     const manifestUrl = textOf(feed["blyg:manifest"]) ?? null;
-    return { ok: true, manifestUrl, entries: collectEntries(feed.entry, parseAtomEntry) };
+    return { ok: true, manifestUrl, entries: collectEntries(feed.entry, parseAtomEntry), title: textOf(feed.title)?.trim() || undefined };
   }
 
   return { ok: false };

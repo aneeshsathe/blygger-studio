@@ -11,9 +11,9 @@ const ORIGIN = "https://a.example/blyg/";
 const FEED_URL = `${ORIGIN}feed.xml`;
 
 describe("poll cycle (§3.2)", () => {
-  it("304 Not Modified does zero item fetches", async () => {
+  it("304 Not Modified does zero item fetches between daily syncs", async () => {
     const sub = await createSubscription(env.DB, { kind: "blyg", origin: ORIGIN, feedUrl: FEED_URL, title: "A" });
-    await env.DB.prepare("UPDATE subscriptions SET etag = ? WHERE id = ?").bind('"abc"', sub.id).run();
+    await env.DB.prepare("UPDATE subscriptions SET etag = ?, last_index_sync_at = ? WHERE id = ?").bind('"abc"', new Date().toISOString(), sub.id).run();
     const resub = (await getSubscription(env.DB, sub.id))!;
 
     const { fetch, calls } = makeFixtureFetch({ [FEED_URL]: { status: 304 } });
@@ -23,6 +23,35 @@ describe("poll cycle (§3.2)", () => {
     expect(calls).toEqual([FEED_URL]);
     const after = (await getSubscription(env.DB, sub.id))!;
     expect(after.fail_count).toBe(0);
+  });
+
+  it("304 Not Modified still runs a due daily sync: manifest name and index (session 37)", async () => {
+    // An origin that honours ETags answers every poll with 304. If the first
+    // sync failed, the poll returned before syncing, forever.
+    const sub = await createSubscription(env.DB, { kind: "blyg", origin: ORIGIN, feedUrl: FEED_URL, title: "Old Name" });
+    await env.DB.prepare("UPDATE subscriptions SET etag = ? WHERE id = ?").bind('"abc"', sub.id).run();
+    const resub = (await getSubscription(env.DB, sub.id))!;
+    const doc = await itemDocBody({ id: "missed-item", kind: "fragment", version: 1 });
+    const { fetch, calls } = makeFixtureFetch({
+      [FEED_URL]: { status: 304 },
+      [`${ORIGIN}blyg.json`]: { body: JSON.stringify({ title: "Summer Lightning", feed: "feed.xml" }) },
+      [`${ORIGIN}items/index.json`]: { body: indexBody([{ id: "missed-item", kind: "fragment", version: 1 }]) },
+      [`${ORIGIN}items/missed-item.json`]: { body: doc },
+    });
+
+    const result = await pollSubscription(env.DB, resub, fetch);
+    expect(result).toEqual({ outcome: "not-modified", itemsFetched: 1, reconciled: true });
+    expect(calls).toContain(`${ORIGIN}blyg.json`);
+    const after = (await getSubscription(env.DB, sub.id))!;
+    expect(after.title).toBe("Summer Lightning");
+    expect(after.last_index_sync_at).not.toBeNull();
+    expect(after.etag).toBe('"abc"');
+    expect(await getImportedItem(env.DB, sub.id, "missed-item")).not.toBeNull();
+
+    // The next 304 is between syncs: the feed only.
+    calls.length = 0;
+    await pollSubscription(env.DB, after, fetch);
+    expect(calls).toEqual([FEED_URL]);
   });
 
   it("a gap (newest-seen GUID scrolled out of the window) triggers index reconciliation, recovering a missed edit losslessly", async () => {

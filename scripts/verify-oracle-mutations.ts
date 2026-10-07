@@ -1,3 +1,15 @@
+/**
+ * A passing comparison must reject a plausible wrong implementation.
+ * Contract: docs/oracle-tests.md ORC-006 requires a reached semantic failure, not
+ * just a nonzero runner exit. These controls break pin persistence, restore text,
+ * page offset and tie order independently of the expected model.
+ * Driver: isolated copies run the same fixed lifecycle/pagination witnesses.
+ * Refinement: green baselines precede mutation; each nonzero result must name its
+ * intended checkpoint. Restore each source file before the next control.
+ * Limits: four selected wrong designs, not all defects or a complete oracle audit.
+ * This runner copies tracked files; untracked integration sources require separate
+ * handling before it can serve as evidence for an uncommitted branch.
+ */
 import assert from "node:assert/strict";
 import { spawnSync, execFileSync } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -27,6 +39,7 @@ try {
   for (const control of [controls[0], controls[2]]) {
     const result = execute(control.test, control.pattern);
     assert.equal(result.status, 0, `Baseline failed: ${result.stdout}\n${result.stderr}`);
+    assert.ok(/\b[1-9]\d* passed\b/.test(result.stdout + result.stderr), `Baseline ran no tests: ${control.name}`);
   }
   for (const control of controls) {
     const file = join(temp, control.file), original = readFileSync(file, "utf8");

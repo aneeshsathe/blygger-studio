@@ -242,3 +242,30 @@ describe("composer TK affordances (session 18)", () => {
     expect(draft.json.content_md).toBe("[TK]say something about pelicans[/TK]");
   });
 });
+
+// Decision #60: an own-line `![[id]]` left in TK output is a real quote at
+// publish (0.20.1 stands), and publish warns when the instruction never named it.
+describe("an own-line directive in TK output (decision #60)", () => {
+  it("transcludes, and the publish response warns that the instruction did not ask for it", async () => {
+    const cookie = await login();
+    const quoted = await createAndPublish(cookie, "words someone else will echo");
+    const md = `Intro.\n\n[TK]write a bridge[=]bridge line\n![[${quoted}]]\nafter[/TK]`;
+    const created = await apiJson(cookie, "POST", "/api/items", { content_md: md, kind: "thread" });
+    expect(created.status).toBe(201);
+    const res = await apiJson(cookie, "POST", `/api/items/${created.json.id}/publish`, {});
+    expect(res.status).toBe(200);
+    expect(res.json.warning).toContain(`![[${quoted}]]`);
+    const doc = await (await getPublic(`/blyg/items/${created.json.id}.json`)).json<any>();
+    expect(doc.transclusions).toMatchObject([{ id: quoted }]);
+  });
+
+  it("does not warn when the instruction named the same id", async () => {
+    const cookie = await login();
+    const quoted = await createAndPublish(cookie, "words quoted on purpose");
+    const md = `[TK]open with ![[${quoted}]] then riff[=]x\n![[${quoted}]]\ny[/TK]`;
+    const created = await apiJson(cookie, "POST", "/api/items", { content_md: md, kind: "thread" });
+    const res = await apiJson(cookie, "POST", `/api/items/${created.json.id}/publish`, {});
+    expect(res.status).toBe(200);
+    expect(res.json.warning).toBeUndefined();
+  });
+});

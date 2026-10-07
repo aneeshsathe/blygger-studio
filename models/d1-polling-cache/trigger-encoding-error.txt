@@ -1,0 +1,4 @@
+Initial fixture run failed before its intended old-dated arrival check:
+sqlite3.IntegrityError: NOT NULL constraint failed: imported_items.version
+The fixture omitted a required version value. Added version=1 and reran.
+This is a fixture setup failure, not an intended trigger counterexample.

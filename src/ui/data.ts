@@ -9,7 +9,7 @@ import {
   parseLoadSubsetOptions,
   queryCollectionOptions,
 } from '@tanstack/query-db-collection';
-import { QueryClient } from '@tanstack/query-core';
+import { QueryClient, type QueryFunction, type QueryFunctionContext } from '@tanstack/query-core';
 import type {
   ListItemsResponses,
   GetItemResponses,
@@ -27,6 +27,8 @@ import {
   unwrap,
 } from '../../sdk/dist/browser.js';
 import { Polling } from './polling.ts';
+import { readIfChanged, type CachedResponse } from './revision-query.ts';
+import type { ChangeDomain } from '../change-state.ts';
 import { scoped } from './scoped.ts';
 
 export const client = createBlyggerClient({ baseUrl: location.origin });
@@ -50,6 +52,9 @@ export const polling = new Polling(
     ),
 );
 polling.start(window, document);
+function cachedQuery<T>(context: QueryFunctionContext, domain: ChangeDomain, load: QueryFunction<T>) {
+  return readIfChanged(context, domain, ({ signal }) => unwrap(BlyggerApi.getChanges({ client, signal })), load);
+}
 
 async function pages<T>(
   read: (offset: number) => Promise<{ items: T[]; total: number }>,
@@ -64,26 +69,29 @@ async function pages<T>(
   }
 }
 export const items = createCollection(
-  queryCollectionOptions<ListItemsResponses[200]['items'][number]>({
+  queryCollectionOptions({
     id: 'items',
     queryKey: ['items'],
     queryClient,
-    getKey: (row) => row.id,
-    queryFn: ({ signal }) =>
-      pages((offset) =>
-        unwrap(
-          BlyggerApi.listItems({
-            client,
-            query: { offset, limit: 100 },
-            signal,
-          }),
+    getKey: (row: ListItemsResponses[200]['items'][number]) => row.id,
+    queryFn: (context) =>
+      cachedQuery(context, 'items', ({ signal }) =>
+        pages((offset) =>
+          unwrap(
+            BlyggerApi.listItems({
+              client,
+              query: { offset, limit: 100 },
+              signal,
+            }),
+          ),
         ),
       ),
+    select: (response) => response.data,
     onUpdate: async ({ transaction }) => {
       for (const mutation of transaction.mutations) {
         const changes = mutation.changes;
         const body: UpdateItemData['body'] = {};
-        for (const field of ['content_md', 'responses', 'stub_of'] as const)
+        for (const field of ['content_md', 'responses', 'highlight', 'stub_of'] as const)
           if (field in changes)
             Object.assign(body, { [field]: changes[field] });
         if (changes.kind === 'fragment' || changes.kind === 'thread')
@@ -109,17 +117,20 @@ export const items = createCollection(
   }),
 );
 export const settings = createCollection(
-  queryCollectionOptions<Settings & { key: string }>({
+  queryCollectionOptions({
     id: 'settings',
     queryKey: ['settings'],
     queryClient,
-    getKey: (row) => row.key,
-    queryFn: async ({ signal }) => [
-      {
-        ...(await unwrap(BlyggerApi.getSettings({ client, signal }))),
-        key: 'settings',
-      },
-    ],
+    getKey: (row: Settings & { key: string }) => row.key,
+    queryFn: (context) =>
+      cachedQuery(context, 'settings', async ({ signal }) => [
+        {
+          ...(await unwrap(BlyggerApi.getSettings({ client, signal }))),
+          key: 'settings',
+        },
+      ],
+      ),
+    select: (response) => response.data,
     onUpdate: async ({ transaction }) => {
       for (const { changes } of transaction.mutations) {
         const { key: _key, ...body } = changes;
@@ -129,21 +140,24 @@ export const settings = createCollection(
   }),
 );
 export const subscriptions = createCollection(
-  queryCollectionOptions<Subscription>({
+  queryCollectionOptions({
     id: 'subscriptions',
     queryKey: ['subscriptions'],
     queryClient,
-    getKey: (row) => row.id,
-    queryFn: ({ signal }) =>
-      pages((offset) =>
-        unwrap(
-          BlyggerApi.listSubscriptions({
-            client,
-            query: { offset, limit: 100 },
-            signal,
-          }),
+    getKey: (row: Subscription) => row.id,
+    queryFn: (context) =>
+      cachedQuery(context, 'subscriptions', ({ signal }) =>
+        pages((offset) =>
+          unwrap(
+            BlyggerApi.listSubscriptions({
+              client,
+              query: { offset, limit: 100 },
+              signal,
+            }),
+          ),
         ),
       ),
+    select: (response) => response.data,
     onUpdate: async ({ transaction }) => {
       for (const { key, changes } of transaction.mutations)
         await unwrap(
@@ -174,21 +188,24 @@ export const subscriptions = createCollection(
   }),
 );
 export const hoppers = createCollection(
-  queryCollectionOptions<Hopper>({
+  queryCollectionOptions({
     id: 'hoppers',
     queryKey: ['hoppers'],
     queryClient,
-    getKey: (row) => row.id,
-    queryFn: ({ signal }) =>
-      pages((offset) =>
-        unwrap(
-          BlyggerApi.listHoppers({
-            client,
-            query: { offset, limit: 100 },
-            signal,
-          }),
+    getKey: (row: Hopper) => row.id,
+    queryFn: (context) =>
+      cachedQuery(context, 'hoppers', ({ signal }) =>
+        pages((offset) =>
+          unwrap(
+            BlyggerApi.listHoppers({
+              client,
+              query: { offset, limit: 100 },
+              signal,
+            }),
+          ),
         ),
       ),
+    select: (response) => response.data,
     onUpdate: async ({ transaction }) => {
       for (const { key, changes } of transaction.mutations)
         await unwrap(
@@ -213,35 +230,41 @@ export const hoppers = createCollection(
   }),
 );
 export const signals = createCollection(
-  queryCollectionOptions<SignalRow>({
+  queryCollectionOptions({
     id: 'signals',
     queryKey: ['signals'],
     queryClient,
-    getKey: (row) => JSON.stringify([row.subscription_id, row.remote_id]),
-    queryFn: ({ signal }) =>
-      pages((offset) =>
-        unwrap(
-          BlyggerApi.listSignals({
-            client,
-            query: { offset, limit: 100 },
-            signal,
-          }),
+    getKey: (row: SignalRow) => JSON.stringify([row.subscription_id, row.remote_id]),
+    queryFn: (context) =>
+      cachedQuery(context, 'signals', ({ signal }) =>
+        pages((offset) =>
+          unwrap(
+            BlyggerApi.listSignals({
+              client,
+              query: { offset, limit: 100 },
+              signal,
+            }),
+          ),
         ),
       ),
+    select: (response) => response.data,
   }),
 );
 export type Detail = GetItemResponses[200];
 
 function detailCollection(id: string) {
   return createCollection(
-    queryCollectionOptions<Detail>({
+    queryCollectionOptions({
       id: `item:${id}`,
       queryKey: ['item', id],
       queryClient,
-      getKey: (row) => row.id,
-      queryFn: async ({ signal }) => [
-        await unwrap(BlyggerApi.getItem({ client, path: { id }, signal })),
-      ],
+      getKey: (row: Detail) => row.id,
+      queryFn: (context) =>
+        cachedQuery(context, 'items', async ({ signal }) => [
+          await unwrap(BlyggerApi.getItem({ client, path: { id }, signal })),
+        ],
+        ),
+      select: (response) => response.data,
       onUpdate: async ({ transaction }) => {
         for (const { changes } of transaction.mutations)
           await unwrap(
@@ -285,23 +308,25 @@ function readingCollection(key: string) {
       queryKey: ['reading', key],
       queryClient,
       getKey: (row: Reading) => row.key,
-      queryFn: async ({ signal, meta }) => {
-        const subset = parseLoadSubsetOptions(meta?.loadSubsetOptions);
-        const start = subset.filters.find(
-          (filter) =>
-            filter.field.join('.') === 'rank' && filter.operator === 'gte',
-        );
-        const offset = typeof start?.value === 'number' ? start.value : 0;
-        const limit = 25;
-        return unwrap(
-          BlyggerApi.listReading({
-            client,
-            query: { sub, offset, limit, ...(kind ? { kind } : {}) },
-            signal,
-          }),
-        );
-      },
-      select: (page) =>
+      queryFn: (context) =>
+        cachedQuery(context, 'reading', async ({ signal, meta }) => {
+          const subset = parseLoadSubsetOptions(meta?.loadSubsetOptions);
+          const start = subset.filters.find(
+            (filter) =>
+              filter.field.join('.') === 'rank' && filter.operator === 'gte',
+          );
+          const offset = typeof start?.value === 'number' ? start.value : 0;
+          const limit = 25;
+          return unwrap(
+            BlyggerApi.listReading({
+              client,
+              query: { sub, offset, limit, ...(kind ? { kind } : {}) },
+              signal,
+            }),
+          );
+        },
+        ),
+      select: ({ data: page }: CachedResponse<ListReadingResponses[200]>) =>
         page.items.map((row, i) => ({ ...row, rank: page.offset + i })),
     }),
   );
@@ -327,18 +352,10 @@ const readingViews = scoped((key) => {
 });
 export const readingView = (sub: string, offset: number) =>
   readingViews(JSON.stringify([sub, offset]));
-export function refreshReading(sub: string, offset: number) {
-  return queryClient.refetchQueries(
-    {
-      predicate: (query) =>
-        query.queryKey[0] === 'reading' &&
-        query.queryKey[1] === sub &&
-        (query.state.data as ListReadingResponses[200] | undefined)?.offset ===
-          offset,
-    },
-    { throwOnError: true },
-  );
+export function refreshReading(sub: string) {
+  return reading(sub).utils.refetch({ throwOnError: true });
 }
+
 function hopperDetailCollection(id: string) {
   return createCollection(
     queryCollectionOptions({
@@ -346,9 +363,12 @@ function hopperDetailCollection(id: string) {
       queryKey: ['hopper', id],
       queryClient,
       getKey: (row: GetHopperResponses[200]) => row.hopper.id,
-      queryFn: async ({ signal }) => [
-        await unwrap(BlyggerApi.getHopper({ client, path: { id }, signal })),
-      ],
+      queryFn: (context) =>
+        cachedQuery(context, 'hoppers', async ({ signal }) => [
+          await unwrap(BlyggerApi.getHopper({ client, path: { id }, signal })),
+        ],
+        ),
+      select: (response) => response.data,
     }),
   );
 }
@@ -388,16 +408,24 @@ export const hopperPreview = scoped((id) =>
       queryKey: ['hopper-preview', id],
       queryClient,
       getKey: (row: GetHopperResponses[200]) => row.hopper.id,
-      queryFn: async ({ signal }) => [
-        await unwrap(
-          BlyggerApi.getHopper({
-            client,
-            path: { id },
-            query: { preview: 'true' },
-            signal,
-          }),
+      queryFn: (context) =>
+        cachedQuery(context, 'hoppers', async ({ signal }) => [
+          await unwrap(
+            BlyggerApi.getHopper({
+              client,
+              path: { id },
+              query: { preview: 'true' },
+              signal,
+            }),
+          ),
+        ],
         ),
-      ],
+      select: (response) => response.data,
     }),
   ),
 );
+
+export const authorizations = createCollection(queryCollectionOptions<import('../../sdk/dist/browser.js').Authorization>({
+  id: 'authorizations', queryKey: ['authorizations'], queryClient, getKey: row => row.id,
+  queryFn: async ({ signal }) => (await unwrap(BlyggerApi.listAuthorizations({ client, signal }))).items,
+}));

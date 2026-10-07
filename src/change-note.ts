@@ -13,7 +13,7 @@
 // prompt says so, and `quotesWithheld` checks it mechanically, because a prompt
 // is a request and this is a rule.
 
-import { complete, ProviderError, type ProviderFetchLike, platformProviderFetch } from "./ai/provider.ts";
+import { complete, ProviderError, AiBudgetError, type ProviderFetchLike, platformProviderFetch } from "./ai/provider.ts";
 import { getVersion } from "./model.ts";
 import { parseScopes, stripToOutput } from "./tk.ts";
 import type { Env, ItemRow } from "./types.ts";
@@ -56,7 +56,7 @@ const WITHHELD =
 
 export type DraftNoteResult =
   | { ok: true; note: string; model: string; pinnedPrior: boolean }
-  | { ok: false; status: 400 | 409 | 422 | 502; error: string };
+  | { ok: false; status: 400 | 409 | 422 | 429 | 502; error: string };
 
 /** The working copy as it would publish: TK scopes stripped to their output. */
 function publishableText(contentMd: string): string | null {
@@ -88,6 +88,7 @@ export async function draftChangeNote(
   try {
     result = await complete(env, SYSTEM, user, fetchImpl, "changelog");
   } catch (e) {
+    if (e instanceof AiBudgetError) return { ok: false, status: 429, error: e.message };
     if (e instanceof ProviderError) return { ok: false, status: 502, error: e.message };
     throw e;
   }

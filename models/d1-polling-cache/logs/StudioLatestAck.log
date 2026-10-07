@@ -1,0 +1,77 @@
+Exit code: 12
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 65 and seed -4209256277694140918 with 1 worker on 10 cores with 1765MB heap and 64MB offheap memory [pid: 1] (Linux 6.12.76-linuxkit aarch64, Eclipse Adoptium 21.0.12 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /work/Studio.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module Studio
+Starting... (2026-10-05 20:45:44)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-05 20:45:44.
+Error: Invariant AppliedIsInstalled is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ source = 0
+/\ applied = <<0, 0>>
+/\ loads = 0
+/\ attempts = << [phase |-> "idle", target |-> 0, loaded |-> 0, success |-> FALSE],
+   [phase |-> "idle", target |-> 0, loaded |-> 0, success |-> FALSE] >>
+/\ checks = 0
+/\ installed = <<0, 0>>
+
+State 2: <Mutate line 12, col 11 to line 13, col 70 of module Studio>
+/\ source = 1
+/\ applied = <<0, 0>>
+/\ loads = 0
+/\ attempts = << [phase |-> "idle", target |-> 0, loaded |-> 0, success |-> FALSE],
+   [phase |-> "idle", target |-> 0, loaded |-> 0, success |-> FALSE] >>
+/\ checks = 0
+/\ installed = <<0, 0>>
+
+State 3: <Poll line 14, col 12 to line 19, col 61 of module Studio>
+/\ source = 1
+/\ applied = <<0, 0>>
+/\ loads = 0
+/\ attempts = << [phase |-> "load", target |-> 1, loaded |-> 0, success |-> FALSE],
+   [phase |-> "idle", target |-> 0, loaded |-> 0, success |-> FALSE] >>
+/\ checks = 1
+/\ installed = <<0, 0>>
+
+State 4: <Mutate line 12, col 11 to line 13, col 70 of module Studio>
+/\ source = 2
+/\ applied = <<0, 0>>
+/\ loads = 0
+/\ attempts = << [phase |-> "load", target |-> 1, loaded |-> 0, success |-> FALSE],
+   [phase |-> "idle", target |-> 0, loaded |-> 0, success |-> FALSE] >>
+/\ checks = 1
+/\ installed = <<0, 0>>
+
+State 5: <Load line 20, col 12 to line 25, col 62 of module Studio>
+/\ source = 2
+/\ applied = <<0, 0>>
+/\ loads = 1
+/\ attempts = << [phase |-> "ack", target |-> 1, loaded |-> 1, success |-> TRUE],
+   [phase |-> "idle", target |-> 0, loaded |-> 0, success |-> FALSE] >>
+/\ checks = 1
+/\ installed = <<0, 0>>
+
+State 6: <Ack line 30, col 11 to line 37, col 48 of module Studio>
+/\ source = 2
+/\ applied = <<2, 0>>
+/\ loads = 1
+/\ attempts = << [phase |-> "idle", target |-> 1, loaded |-> 1, success |-> TRUE],
+   [phase |-> "idle", target |-> 0, loaded |-> 0, success |-> FALSE] >>
+/\ checks = 1
+/\ installed = <<1, 0>>
+
+119 states generated, 93 distinct states found, 58 states left on queue.
+The depth of the complete state graph search is 6.
+The average outdegree of the complete state graph is 3 (minimum is 1, the maximum 5 and the 95th percentile is 5).
+Finished in 00s at (2026-10-05 20:45:44)
+

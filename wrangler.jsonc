@@ -18,6 +18,7 @@
   "name": "blyg",
   "main": "src/index.ts",
   "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
 
   "vars": {
     // Where the public surface is mounted (decision #14).
@@ -34,10 +35,11 @@
     "MOUNT": ""
   },
 
-  // Poll due subscriptions. The reading side is pull-based: this is what makes
-  // other people's writing show up in yours.
+  // Check saved XML every minute; poll due subscriptions every 15 minutes.
+  // Repair legacy imports and prune expired mentions daily at midnight UTC.
+  // The feed-only tick skips subscription scans and housekeeping.
   "triggers": {
-    "crons": ["*/15 * * * *"]
+    "crons": ["* * * * *", "*/15 * * * *", "0 0 * * *"]
   },
 
   "d1_databases": [
@@ -58,7 +60,8 @@
     {
       "binding": "MEDIA",
       // FILL ME (3 of 4) — `npx wrangler r2 bucket create blyg-yourname-media`.
-      // Only used for image attachments; a blyg with no images never touches it.
+      // Stores image attachments and the rendered feed cache. Feed objects use
+      // an internal prefix and are served only by the feed handler.
       "bucket_name": "blyg-media"
     }
   ]

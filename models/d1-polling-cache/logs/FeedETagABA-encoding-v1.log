@@ -1,0 +1,429 @@
+Exit code: 75
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 107 and seed -522732938212570239 with 1 worker on 10 cores with 1765MB heap and 64MB offheap memory [pid: 1] (Linux 6.12.76-linuxkit aarch64, Eclipse Adoptium 21.0.12 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /work/Feed.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module Feed
+Starting... (2026-10-05 20:44:09)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-05 20:44:10.
+Error: Successor state is not completely specified by action Publish of the next-state relation. The following variable is not assigned: regressed.
+
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ revision = 0
+/\ source = 0
+/\ services = 0
+/\ attempts = << [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE ] >>
+/\ triggerWrites = 0
+/\ checks = 0
+/\ regressed = FALSE
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ missedCheck = FALSE
+/\ renders = 0
+
+State 2: <Mutate line 20, col 11 to line 23, col 96 of module Feed>
+/\ revision = 1
+/\ source = 1
+/\ services = 0
+/\ attempts = << [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE ] >>
+/\ triggerWrites = 1
+/\ checks = 0
+/\ regressed = FALSE
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ missedCheck = FALSE
+/\ renders = 0
+
+State 3: <Request line 25, col 5 to line 31, col 90 of module Feed>
+/\ revision = 1
+/\ source = 1
+/\ services = 1
+/\ attempts = << [ phase |-> "check",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE ] >>
+/\ triggerWrites = 1
+/\ checks = 0
+/\ regressed = FALSE
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ missedCheck = FALSE
+/\ renders = 0
+
+State 4: <Check line 33, col 5 to line 40, col 96 of module Feed>
+/\ revision = 1
+/\ source = 1
+/\ services = 1
+/\ attempts = << [ phase |-> "readA",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 1,
+     conditional |-> FALSE ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE ] >>
+/\ triggerWrites = 1
+/\ checks = 1
+/\ regressed = FALSE
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ missedCheck = FALSE
+/\ renders = 1
+
+State 5: <ReadA line 41, col 13 to line 43, col 121 of module Feed>
+/\ revision = 1
+/\ source = 1
+/\ services = 1
+/\ attempts = << [ phase |-> "readB",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 1,
+     b |-> 0,
+     tries |-> 1,
+     conditional |-> FALSE ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE ] >>
+/\ triggerWrites = 1
+/\ checks = 1
+/\ regressed = FALSE
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ missedCheck = FALSE
+/\ renders = 1
+
+State 6: <ReadB line 44, col 13 to line 46, col 121 of module Feed>
+/\ revision = 1
+/\ source = 1
+/\ services = 1
+/\ attempts = << [ phase |-> "validate",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 1,
+     b |-> 1,
+     tries |-> 1,
+     conditional |-> FALSE ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE ] >>
+/\ triggerWrites = 1
+/\ checks = 1
+/\ regressed = FALSE
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ missedCheck = FALSE
+/\ renders = 1
+
+State 7: <Validate line 48, col 5 to line 51, col 113 of module Feed>
+/\ revision = 1
+/\ source = 1
+/\ services = 1
+/\ attempts = << [ phase |-> "publish",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 1,
+     b |-> 1,
+     tries |-> 1,
+     conditional |-> FALSE ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE ] >>
+/\ triggerWrites = 1
+/\ checks = 1
+/\ regressed = FALSE
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ missedCheck = FALSE
+/\ renders = 1
+
+State 8: <Mutate line 20, col 11 to line 23, col 96 of module Feed>
+/\ revision = 2
+/\ source = 2
+/\ services = 1
+/\ attempts = << [ phase |-> "publish",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 1,
+     b |-> 1,
+     tries |-> 1,
+     conditional |-> FALSE ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE ] >>
+/\ triggerWrites = 2
+/\ checks = 1
+/\ regressed = FALSE
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ missedCheck = FALSE
+/\ renders = 1
+
+State 9: <Request line 25, col 5 to line 31, col 90 of module Feed>
+/\ revision = 2
+/\ source = 2
+/\ services = 2
+/\ attempts = << [ phase |-> "publish",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 1,
+     b |-> 1,
+     tries |-> 1,
+     conditional |-> FALSE ],
+   [ phase |-> "check",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE ] >>
+/\ triggerWrites = 2
+/\ checks = 1
+/\ regressed = FALSE
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ missedCheck = FALSE
+/\ renders = 1
+
+State 10: <Check line 33, col 5 to line 40, col 96 of module Feed>
+/\ revision = 2
+/\ source = 2
+/\ services = 2
+/\ attempts = << [ phase |-> "publish",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 1,
+     b |-> 1,
+     tries |-> 1,
+     conditional |-> FALSE ],
+   [ phase |-> "readA",
+     before |-> 2,
+     commit |-> 2,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 1,
+     conditional |-> FALSE ] >>
+/\ triggerWrites = 2
+/\ checks = 2
+/\ regressed = FALSE
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ missedCheck = FALSE
+/\ renders = 2
+
+State 11: <ReadA line 41, col 13 to line 43, col 121 of module Feed>
+/\ revision = 2
+/\ source = 2
+/\ services = 2
+/\ attempts = << [ phase |-> "publish",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 1,
+     b |-> 1,
+     tries |-> 1,
+     conditional |-> FALSE ],
+   [ phase |-> "readB",
+     before |-> 2,
+     commit |-> 2,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 1,
+     conditional |-> FALSE ] >>
+/\ triggerWrites = 2
+/\ checks = 2
+/\ regressed = FALSE
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ missedCheck = FALSE
+/\ renders = 2
+
+State 12: <ReadB line 44, col 13 to line 46, col 121 of module Feed>
+/\ revision = 2
+/\ source = 2
+/\ services = 2
+/\ attempts = << [ phase |-> "publish",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 1,
+     b |-> 1,
+     tries |-> 1,
+     conditional |-> FALSE ],
+   [ phase |-> "validate",
+     before |-> 2,
+     commit |-> 2,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 1,
+     conditional |-> FALSE ] >>
+/\ triggerWrites = 2
+/\ checks = 2
+/\ regressed = FALSE
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ missedCheck = FALSE
+/\ renders = 2
+
+State 13: <Validate line 48, col 5 to line 51, col 113 of module Feed>
+/\ revision = 2
+/\ source = 2
+/\ services = 2
+/\ attempts = << [ phase |-> "publish",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 1,
+     b |-> 1,
+     tries |-> 1,
+     conditional |-> FALSE ],
+   [ phase |-> "publish",
+     before |-> 2,
+     commit |-> 2,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 1,
+     conditional |-> FALSE ] >>
+/\ triggerWrites = 2
+/\ checks = 2
+/\ regressed = FALSE
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ missedCheck = FALSE
+/\ renders = 2
+
+State 14: <Publish line 53, col 5 to line 62, col 92 of module Feed>
+/\ revision = 2
+/\ source = 2
+/\ services = 2
+/\ attempts = << [ phase |-> "publish",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 1,
+     b |-> 1,
+     tries |-> 1,
+     conditional |-> FALSE ],
+   [ phase |-> "done",
+     before |-> 2,
+     commit |-> 2,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 1,
+     conditional |-> FALSE ] >>
+/\ triggerWrites = 2
+/\ checks = 2
+/\ regressed = FALSE
+/\ artifact = [commit |-> 2, a |-> 0, b |-> 0, rev |-> 2, token |-> 0]
+/\ missedCheck = FALSE
+/\ renders = 2
+
+State 15: <Publish line 53, col 5 to line 62, col 92 of module Feed>
+/\ revision = 2
+/\ source = 2
+/\ services = 2
+/\ attempts = << [ phase |-> "done",
+     before |-> 1,
+     commit |-> 1,
+     expected |-> 0,
+     a |-> 1,
+     b |-> 1,
+     tries |-> 1,
+     conditional |-> FALSE ],
+   [ phase |-> "done",
+     before |-> 2,
+     commit |-> 2,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 1,
+     conditional |-> FALSE ] >>
+/\ triggerWrites = 2
+/\ checks = 2
+/\ regressed = null
+/\ artifact = [commit |-> 1, a |-> 1, b |-> 1, rev |-> 1, token |-> 1]
+/\ missedCheck = FALSE
+/\ renders = 2
+
+54313 states generated, 23090 distinct states found, 6187 states left on queue.
+The depth of the complete state graph search is 15.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 5 and the 95th percentile is 3).
+Finished in 00s at (2026-10-05 20:44:10)
+

@@ -18,6 +18,255 @@ not have its own repo until session 26.
 
 ---
 
+## 0.32.2 — 2026-10-06
+
+**Migrations: none.** Upgrade promptly: the first item is a security fix.
+
+**Mention verification checks the full address, path included** (blygger-spec
+decision #61, spec §15.4 step 2 in the 0.3 eighth revision; found by Aneesh
+Sathe's conformance toolkit, findings F1 and F4).
+
+- **Two blygs on one host can no longer verify in each other's name.** The
+  verifier compared only scheme, host and port, so a document served under
+  `example.com/alice/` could claim to be `example.com/carol/`. It now requires
+  the item document to have been fetched from exactly
+  `{origin}items/{id}.json` for the origin and id it declares.
+- **A pinned copy of a stub no longer verifies after the stub is withdrawn.**
+  A pin file's address is never the live document's, so a mention whose
+  source resolves to a pin fails. Honest senders are unaffected: a source is
+  the item's page, whose alternate link names the live document.
+- **A mention target on our host but outside our mount is refused** (§15.3).
+  On a path-mounted blyg, `example.com/f/{id}/` is not ours when we live at
+  `example.com/blyg/`.
+
+Mentions verified under the old rule keep their status until they are re-sent
+or re-verified.
+
+**TK output and sources** (decision #60, settling blygger-studio#5).
+
+- **A generation source is only what the instruction names.** A `![[id]]`
+  that appears only in a scope's output is no longer recorded in
+  `generated[].sources`, because the generator never read it.
+- **Publish warns about an unrequested quote in generated text.** An
+  own-line `![[id]]` left in TK output still becomes a real quote at publish,
+  as in 0.20.1. When the instruction did not name that id, usually because a
+  model echoed it, the publish response now says so, since the quoted origin
+  was also notified.
+
+**`page` stability is now tested** (decision #56): an item's `page` is the
+same across edits and on its withdrawal endcap.
+
+Protocol: implements 0.3 (eighth revision).
+
+---
+
+## 0.32.1 — 2026-10-06
+
+- **Migration 0024 applies on Cloudflare.** As shipped in 0.32.0 it failed on `wrangler d1 migrations apply --remote` with `incomplete input`, because each trigger opened with a `CASE … END;` guard and D1's remote executor ends a trigger at the first `END;`. Local tests apply migrations another way and passed. The guards are now `SELECT RAISE(…) WHERE NOT EXISTS(…)`, which behaves the same; a new test rejects the old shape in any migration. Nothing was applied by the failed attempt, so if you tried 0.32.0, apply again.
+- **Migrations: 0024_change_state.sql** (the corrected file). Apply before deploying. Do not deploy 0.32.0.
+
+## 0.32.0 — 2026-10-06
+
+- **Fewer D1 reads (#40, Kyle Mathews).** Studio polls `GET /api/changes`, a set of per-domain revision counters kept by database triggers, and reloads a collection only when its counter moved. `feed.xml` is rendered into the `MEDIA` bucket and served from there with an `ETag` and `304`s, rebuilt in the background when the feed's revision changes (stale-while-revalidate: a reader can get the previous feed while the new one builds). Design, operations and the verification record are in `docs/d1-polling-cache-*.md`.
+- **Three crons:** `* * * * *` keeps the saved feed current (it needs **Settings → Canonical site URL**), `*/15 * * * *` polls subscriptions and retries mentions as before, and `0 0 * * *` runs the daily URL repair and mention pruning. A config that still lists only `*/15 * * * *` keeps working: its tick at 00:00 UTC runs the daily work too.
+- Before restoring a database backup, read `docs/d1-polling-cache-operations.md`: run `scripts/reset-change-epoch.sql` after the restore.
+- **Migrations: 0024_change_state.sql.** Adds the `change_state` row and its triggers. Apply before deploying.
+
+## 0.31.0 — 2026-10-06
+
+- **One response action: `stub`.** A stub is a quote post, a reply, commentary on an excerpt or an inline reply, depending on whether your words go above or below the quote and whether it quotes the whole post or a passage; with no words of your own it is a repost. *Quote selection* is gone from the reading view's ⋯ menu, along with the floating pill and selecting text in an entry to quote it: technically it was always a stub with a passage under the quote.
+- **A stub opens quoting the whole post**, whatever its length. 0.30.0 quoted a long post's opening passage, which was rarely the passage wanted.
+- **Passages are chosen in the stub editor.** A line under the stub header says what the draft is doing, and *quote a passage instead* shows the post: select a passage and press *quote only this*, which writes it under `![[id]]` as `>` lines. *Quote whole post* takes it out again. Once there is a passage, the next one is added after the cursor as its own quote (*add as another quote*), so a stub can be a running commentary with several passages; *replace the first quote* is beside it. Every passage is checked against the same snapshot publish checks.
+- **How stubs work**: an explanation with the four shapes as a table and the `>` syntax opens with a new stub until *don't show this again* is ticked (remembered per device), and from a link on the stub header any time. The syntax page's stub section says the same.
+- `POST /api/items` with `mode: "response"` still accepts `selection`, for other clients. Without one, the draft quotes the whole item.
+- Migrations: none.
+
+## 0.30.1 — 2026-10-06
+
+- **Live preview no longer throttles editing.** `POST /api/preview` renders a draft and stores nothing, but 0.28 counted it against the owner's write budget (120 a minute); the editor sends one on every pause in typing, so ordinary composing hit "API work budget exceeded" and the preview stalled. It now spends the read budget (1,200 a minute). Real writes stay bounded.
+- **The daily sync runs when a feed is unchanged.** A blyg subscription's poll returned on `304 Not Modified` before its daily index sync and manifest-name refresh, so an origin that honours ETags was never re-synced after its first poll; if that first sync failed (as during 0.28.0–0.28.2's DNS-check outage), its index and name stayed stale indefinitely. A 304 now runs the sync when it is due, and a degraded subscription reconciles on one too.
+- Migrations: none.
+
+## 0.30.0 — 2026-10-05
+
+The first release since 0.28.2: 0.28.3 and 0.29.0 were deployed but never released, so their entries below ship here too.
+
+- **Subscription names follow their source.** A blyg's manifest title is re-read with the daily index sync, and an RSS feed's channel title on every poll; a name the owner gave is never overwritten (`PATCH` with a `title` makes it the owner's, `title: null` hands it back). Existing blyg subscriptions follow their source; existing RSS ones keep their names. The subscription resource gains `title_follows_source`.
+- **Resync all feeds**: a button in the reading header, and `POST /api/subscriptions/poll`, polls every subscription that is not paused, now, degraded ones included.
+- Discarding a draft confirms with a green "Draft discarded" toast instead of a red "not found" (the compose list refetched the deleted item). Toasts can be dismissed.
+- Stubbing a long item quotes its opening passage instead of starting from an empty quote line that the preview reported as an error.
+- The composer counts a thread's characters without the fragment limit, and a compose-list row that only quotes or links shows what it quotes.
+- **Migrations: 0023_subscription_title_source.sql.** Adds `subscriptions.title_auto`. Apply before deploying.
+
+## 0.29.0 — 2026-10-05
+
+- **The `[[` / `![[` picker is a panel with real search.** It searched only a 70-character excerpt and the id, so on a node with ~1,400 candidates almost nothing was findable. `GET /api/search` now matches every word anywhere in an item's text, in SQL, with `source=all|mine|imported`, `sub=<subscription>`, `sort=newest|oldest`, paging and a total; rows gain `source`, `kind`, `subscription_id` and `source_title` (`badge` is kept for older clients). What it offers is unchanged: only what publish will accept.
+- The picker opens as a non-modal panel at the right (docked at the bottom on a phone, with the draft scrolled into view above it): link or quote named in its header, a source radio, sort, a subscription menu under *imported*, and rows with excerpt, source, kind, age and version. Where you type to search is a new setting, Settings → writing: *automatic* (the default) keeps typing in the editor with a mouse and gives the picker its own search box on a touch screen, where it fills the screen until you pick or cancel; or always *the editor*; or always *the picker*. Source and sort are remembered per device.
+- The reading list's swipe hint is hidden on mouse devices (#36, Aneesh Sathe).
+- Migrations: none.
+
+## 0.28.3 — 2026-10-05
+
+- **Feed polling and Webmentions work again.** 0.28.0's outbound DNS check called `fetch` with `redirect: 'error'`, which the Workers runtime rejects outright, so on a deployed node every check threw: every subscription poll failed, outgoing mentions stayed queued and incoming ones went unverified. The tests stubbed `fetch` and accepted the mode. The check now uses `redirect: 'manual'` and still fails closed on anything but a 200; a new test refuses `'error'` the way the edge does. Polls, queued mentions and verification resume on their own at the next cron tick after upgrading.
+- Migrations: none.
+
+## 0.28.2 — 2026-10-05
+
+- A thread's published `content_html` bakes each transcluded item's HTML verbatim again, as §5.2 and §10.2 specify. 0.28.0 ran the bake through the import sanitizer, which put sanitizer output into the protocol bytes other origins import. Sanitizing stays at every render instead: the public thread pages and version history already sanitize the stored HTML, and the editor's transclusion preview now sanitizes its own output. Threads published under 0.28.0–0.28.1 keep their bytes (published versions are immutable).
+- The client access page described a password change as revoking every client authorization. Since 0.28.0 it only logs out Studio sessions; rotating the cookie secret is what revokes them. The page now says so.
+- Migrations: none.
+
+## 0.28.1 — 2026-10-05
+
+- Imported HTML keeps the content of tags the 0.28.0 allowlist does not name. 0.28.0 deleted them together with everything inside, so an image inside `<picture>` (Substack's feed markup), text inside `<font>` and `<video>` fallback text all vanished from reading views and transclusion bakes. Unlisted tags are now unwrapped. Active, foreign and raw-text elements (`script`, `style`, `textarea`, `noscript`, `svg`, `math`, `iframe` and the like) are still dropped whole, because unwrapping their content would turn it into live markup.
+- Migrations: none.
+
+## 0.28.0 — 2026-10-05
+
+- Bound owner/per-grant REST/MCP work, delegated aggregate work, AI calls with an owner reserve, anonymous client storage and request bodies (migration 0022). Reclaim abandoned unapproved registrations after a configurable grace.
+- Keep unused draft uploads private with authenticated no-store previews; published media keeps serving the same bytes through later versions and withdrawal (§5.4). Choosing the avatar needs `owner:publish`. Stub and fork citation links accept only http(s), on write and on render; author links accept http(s) or mailto, and `site_url` only http(s), with stored rows filtered on read. Sanitize remote transclusion bakes and legacy displays, and validate/escape attribution links.
+- Check revocation during refresh-token introspection and atomic grant recording. Show full native callback destinations on consent and suppress remote fetch exception text.
+- Restrict outbound fetches to public destinations unless explicitly enabled for LAN use; cap streamed bodies and recheck redirects. DNS rebinding remains a deployment gap.
+- Sanitize imported editorial HTML at private/public rendering boundaries, prevent stale draft deletion after publication, and patch quadratic Markdown linkification.
+
+**Migrations: 0021_oauth.sql, 0022_security_budgets.sql.** Apply after 0.27.0's 0020. Adds OAuth provider tables, a shared rate limiter,
+client authorizations, and revocation state. Enable `nodejs_compat` before deployment.
+
+- Upgrade compatibility: existing owner login cookies are invalidated once. Log in
+  again after upgrading. SDK 0.2.0 owner clients must replace a plain `auth` string
+  with `headers.Cookie` or a scheme-specific auth callback; bearer clients also use
+  a scheme-specific callback. Protected routes require HTTPS except on loopback.
+- Clients can use scoped OAuth grants or named manual bearer tokens for REST and MCP.
+  The owner approves permissions and manages grants from Studio's Client access page.
+- MCP exposes the existing API operations with the same scope checks. The generated
+  JavaScript SDK supports owner cookies and bearer tokens in browsers and Node.js.
+- Refresh replay, signing-secret changes, and explicit revocation invalidate grants.
+  Owner-password reset invalidates browser sessions and preserves delegated tokens.
+  Native refresh cleanup can also invalidate another grant's refresh token for the
+  same client and owner. Other grants' access tokens retain their own revocation state.
+- Mounted discovery is available. Host-root `.well-known` routes remain deferred.
+- Security oracles include source-linked laws, model checks, browser probes, a
+  controlled two-isolate race, and mutations that verify the enforcement checks.
+
+---
+
+## 0.27.2 — 2026-10-05
+
+**Migrations: none.** `/api` change, additive: `POST /api/items/{id}/generate`
+also returns `content_md`, the whole working copy with the scope's new output
+spliced in, as saved.
+
+**Generating a TK scope no longer throws away the rest of the draft.** Since
+0.10.0, pressing *generate* in the editor replaced the whole draft with just
+the scope's output. The server had spliced and saved the full text correctly,
+but the editor then autosaved its truncated copy over it. The editor now uses
+the returned `content_md`. The studio keeps no history of draft saves, so text
+lost this way can come back only from a published version: if the post had
+been published before the generate, *discard changes* (or restoring from its
+history) brings back the published text. An unpublished draft's surrounding
+text is gone.
+
+---
+
+## 0.27.1 — 2026-10-05
+
+**Migrations: none.** The same program as 0.27.0, released.
+
+The release workflow had failed on every tag since 0.21.2, so 0.21.2 through
+0.27.0 have no release downloads. The cause was two problems in the test
+plumbing, not in what ships. A browser test wrote a screenshot to a path that
+exists only on the maintainer's machine. And since 0.26.0, the mutation check
+built its temporary tree without `build/models.json`. Both are fixed. Operators
+upgrading by tag should take this release; the notes for 0.21.2 to 0.27.0
+below still describe what changed.
+
+---
+
+## 0.27.0 — 2026-10-05
+
+**Migrations: 0020** (`items.highlight_override`, nullable). Apply it before
+deploying. `/api` changes, both additive: settings gain
+`highlight_generated_default`, and items gain `highlight`
+(`default` | `show` | `hide`) on read and on `PATCH /api/items/{id}`.
+
+**Highlight generated portions on public pages.**
+
+- **Setting.** Settings → theme has a checkbox: *Highlight generated portions
+  by default*. It is off by default, so upgrading changes nothing anyone sees.
+- **Look.** When it's on, text written by `[TK]` generation (`blyg-tk-gen`)
+  shows in a lightly tinted box with a thin outline. A generated block wears a
+  small robot badge on its bottom-left edge, following Brady Dale's convention
+  on bradydale.com, and an inline span gets the robot before its first word.
+- **Themes.** Every theme names its own tint and outline colour (`genBg`,
+  `genRule`), and the automatic light and dark defaults have their own pair.
+- **Per post.** A post can override the default from its editor's TK card:
+  default, on or off.
+- **Presentation only.** The default lives in `style.css`, and a post's own
+  choice is a `gen-on` or `gen-off` class on its `<article>`. `content_html`,
+  the item document and the feed are unchanged.
+
+**The robot says what the author disclosed.** Hover over the robot badge, or
+tap or click it, and a small box opens. It says the author marked the text as
+machine-generated, and that this is self-reported and not verified. Under that
+it lists the model or models, when the text was generated, and how many of the
+blyg's own items it drew on, all taken from the version's `generated[]`.
+
+- **Version-level details.** The details cover the whole version, as §5.7
+  does, so a post with several generated passages says the details cover all
+  of them.
+- **Quoted text.** A generated span inside a quoted item points to that item
+  instead.
+- **Version carousel.** It carries each version's disclosure along with its
+  text, so the box stays accurate after a swap.
+- **Mechanics.** The box is one fixed-position element per page, so a feed
+  card can't clip it. Escape or a click elsewhere closes it. With scripts off,
+  the robot is still drawn, it just doesn't open anything.
+
+---
+
+## 0.26.1 — 2026-10-04
+
+**Migrations: none.** `POST /api/subscriptions` with `confirm: true` now replies
+before the initial backfill finishes, so the subscription it returns has not
+been polled yet.
+
+**Subscribing no longer hangs on confirm.**
+
+- Confirming a subscription used to copy the source's whole archive, one item at
+  a time, before replying. On a large blyg the button sat there for a long time
+  and gave no sign that anything was happening. The archive is now copied in the
+  background, and its items show up in reading as they arrive. If the copy is
+  cut short, the next scheduled poll (within 15 minutes) finishes it.
+- The sheet's buttons say `checking…` and `subscribing…` while they wait, and
+  the sheet closes as soon as the subscription exists.
+
+**Reading opens on the feed.** Feed and Sources are peer tabs at the top of
+reading, where `← sources` used to be: `/reading` is now every source's
+timeline, and the sources list moved to `/reading?view=sources` (`/subs` still
+redirects there). Every reading screen has the same head under every lens:
+the tabs, a title with its count, its own actions and ＋ subscribe. Before,
+Background and Smart Feed dropped the back link and the count, so the page
+jumped when you switched to them, and ＋ was only on the sources list.
+
+**Subscribing twice to the same source is refused.** A second subscription
+imported every item again, and a stub of any of those items then failed with
+"ambiguous id imported from multiple sources". `POST /api/subscriptions` now
+answers 409 `already subscribed to …` on both the first step and the confirm
+step, matching on the resolved origin or feed URL (so a blyg's `feed.xml` added
+as plain RSS counts too). This does not remove duplicates a node already has:
+delete the extra one from its source inspector.
+
+**The Smart Feed lens says "Coming soon."** It is a placeholder, and it read
+as if it worked.
+
+**Every reading card shows where it lives.** A muted citation line under the
+body (`↗ host/path`, shortened the way the ⋯ sheet shows it) opens the entry's
+source in a new tab. It appears on every card that has a URL, in every
+timeline and on the hopper page. Before this, the link was only in the ⋯ sheet,
+or on the title when the entry opened with a heading.
+
+---
+
 ## 0.26.0 — 2026-10-04
 
 **Migrations: none.** `/api` changes, all additive: settings gain `ai_model_tk`,

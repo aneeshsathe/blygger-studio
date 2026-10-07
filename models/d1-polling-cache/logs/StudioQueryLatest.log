@@ -1,0 +1,81 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 100 and seed -1709157246450540381 with 1 worker on 10 cores with 1765MB heap and 64MB offheap memory [pid: 1] (Linux 6.12.76-linuxkit aarch64, Eclipse Adoptium 21.0.12 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /work/StudioQuery.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module StudioQuery
+Starting... (2026-10-05 23:31:19)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-05 23:31:19.
+Error: Invariant CacheLabelSound is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ source = 0
+/\ badHit = FALSE
+/\ loads = 0
+/\ cached = <<0, 0>>
+/\ published = <<0, 0>>
+/\ attempts = << [phase |-> "idle", target |-> 0, loaded |-> 0, success |-> FALSE],
+   [phase |-> "idle", target |-> 0, loaded |-> 0, success |-> FALSE] >>
+/\ checks = 0
+/\ present = <<FALSE, FALSE>>
+/\ label = <<0, 0>>
+
+State 2: <Query line 16, col 13 to line 23, col 77 of module StudioQuery>
+/\ source = 0
+/\ badHit = FALSE
+/\ loads = 0
+/\ cached = <<0, 0>>
+/\ published = <<0, 0>>
+/\ attempts = << [phase |-> "load", target |-> 0, loaded |-> 0, success |-> FALSE],
+   [phase |-> "idle", target |-> 0, loaded |-> 0, success |-> FALSE] >>
+/\ checks = 1
+/\ present = <<FALSE, FALSE>>
+/\ label = <<0, 0>>
+
+State 3: <Mutate line 14, col 11 to line 15, col 93 of module StudioQuery>
+/\ source = 1
+/\ badHit = FALSE
+/\ loads = 0
+/\ cached = <<0, 0>>
+/\ published = <<0, 0>>
+/\ attempts = << [phase |-> "load", target |-> 0, loaded |-> 0, success |-> FALSE],
+   [phase |-> "idle", target |-> 0, loaded |-> 0, success |-> FALSE] >>
+/\ checks = 1
+/\ present = <<FALSE, FALSE>>
+/\ label = <<0, 0>>
+
+State 4: <Load line 24, col 12 to line 29, col 85 of module StudioQuery>
+/\ source = 1
+/\ badHit = FALSE
+/\ loads = 1
+/\ cached = <<0, 0>>
+/\ published = <<0, 0>>
+/\ attempts = << [phase |-> "accept", target |-> 0, loaded |-> 0, success |-> TRUE],
+   [phase |-> "idle", target |-> 0, loaded |-> 0, success |-> FALSE] >>
+/\ checks = 1
+/\ present = <<FALSE, FALSE>>
+/\ label = <<0, 0>>
+
+State 5: <Accept line 34, col 14 to line 42, col 70 of module StudioQuery>
+/\ source = 1
+/\ badHit = FALSE
+/\ loads = 1
+/\ cached = <<0, 0>>
+/\ published = <<0, 0>>
+/\ attempts = << [phase |-> "idle", target |-> 0, loaded |-> 0, success |-> TRUE],
+   [phase |-> "idle", target |-> 0, loaded |-> 0, success |-> FALSE] >>
+/\ checks = 1
+/\ present = <<TRUE, FALSE>>
+/\ label = <<1, 0>>
+
+130 states generated, 96 distinct states found, 66 states left on queue.
+The depth of the complete state graph search is 5.
+The average outdegree of the complete state graph is 3 (minimum is 0, the maximum 7 and the 95th percentile is 6).
+Finished in 00s at (2026-10-05 23:31:19)

@@ -74,6 +74,27 @@
 .ed-head a { color: var(--page-ink); font-weight: 600; text-decoration: none; }
 .stub-head { font-size: .84rem; color: var(--page-ink-soft); margin: 0 2px 10px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; overflow-wrap: anywhere; }
 .stub-head a { color: inherit; }
+/* The stub's quote, chosen in the editor (session 37). */
+.stub-quote { margin: -4px 2px 10px; }
+.stub-hint { margin: 0; }
+.link-btn { background: none; border: none; padding: 0; font: inherit; color: var(--page-ink); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.stub-chooser { margin-top: 8px; }
+.stub-post { max-height: 50vh; overflow: auto; border: 1px solid var(--rule); border-radius: 10px; padding: 4px 12px; background: var(--card); }
+.stub-help .stub-grid { border-collapse: collapse; margin: 8px 0 12px; font-size: .88rem; }
+.stub-help .stub-grid th, .stub-help .stub-grid td { border: 1px solid var(--rule); padding: 6px 10px; text-align: left; }
+.stub-help .stub-grid thead th, .stub-help .stub-grid tbody th { color: var(--ink-soft); font-weight: 600; }
+.stub-help pre { background: var(--sunk); border: 1px solid var(--rule); border-radius: 10px; padding: 10px 12px; overflow-x: auto; font-size: .82rem; white-space: pre; }
+.stub-help .check { display: block; margin: 12px 0 4px; }
+/* Floating "quote only this": native selection handles sit where a button
+   beside the text would be, so it floats like the old reading-view pill. */
+.quote-pills { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 40;
+  display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; width: max-content; max-width: calc(100vw - 32px); animation: up .2s ease-out; }
+.quote-pill { background: var(--ink); color: var(--card); border: none; border-radius: 999px; padding: 10px 18px; font: inherit; font-weight: 600; font-size: .9rem; box-shadow: 0 8px 24px rgba(0,0,0,.25); cursor: pointer; white-space: nowrap; }
+.quote-pill-alt { background: var(--card); color: var(--ink); border: 1px solid var(--rule); }
+@media (min-width: 900px) {
+  .quote-pills { bottom: 24px; }
+  body.has-tabs .quote-pills { margin-left: calc(var(--rail) / 2); }
+}
 .editor-grid { display: block; }
 .editor-pane, .preview-pane { min-width: 0; }
 .editor-pane textarea.md { width: 100%; min-height: 46vh; font-family: var(--mono); font-size: .9rem; background: var(--card); border: 1px solid var(--rule); }
@@ -127,12 +148,6 @@
 .editor .actionbar .more-btn { font-size: 1.2rem; }
 
 /* ---------- PALETTE (the [[ / ![[ picker) ---------- */
-.palette { position: absolute; left: 0; right: 0; top: 100%; margin-top: 4px; border: 1px solid var(--rule-strong); border-radius: 12px; padding: 6px; background: var(--card); color: var(--ink); max-width: 60ch; box-shadow: 0 8px 24px rgba(0,0,0,.18); z-index: 10; }
-.palette ul { list-style: none; margin: 0; padding: 0; font-size: .9rem; max-height: 14rem; overflow-y: auto; }
-.palette li { padding: 8px 10px; border-top: 1px solid var(--rule); cursor: pointer; overflow-wrap: anywhere; }
-.palette li:first-child { border-top: none; }
-.palette li.sel { background: var(--sunk); border-radius: 8px; }
-.palette .btn { margin: 6px 4px 2px 0; }
 
 /* ---------- Version-N confirmation ---------- */
 .note-confirm label { display: block; font-size: .8rem; font-weight: 600; color: var(--ink-soft); margin-bottom: .25rem; }
@@ -147,3 +162,5 @@
   .tk-instruction { white-space: normal; overflow: visible; flex-basis: 100%; }
   .editor .actionbar .btn { padding: 10px 12px; }
 }
+.stub-help p[tabindex] { outline: none; }
+.stub-help pre code { padding: 0; background: none; border: none; font-size: inherit; }

@@ -30,18 +30,25 @@ Consult `openapi.json` for every field and response.
 | Media | Included in item detail | `POST /media` with a multipart file (`inline=true` when the client places it in the text), `DELETE /media/{id}` (detaches; deletes the file only when no published version shows it) |
 | Imported items | `GET /imports/{sub}/{id}`, `GET /imports/{sub}/{id}/history`, `GET /imports/{sub}/{id}/versions/{v}` (history and public versions, read from the origin) | The subscription importer manages these items |
 | Reading | `GET /reading` | Read only |
+| Change revisions | `GET /changes` | Maintained by database triggers |
 | Quote freshness | `GET /freshness`, `GET /items/{id}/freshness` | `POST /items/{id}/refresh` |
 
 Publication, withdrawal, restoration, and generation remain explicit operations:
 
 - `POST /items/{id}/publish` and `POST /items/{id}/withdraw` accept an optional publication note.
-- `POST /items/{id}/restore` copies a stored version into the working draft. It does not publish.
+- `POST /items/{id}/restore` copies a stored version into the working copy. It does not publish.
 - `POST /items/{id}/generate` generates one TK scope.
 - `POST /subscriptions/{id}/resync` refreshes a Blyg subscription.
 - `POST /items/{id}/note-draft` drafts a changelog note from the change between the published version and the working copy. It never publishes. When the published version is unpinned, the note must not reproduce wording that only that version had; a draft that does returns 422. Send `note_generated: true` with `POST /items/{id}/publish` only when the note is that draft, unedited: it becomes `changelog[].generated` on the wire.
 - `POST /items/{id}/refresh` republishes a thread to re-bake quotes whose source has a newer version. See below.
 
 Preview and search use `/preview` and `/search`.
+`GET /changes` returns `{ epoch, domains }`, with revision counters for items,
+Reading, subscriptions, hoppers, signals, settings and the public feed. It uses
+the same current owner/delegated read authorization as other private reads.
+Clients can skip unchanged data refreshes, but must capture their target before
+loading and acknowledge it only after successful installation. These are change
+signals, not row-delta cursors or permission to cache authorization decisions.
 The old fork, stub, pause, resume, response-policy, and pin routes no longer exist.
 Studio calls the canonical routes through the generated SDK.
 

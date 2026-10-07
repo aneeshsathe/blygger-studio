@@ -1,0 +1,77 @@
+Exit code: 75
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 96 and seed -7831178417783926434 with 1 worker on 10 cores with 1765MB heap and 64MB offheap memory [pid: 1] (Linux 6.12.76-linuxkit aarch64, Eclipse Adoptium 21.0.12 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /work/Feed.tla
+Parsing file /tmp/Naturals.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module Feed
+Starting... (2026-10-05 20:44:08)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-10-05 20:44:08.
+Error: Successor state is not completely specified by action Request of the next-state relation. The following variable is not assigned: missedCheck.
+
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ revision = 0
+/\ source = 0
+/\ services = 0
+/\ attempts = << [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE ] >>
+/\ triggerWrites = 0
+/\ checks = 0
+/\ regressed = FALSE
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ missedCheck = FALSE
+/\ renders = 0
+
+State 2: <Request line 25, col 5 to line 31, col 90 of module Feed>
+/\ revision = 0
+/\ source = 0
+/\ services = 1
+/\ attempts = << [ phase |-> "done",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> TRUE ],
+   [ phase |-> "idle",
+     before |-> 0,
+     commit |-> 0,
+     expected |-> 0,
+     a |-> 0,
+     b |-> 0,
+     tries |-> 0,
+     conditional |-> FALSE ] >>
+/\ triggerWrites = 0
+/\ checks = 0
+/\ regressed = FALSE
+/\ artifact = [commit |-> 0, a |-> 0, b |-> 0, rev |-> 0, token |-> 0]
+/\ missedCheck = null
+/\ renders = 0
+
+5 states generated, 4 distinct states found, 3 states left on queue.
+The depth of the complete state graph search is 2.
+Finished in 00s at (2026-10-05 20:44:08)
+

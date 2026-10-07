@@ -1,14 +1,18 @@
-import { SELF } from "cloudflare:test";
+import { SELF, env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { routes } from "../src/contract/routes.ts";
+import { makeApp } from '../src/index.ts';
+import { normalizeMount } from '../src/util.ts';
 
 export const BASE = "https://example.com";
 /** Matches vitest.config.ts's default-worker MOUNT binding ("/blyg") — studio is nested under it since session 16. */
 export const STUDIO = "/blyg/studio";
 
-/** Log in as owner, return the Cookie header value. */
-export async function login(password = "test-password"): Promise<string> {
+/** Each call opens an independent test browser, with its own edge address. */
+let ownerBrowserSequence = 0;
+export async function login(password = "test-password", edgeIP = `2001:db8:c001:${(++ownerBrowserSequence).toString(16)}::1`): Promise<string> {
   const res = await SELF.fetch(`${BASE}${STUDIO}/login`, {
     method: "POST",
+    headers: { "cf-connecting-ip": edgeIP },
     body: new URLSearchParams({ password }),
     redirect: "manual",
   });
@@ -53,5 +57,16 @@ export async function createAndPublish(cookie: string, contentMd: string, note?:
 }
 
 export async function getPublic(path: string): Promise<Response> {
+  if (new URL(path, BASE).pathname.endsWith('/feed.xml')) {
+    // Existing wire-content tests compare settled XML. The dedicated cache
+    // oracle separately asserts the first stale response and background work.
+    const app = makeApp(normalizeMount(env.MOUNT));
+    const firstCtx = createExecutionContext();
+    const first = await app.fetch(new Request(new URL(path, BASE)), env, firstCtx);
+    await first.arrayBuffer(); await waitOnExecutionContext(firstCtx);
+    const ctx = createExecutionContext();
+    const response = await app.fetch(new Request(new URL(path, BASE)), env, ctx);
+    await waitOnExecutionContext(ctx); return response;
+  }
   return SELF.fetch(`${BASE}${path}`);
 }

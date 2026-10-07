@@ -8,8 +8,9 @@
  * Each subscription has an inspector sheet (ⓘ, or swipe its row left), which
  * replaced the /subs page as the place a feed is managed. Every action an
  * entry had before the redesign is still here — the bar holds the ones used
- * most, the ⋯ sheet the rest — and the swipes and the select-to-quote pill
- * are second ways to the same handlers, never the only way.
+ * most, the ⋯ sheet the rest — and the swipes are second ways to the same
+ * handlers, never the only way. Choosing a passage to quote happens in the
+ * stub editor (session 37), not here.
  */
 import { readingPage } from '../paging.ts';
 import type { ReactNode } from 'react';
@@ -46,6 +47,7 @@ import {
   useChrome,
   usePoll,
   useSettings,
+  SourceLink,
 } from './components.tsx';
 import { Sheet, confirm, menu, prompt, toast } from './sheets.tsx';
 import { displayUrl, sourceTitleAndUrl } from '../importer/util.ts';
@@ -58,6 +60,8 @@ import { Coach, LineageGlyph, LineageSheet, glyphCounts, glyphLabel, usedAction,
 import type { Lineage } from '../../sdk/dist/browser.js';
 import './reading.css';
 
+import type { CachedResponse } from './revision-query.ts';
+
 const PAGE = 25;
 
 /* ---------------- small helpers ---------------- */
@@ -65,8 +69,8 @@ const PAGE = 25;
 /** The cached page metadata (counts, total) for one reading view. */
 function readingMeta(sub: string, offset: number) {
   return queryClient
-    .getQueriesData<ListReadingResponses[200]>({ queryKey: ['reading', sub] })
-    .map(([, value]) => value)
+    .getQueriesData<CachedResponse<ListReadingResponses[200]>>({ queryKey: ['reading', sub] })
+    .map(([, value]) => value?.data)
     .find((value) => value?.offset === offset);
 }
 /** A poll time, to the minute, in the owner's timezone. */
@@ -248,19 +252,6 @@ function canLink(entry: Reading) {
 function canQuote(entry: Reading) {
   return !!entry.imported && !entry.l0 && canLink(entry);
 }
-function selectedTextInEntry(key: string) {
-  const selected = window.getSelection();
-  const start = selected?.anchorNode?.parentElement?.closest('.content');
-  const end = selected?.focusNode?.parentElement?.closest('.content');
-  if (
-    !selected?.toString().trim() ||
-    start !== end ||
-    start?.closest('[data-key]')?.getAttribute('data-key') !== key
-  ) {
-    throw new Error('Select text in this entry to quote first.');
-  }
-  return selected.toString();
-}
 function entryParts(entry: Reading) {
   const imported = entry.imported;
   const id = entry.own?.id || imported!.remoteId;
@@ -289,7 +280,8 @@ function nodeHandlers(node: Lineage['node'], actions: Actions): Handlers {
     const source = { subscription_id: node.sub, remote_id: id };
     return {
       stub: { run: () => void run(() => openDraft({ mode: 'response', source })) },
-      quote: { unavailable: 'To quote a passage, find this post in its timeline and select the text there.' },
+      // Passages are chosen in the stub editor (0.31): quote opens it, like stub.
+      quote: { run: () => void run(() => openDraft({ mode: 'response', source })) },
       fork: { run: () => void navigate({ to: '/fork', search: { id, sub: node.sub! } }) },
       link: { run: () => void run(() => openDraft({ content_md: `[[${id}]]\n\n`, kind: 'fragment' })) },
       history: { unavailable: "Its history opens from the post's own ⋯ sheet in the timeline." },
@@ -328,7 +320,6 @@ function Entry({
   const settings = useSettings();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [lineageOpen, setLineageOpen] = useState(false);
-  const [lineageSelection, setLineageSelection] = useState<string>();
   // The action being pointed at in the bar: drawn as a ghost on the glyph,
   // with a coach line while its tip lasts (option C).
   const [pointing, setPointing] = useState<ActionKey | null>(null);
@@ -380,36 +371,17 @@ function Entry({
     usedAction('open');
     window.open(url, '_blank', 'noreferrer');
   };
-  const quote = (selection: string) =>
-    source
-      ? run(() => {
-          usedAction('quote');
-          return openDraft({ mode: 'response', source, selection });
-        })
-      : undefined;
-  const openLineage = () => {
-    // As with ⋯: read the selection now, before the sheet takes focus.
-    let selection: string | undefined;
-    if (canQuote(entry))
-      try {
-        selection = selectedTextInEntry(entry.key);
-      } catch {
-        selection = undefined;
-      }
-    setLineageSelection(selection);
-    setLineageOpen(true);
-  };
+  const openLineage = () => setLineageOpen(true);
   // The lineage sheet counts uses itself; these run the same handlers as the bar and ⋯.
   const handlersFor = (node: Lineage['node'], isStart: boolean): Handlers => {
     if (!isStart) return nodeHandlers(node, actions);
     const yours = entry.own ? 'This is your own post — edit it rather than respond to it.' : undefined;
     return {
       stub: imported && source ? { run: () => void run(() => openDraft({ mode: 'response', source })) } : { unavailable: yours ?? 'This post cannot be responded to.' },
+      // Passages are chosen in the stub editor (0.31): quote opens it, like stub.
       quote:
         canQuote(entry) && source
-          ? lineageSelection
-            ? { run: () => void run(() => openDraft({ mode: 'response', source, selection: lineageSelection })) }
-            : { unavailable: 'Select the passage in the post first, then open the lineage again — or use the ❝ quote selection pill.' }
+          ? { run: () => void run(() => openDraft({ mode: 'response', source })) }
           : { unavailable: yours ?? 'Only a blyg post you follow can be quoted.' },
       fork: canQuote(entry) && imported ? { run: () => void navigate({ to: '/fork', search: { id, sub: imported.subscriptionId } }) } : { unavailable: yours ?? 'This post cannot be forked.' },
       link: canLink(entry) ? { run: () => void run(() => openDraft({ content_md: `[[${id}]]\n\n`, kind: 'fragment' })) } : { unavailable: 'A link to this post would not resolve.' },
@@ -453,34 +425,8 @@ function Entry({
       toast(`added to ${name}`);
     });
   const openMenu = async () => {
-    // Read the selection now: the sheet takes focus, and "quote selection"
-    // quotes what was selected when ⋯ was pressed.
-    let selection: string | undefined;
-    let selectionError: unknown;
-    if (canQuote(entry))
-      try {
-        selection = selectedTextInEntry(entry.key);
-      } catch (failure) {
-        selectionError = failure;
-      }
     await menu({
       rows: [
-        canQuote(entry) &&
-          source && {
-            icon: '❝',
-            label: 'quote selection',
-            description: (
-              <>
-                {menuTip('quote')}
-                select text in the entry first — a quote selection button appears
-              </>
-            ),
-            onSelect: () =>
-              void run(async () => {
-                if (selection === undefined) throw selectionError;
-                await quote(selection);
-              }),
-          },
         canLink(entry) && {
           icon: '⇢',
           label: 'link post ↗',
@@ -577,8 +523,6 @@ function Entry({
                 data-action="lineage"
                 aria-label={glyphLabel(entry.lineage)}
                 title="where this came from, what came from it, and what each action does"
-                // Keep a text selection alive, for quote selection in the sheet.
-                onMouseDown={(event) => event.preventDefault()}
                 onClick={openLineage}
               >
                 <LineageGlyph summary={entry.lineage} ghost={pointing} />
@@ -595,6 +539,7 @@ function Entry({
             </p>
           ) : null}
           <Body html={entry.contentHtml} url={url} l0={entry.l0} />
+          <SourceLink url={url} />
         </div>
         {imported && !entry.l0 && historyOpen ? (
           <History sub={imported.subscriptionId} id={id} />
@@ -671,71 +616,7 @@ function Entry({
   );
 }
 
-/** "❝ quote selection" while text is selected inside one quotable entry. */
-function QuotePill({
-  quotable,
-  onQuote,
-}: {
-  quotable: (key: string) => boolean;
-  onQuote: (key: string) => void;
-}) {
-  const [key, setKey] = useState<string | null>(null);
-  const latest = useRef({ quotable, onQuote });
-  latest.current = { quotable, onQuote };
-  const button = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    const contentOf = (node: Node | null | undefined) =>
-      (node?.nodeType === Node.ELEMENT_NODE
-        ? (node as Element)
-        : node?.parentElement
-      )?.closest('.content');
-    const check = () => {
-      const selection = window.getSelection();
-      const start = contentOf(selection?.anchorNode);
-      const found =
-        selection &&
-        !selection.isCollapsed &&
-        selection.toString().trim() &&
-        start &&
-        start === contentOf(selection.focusNode)
-          ? start.closest('[data-key]')?.getAttribute('data-key')
-          : null;
-      setKey(found && latest.current.quotable(found) ? found : null);
-    };
-    document.addEventListener('selectionchange', check);
-    return () => document.removeEventListener('selectionchange', check);
-  }, []);
-  useEffect(() => {
-    const element = button.current;
-    if (!element || !key) return;
-    // Pressing the pill must not collapse the selection it quotes. React's
-    // touch listeners are passive, so these are native.
-    const touch = (event: TouchEvent) => {
-      event.preventDefault();
-      latest.current.onQuote(key);
-    };
-    const mouse = (event: MouseEvent) => event.preventDefault();
-    element.addEventListener('touchstart', touch, { passive: false });
-    element.addEventListener('mousedown', mouse);
-    return () => {
-      element.removeEventListener('touchstart', touch);
-      element.removeEventListener('mousedown', mouse);
-    };
-  }, [key]);
-  return key ? (
-    <button
-      ref={button}
-      type="button"
-      className="quote-pill"
-      data-action="quote-pill"
-      onClick={() => latest.current.onQuote(key)}
-    >
-      ❝ quote selection
-    </button>
-  ) : null;
-}
-
-/** Entries, the select-to-quote pill, and the error line above them. */
+/** Entries and the error line above them. */
 function EntryList({
   entries,
   actions,
@@ -747,7 +628,6 @@ function EntryList({
     useLiveQuery({ query: (q) => q.from({ signal: signals }) }).data ?? [];
   const buckets =
     useLiveQuery({ query: (q) => q.from({ hopper: hoppers }) }).data ?? [];
-  const byKey = new Map(entries.map((entry) => [entry.key, entry]));
   return (
     <>
       {entries.map((entry) => (
@@ -759,25 +639,6 @@ function EntryList({
           buckets={buckets}
         />
       ))}
-      <QuotePill
-        quotable={(key) => {
-          const entry = byKey.get(key);
-          return !!entry && canQuote(entry);
-        }}
-        onQuote={(key) => {
-          const entry = byKey.get(key);
-          const { source } = entry ? entryParts(entry) : {};
-          if (!source) return;
-          usedAction('quote');
-          void actions.run(async () =>
-            actions.openDraft({
-              mode: 'response',
-              source,
-              selection: selectedTextInEntry(key),
-            }),
-          );
-        }}
-      />
     </>
   );
 }
@@ -1024,7 +885,7 @@ const LENS_LABELS: Record<Lens, string> = {
  * filter whatever is open (the sources list's counts too); Background and
  * Smart Feed are placeholders that telegraph where reading is going.
  */
-function LensBar({ sub, hopper }: { sub?: string; hopper?: string }) {
+function LensBar({ sub, hopper, sources }: { sub?: string; hopper?: string; sources?: boolean }) {
   const lens = useContext(LensContext);
   const navigate = useNavigate();
   const bar = useRef<HTMLDivElement>(null);
@@ -1037,7 +898,13 @@ function LensBar({ sub, hopper }: { sub?: string; hopper?: string }) {
     if (el.offsetLeft + el.offsetWidth > box.scrollLeft + box.clientWidth) box.scrollLeft = el.offsetLeft + el.offsetWidth - box.clientWidth;
     else if (el.offsetLeft < box.scrollLeft) box.scrollLeft = el.offsetLeft;
   }, [lens]);
-  const place = hopper ? { hopper, offset: 0 } : sub ? { sub, offset: 0 } : {};
+  const place = sources
+    ? { view: 'sources' as const }
+    : hopper
+      ? { hopper, offset: 0 }
+      : sub && sub !== 'all'
+        ? { sub, offset: 0 }
+        : {};
   // Buttons, not router Links: a Link to /reading counts as "current" under
   // every lens, which would mark All active alongside the real choice.
   return (
@@ -1059,7 +926,9 @@ function LensBar({ sub, hopper }: { sub?: string; hopper?: string }) {
 }
 export const BACKGROUND_NOTE =
   'Procedural version updates for managing staleness, with ignyr in the changelog, will appear here once the feature is designed and incorporated into the protocol.';
-export const SMART_FEED_NOTE = 'Feed sorted and filtered by your AI agent. Set a prompt in Settings.';
+export const SMART_FEED_NOTE = 'Coming soon. Feed sorted and filtered by your AI agent. You can already set its prompt in Settings.';
+const isPlaceholder = (lens: Lens): lens is 'background' | 'smart' =>
+  lens === 'background' || lens === 'smart';
 function LensPlaceholder({ lens }: { lens: 'background' | 'smart' }) {
   return (
     <div className="empty lens-placeholder">
@@ -1068,7 +937,8 @@ function LensPlaceholder({ lens }: { lens: 'background' | 'smart' }) {
       </span>
       {lens === 'smart' ? (
         <>
-          Feed sorted and filtered by your AI agent. Set a prompt in{' '}
+          <strong>Coming soon.</strong> Feed sorted and filtered by your AI
+          agent. You can already set its prompt in{' '}
           <Link to="/settings">Settings</Link>.
         </>
       ) : (
@@ -1206,13 +1076,12 @@ function Sources() {
   const actions = useReadingActions();
   const { toggle } = useSubscriptionActions(actions);
   const [inspect, setInspect] = useState<string>();
-  const [adding, setAdding] = useState(false);
   // The first page of "all" carries the counts for every source; it is also
   // what tapping "all" shows, so it is warm when that happens.
   const lens = useContext(LensContext);
   const allKey = readingKey('all', lens);
   useLiveQuery(readingView(allKey, 0));
-  const refresh = useMemo(() => () => refreshReading(allKey, 0), [allKey]);
+  const refresh = useMemo(() => () => refreshReading(allKey), [allKey]);
   usePoll(`reading:${allKey}:0`, refresh);
   usePoll('subscriptions', subscriptions.utils.refetch);
   usePoll('hoppers', hoppers.utils.refetch);
@@ -1225,19 +1094,18 @@ function Sources() {
   const inspected = sources.find((source) => source.id === inspect);
   return (
     <>
-      <div className="view-head">
-        <h2 className="view-h">reading</h2>
-        <Button
-          className="icon-btn"
-          aria-label="subscribe"
-          title="subscribe"
-          onClick={() => setAdding(true)}
-        >
-          ＋
-        </Button>
-      </div>
-      <LensBar />
+      <ReadingHead
+        active="sources"
+        title="sources"
+        count={sources.length}
+        unit="subscriptions"
+      />
+      <LensBar sources />
       <Failure error={actions.error} />
+      {isPlaceholder(lens) ? (
+        <LensPlaceholder lens={lens} />
+      ) : (
+        <>
       <div className="list-h">
         <span>sources</span>
       </div>
@@ -1287,41 +1155,107 @@ function Sources() {
           No subscriptions yet — tap ＋ to subscribe to a blyg or a feed.
         </div>
       )}
+        </>
+      )}
       <Inspector
         source={inspected}
         count={inspected ? counts?.subscriptions[inspected.id] : undefined}
         onClose={() => setInspect(undefined)}
         actions={actions}
       />
-      <SubscribeSheet open={adding} onClose={() => setAdding(false)} />
     </>
   );
 }
 
 /* ---------------- timelines ---------------- */
 
-function TimelineHead({
-  title,
-  count,
-  children,
-}: {
-  title: string;
-  count: number | undefined;
-  children?: ReactNode;
-}) {
+/** Feed and Sources: reading's two screens, peers, Feed first. */
+function ReadingTabs({ active }: { active: 'feed' | 'sources' }) {
+  const navigate = useNavigate();
   const lensSearch = useLensSearch();
   return (
+    <div className="segmented reading-tabs" role="group" aria-label="reading view">
+      {(['feed', 'sources'] as const).map((value) => (
+        <Button
+          key={value}
+          className={`seg${active === value ? ' is-active' : ''}`}
+          aria-pressed={active === value}
+          onClick={() =>
+            void navigate({
+              to: '/reading',
+              search: { ...(value === 'sources' ? { view: 'sources' as const } : {}), ...lensSearch },
+            })
+          }
+        >
+          {value === 'feed' ? 'Feed' : 'Sources'}
+        </Button>
+      ))}
+    </div>
+  );
+}
+/**
+ * The head of every reading screen, the same under every lens so nothing
+ * jumps: the Feed/Sources tabs, a title with its count, the screen's own
+ * actions, and ＋ subscribe.
+ */
+function ReadingHead({
+  active = 'feed',
+  title,
+  count,
+  unit = 'items',
+  children,
+}: {
+  active?: 'feed' | 'sources';
+  title: string;
+  count: number | undefined;
+  unit?: string;
+  children?: ReactNode;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [resyncing, setResyncing] = useState(false);
+  // Polls run in the background on the server; refresh twice as they land.
+  const resyncAll = async () => {
+    setResyncing(true);
+    try {
+      const { polling } = await unwrap(BlyggerApi.pollAllSubscriptions({ client }));
+      toast(`Checking ${polling} feed${polling === 1 ? '' : 's'}…`);
+      for (const wait of [6000, 20000]) setTimeout(() => void changed('reading', 'subscriptions'), wait);
+    } catch {
+      toast('Could not start the resync. Try again in a moment.');
+    } finally {
+      setTimeout(() => setResyncing(false), 6000);
+    }
+  };
+  return (
     <>
-      <Link className="back-link" to="/reading" search={{ ...lensSearch }}>
-        ← sources
-      </Link>
+      <ReadingTabs active={active} />
       <div className="view-head">
         <h2 className="view-h">
           {title}
-          {count !== undefined ? <small>{count} items</small> : null}
+          <small>{count !== undefined ? `${count} ${unit}` : '\u00a0'}</small>
         </h2>
-        {children}
+        <div className="view-actions">
+          {children}
+          <Button
+            className="icon-btn"
+            aria-label="resync all feeds"
+            title="resync all feeds"
+            disabled={resyncing}
+            onClick={() => void resyncAll()}
+          >
+            ↻
+          </Button>
+          <Button
+            className="icon-btn"
+            aria-label="subscribe"
+            title="subscribe"
+            onClick={() => setAdding(true)}
+          >
+            ＋
+          </Button>
+        </div>
       </div>
+      <SubscribeSheet open={adding} onClose={() => setAdding(false)} />
     </>
   );
 }
@@ -1330,14 +1264,15 @@ function Timeline({ sub, offset }: { sub: string; offset: number }) {
   useChrome({ framed: false, wide: false });
   const actions = useReadingActions();
   const [inspecting, setInspecting] = useState(false);
-  const key = readingKey(sub, useContext(LensContext));
+  const lens = useContext(LensContext);
+  const key = readingKey(sub, lens);
   const entries = useLiveQuery(readingView(key, offset));
   const sources =
     useLiveQuery({ query: (q) => q.from({ source: subscriptions }) }).data ??
     [];
   const refresh = useMemo(
-    () => () => refreshReading(key, offset),
-    [key, offset],
+    () => () => refreshReading(key),
+    [key],
   );
   usePoll(`reading:${key}:${offset}`, refresh);
   usePoll('subscriptions', subscriptions.utils.refetch);
@@ -1355,7 +1290,7 @@ function Timeline({ sub, offset }: { sub: string; offset: number }) {
           : 'all';
   return (
     <>
-      <TimelineHead title={title} count={metadata?.total}>
+      <ReadingHead title={title} count={metadata?.total}>
         {selected ? (
           <Button
             className="icon-btn"
@@ -1365,7 +1300,7 @@ function Timeline({ sub, offset }: { sub: string; offset: number }) {
             ⓘ
           </Button>
         ) : null}
-      </TimelineHead>
+      </ReadingHead>
       <LensBar sub={sub} />
       <Failure error={actions.error} />
       {selected?.status === 'paused' ? (
@@ -1376,33 +1311,39 @@ function Timeline({ sub, offset }: { sub: string; offset: number }) {
           <div className="body">Paused — not polled until you resume it.</div>
         </div>
       ) : null}
-      {entries.isLoading ? <p className="view-sub">Loading reading…</p> : null}
-      <EntryList entries={entries.data ?? []} actions={actions} />
-      {!entries.isLoading && !entries.data?.length ? (
-        <div className="empty">
-          <span className="em" aria-hidden="true">
-            ◫
-          </span>
-          No items yet.
-        </div>
-      ) : null}
-      <Pager
-        offset={offset}
-        total={metadata?.total}
-        go={(next) =>
-          void actions.navigate({
-            to: '/reading',
-            search: { sub, offset: next, ...lensSearch },
-          })
-        }
-      />
+      {isPlaceholder(lens) ? (
+        <LensPlaceholder lens={lens} />
+      ) : (
+        <>
+          {entries.isLoading ? <p className="view-sub">Loading reading…</p> : null}
+          <EntryList entries={entries.data ?? []} actions={actions} />
+          {!entries.isLoading && !entries.data?.length ? (
+            <div className="empty">
+              <span className="em" aria-hidden="true">
+                ◫
+              </span>
+              No items yet.
+            </div>
+          ) : null}
+          <Pager
+            offset={offset}
+            total={metadata?.total}
+            go={(next) =>
+              void actions.navigate({
+                to: '/reading',
+                search: { sub, offset: next, ...lensSearch },
+              })
+            }
+          />
+        </>
+      )}
       <Inspector
         source={inspecting ? selected : undefined}
         count={metadata?.total}
         onClose={() => setInspecting(false)}
         actions={actions}
         onDeleted={() =>
-          void actions.navigate({ to: '/reading', search: {} })
+          void actions.navigate({ to: '/reading', search: { view: 'sources' } })
         }
       />
     </>
@@ -1459,7 +1400,8 @@ function HopperTimeline({ id, offset }: { id: string; offset: number }) {
   const sources =
     useLiveQuery({ query: (q) => q.from({ source: subscriptions }) }).data ??
     [];
-  const kind = lensKind(useContext(LensContext));
+  const lens = useContext(LensContext);
+  const kind = lensKind(lens);
   const entries = useMemo(
     () =>
       (row?.items ?? [])
@@ -1473,11 +1415,18 @@ function HopperTimeline({ id, offset }: { id: string; offset: number }) {
         ),
     [row, sources, kind],
   );
-  if (!row) return <p className="view-sub">Loading hopper…</p>;
+  if (!row)
+    return (
+      <>
+        <ReadingHead title="hopper" count={undefined} />
+        <LensBar hopper={id} />
+        <p className="view-sub">Loading hopper…</p>
+      </>
+    );
   const start = offset < entries.length ? offset : 0;
   return (
     <>
-      <TimelineHead title={row.hopper.name} count={kind ? entries.length : row.total}>
+      <ReadingHead title={row.hopper.name} count={kind ? entries.length : row.total}>
         <Link
           className="btn btn-ghost btn-mini"
           to="/hoppers/$id"
@@ -1485,9 +1434,13 @@ function HopperTimeline({ id, offset }: { id: string; offset: number }) {
         >
           manage
         </Link>
-      </TimelineHead>
+      </ReadingHead>
       <LensBar hopper={id} />
       <Failure error={actions.error} />
+      {isPlaceholder(lens) ? (
+        <LensPlaceholder lens={lens} />
+      ) : (
+        <>
       <EntryList
         entries={entries.slice(start, start + PAGE)}
         actions={actions}
@@ -1511,6 +1464,8 @@ function HopperTimeline({ id, offset }: { id: string; offset: number }) {
           }
         />
       )}
+        </>
+      )}
     </>
   );
 }
@@ -1520,35 +1475,25 @@ export function ReadingPage({
   hopper,
   offset,
   lens = 'all',
+  view,
 }: {
   sub?: string;
   hopper?: string;
   offset?: number;
   lens?: Lens;
+  view?: 'sources';
 }) {
   return (
     <LensContext.Provider value={lens}>
-      <ReadingScreen sub={sub} hopper={hopper} offset={offset} lens={lens} />
+      {view === 'sources' ? (
+        <Sources />
+      ) : hopper ? (
+        <HopperTimeline id={hopper} offset={offset ?? 0} />
+      ) : (
+        <Timeline sub={sub ?? 'all'} offset={offset ?? 0} />
+      )}
     </LensContext.Provider>
   );
-}
-function ReadingScreen({ sub, hopper, offset, lens }: { sub?: string; hopper?: string; offset?: number; lens: Lens }) {
-  if (lens === 'background' || lens === 'smart')
-    return (
-      <>
-        <PlaceholderChrome />
-        <h2 className="view-h">reading</h2>
-        <LensBar sub={sub} hopper={hopper} />
-        <LensPlaceholder lens={lens} />
-      </>
-    );
-  if (hopper) return <HopperTimeline id={hopper} offset={offset ?? 0} />;
-  if (sub) return <Timeline sub={sub} offset={offset ?? 0} />;
-  return <Sources />;
-}
-function PlaceholderChrome() {
-  useChrome({ framed: false, wide: false });
-  return null;
 }
 
 /* ---------------- imported history (#40) ---------------- */

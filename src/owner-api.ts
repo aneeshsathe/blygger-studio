@@ -1,16 +1,65 @@
+import { bodyLimit } from 'hono/body-limit';
+import { securityLimit, admitApi, withWorkPrincipal } from './security-budgets.ts';
+import { matchedRoutes } from 'hono/route';
 import { routes } from "./contract/routes.ts";
 import { contractApp } from "./contract/app.ts";
 import { verifySession } from "./auth.ts";
 import { api } from "./api.ts";
 import { importerApi } from "./importer/api.ts";
 import { mentionsApi } from "./mentions/api.ts";
+import { verifyBearer, bearerChallenge, authLocations } from './oauth.ts';
+import { matchOperation, operationScopes, type OwnerAccess } from './permissions.ts';
 import spec from "../openapi.json";
 import { readApi } from "./read-api.ts";
 
-export const ownerApi = contractApp();
+export function createOwnerApi(access?: OwnerAccess) {
+const ownerApi = contractApp();
+ownerApi.use('*', (c, next) => bodyLimit({ maxSize: securityLimit(c.env.API_BODY_LIMIT, 8 * 1024 * 1024), onError: c => c.json({ error: 'request body exceeds byte limit' }, 413) })(c, next));
 ownerApi.use("*", async (c, next) => {
   c.header("Cache-Control", "no-store");
-  if (!(await verifySession(c.env, c.req.header("cookie")))) return c.json({ error: "unauthorized" }, 401);
+  const origin = c.req.header('origin');
+  const authorization = c.req.header('authorization');
+  const bearer = authorization && /^Bearer(?:\s|$)/i.test(authorization) ? authorization : undefined;
+  const delegated = access ?? (bearer ? await verifyBearer(c.req.raw, c.env, 'api') : null);
+  if (!delegated) {
+    if (bearer || !await verifySession(c.env, c.req.header('cookie'))) {
+      c.header('WWW-Authenticate', bearerChallenge(c.req.url, c.env, 'api'));
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    if (origin && origin !== new URL(c.req.url).origin || c.req.header('sec-fetch-site') === 'cross-site') return c.json({ error: 'cross-origin owner request denied' }, 403);
+  } else {
+    c.set('draftOnlyMedia', !delegated.scope.includes('owner:publish'));
+    const operation = matchOperation(c.req.method, matchedRoutes(c).map(route => route.path));
+    if (!operation && !['GET', 'HEAD'].includes(c.req.method)) {
+      c.header('WWW-Authenticate', bearerChallenge(c.req.url, c.env, 'api', '', true));
+      return c.json({ error: 'unclassified write denied' }, 403);
+    }
+    const required = operation ? operationScopes(operation[0]) : ['owner:read'];
+    // Changing response display edits the public page immediately, without publish.
+    // Changing response display or generated highlighting does the same.
+    if (operation?.[0] === 'updateItem') {
+      const body = await c.req.raw.clone().json().catch(() => ({})) as { responses?: unknown; highlight?: unknown };
+      if (body.responses !== undefined || body.highlight !== undefined) required.push('owner:publish');
+    }
+    // The avatar shows on every public page: choosing it publishes its bytes.
+    if (operation?.[0] === 'updateSettings') {
+      const body = await c.req.raw.clone().json().catch(() => ({})) as { avatar_media_id?: unknown };
+      if (body.avatar_media_id !== undefined) required.push('owner:publish');
+    }
+    if (required.some(scope => !delegated.scope.includes(scope))) {
+      c.header('WWW-Authenticate', bearerChallenge(c.req.url, c.env, 'api', required.join(' '), true));
+      return c.json({ error: 'insufficient scope' }, 403);
+    }
+  }
+  c.env = withWorkPrincipal(c.env, delegated ?? undefined);
+  // POST /api/preview renders a draft and stores nothing; the editor sends
+  // one on every pause in typing. Counting it as a write throttled ordinary
+  // editing at 120 a minute (session 36), so it spends the read budget.
+  const reads = ['GET', 'HEAD'].includes(c.req.method) || (c.req.method === 'POST' && c.req.path === '/api/preview');
+  if (!await admitApi(c.env, reads)) {
+    c.header('Retry-After', '60');
+    return c.json({ error: 'API work budget exceeded' }, 429);
+  }
   return next();
 });
 ownerApi.route("/", api);
@@ -18,7 +67,14 @@ ownerApi.route("/", importerApi);
 ownerApi.route("/", mentionsApi);
 ownerApi.route("/", readApi);
 
-ownerApi.get("/openapi.json", (c) => c.json(spec));
+ownerApi.get('/openapi.json', c => {
+  const document = structuredClone(spec);
+  const { issuer } = authLocations(c.req.url, c.env);
+  document.components.securitySchemes.ownerOAuth.flows.authorizationCode.authorizationUrl = issuer + '/oauth2/authorize';
+  document.components.securitySchemes.ownerOAuth.flows.authorizationCode.tokenUrl = issuer + '/oauth2/token';
+  document.servers = [{ url: new URL(c.req.url).origin }];
+  return c.json(document);
+});
 
 ownerApi.all("*", (c) => {
   const path = c.req.path.replace(/^\/api(?=\/|$)/, "");
@@ -29,3 +85,7 @@ ownerApi.all("*", (c) => {
   }
   return c.json({ error: "not found" }, 404);
 });
+
+return ownerApi;
+}
+export const ownerApi = createOwnerApi();

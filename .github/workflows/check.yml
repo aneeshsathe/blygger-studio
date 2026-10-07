@@ -26,6 +26,8 @@ jobs:
       - run: npm test -- --maxWorkers=2
       - run: npm run test:upgrade
       - run: npm run test:mutations
+      - run: npm run test:polling-cache:mutations
+      - run: npm run test:auth:security:mutations
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v4
         if: failure()
@@ -34,6 +36,8 @@ jobs:
           path: |
             test-results/
             build/mutation-*.log
+            build/polling-mutation-*.log
+            build/security-mutant-*.log
   sdk-generation:
     runs-on: ubuntu-latest
     steps:

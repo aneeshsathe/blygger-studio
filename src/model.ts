@@ -15,7 +15,7 @@ import {
 } from "./transclusion.ts";
 import type { ForkedFrom, ItemRow, MediaRow, ScopeProvenance, Settings, StubCite, StubOf, Transclusion, VersionRow } from "./types.ts";
 import { FRAGMENT_MAX_CHARS } from "./types.ts";
-import { absolutizeHtml, authoredText, contentHash, newId, nowIso } from "./util.ts";
+import { absolutizeHtml, authoredText, contentHash, isFollowableUrl, newId, nowIso } from "./util.ts";
 
 export { TkPublishError, TransclusionResolveError };
 
@@ -76,7 +76,8 @@ export async function getSettings(db: D1Database): Promise<Settings> {
   let links: Settings["author_links"] = [];
   try {
     const parsed = JSON.parse(map.author_links ?? "[]");
-    if (Array.isArray(parsed)) links = parsed;
+    // Rows stored before 0.27 may hold any scheme; only followable links leave.
+    if (Array.isArray(parsed)) links = parsed.filter((l) => typeof l?.label === "string" && typeof l?.url === "string" && isFollowableUrl(l.url));
   } catch {
     // ignore malformed settings JSON; treat as no links
   }
@@ -108,7 +109,9 @@ export async function getSettings(db: D1Database): Promise<Settings> {
     // rather than silent, which is the property that actually matters.
     timezone: map.timezone ?? "",
     show_responses_default: map.show_responses_default === "on",
+    highlight_generated_default: map.highlight_generated_default === "on",
     auto_change_notes: map.auto_change_notes === "on",
+    picker_typing: map.picker_typing === "editor" || map.picker_typing === "panel" ? map.picker_typing : "auto",
     update_check: map.update_check !== "off",
     update_feed_url: map.update_feed_url ?? "",
     /** Cleared until the operator has seen the "alerts are on" notice once. */
@@ -133,12 +136,13 @@ export async function createDraft(
   contentMd: string,
   kind: "fragment" | "thread" = "fragment",
   stub: StubOf | null = null,
+  provenance: (ScopeProvenance | null)[] | undefined = undefined,
 ): Promise<ItemRow> {
   const id = newId();
   const now = nowIso();
   await db
-    .prepare("INSERT INTO items (id, kind, status, created, updated, version, content_md, dirty, stub_of) VALUES (?, ?, 'draft', ?, ?, 0, ?, 1, ?)")
-    .bind(id, kind, now, now, contentMd, stub ? JSON.stringify(stub) : null)
+    .prepare("INSERT INTO items (id, kind, status, created, updated, version, content_md, dirty, stub_of, tk_provenance_json) VALUES (?, ?, 'draft', ?, ?, 0, ?, 1, ?, ?)")
+    .bind(id, kind, now, now, contentMd, stub ? JSON.stringify(stub) : null, provenance === undefined ? null : JSON.stringify(provenance))
     .run();
   return (await getItem(db, id))!;
 }
@@ -441,11 +445,14 @@ export async function withdraw(db: D1Database, item: ItemRow, note: string | nul
 }
 
 /** Hard-delete a never-published draft. Published items are withdrawn, never deleted. */
-export async function discardDraft(db: D1Database, item: ItemRow): Promise<void> {
-  await db.batch([
-    db.prepare("DELETE FROM items WHERE id = ?").bind(item.id),
-    db.prepare("DELETE FROM media WHERE item_id = ?").bind(item.id),
+export async function discardDraft(db: D1Database, item: ItemRow): Promise<boolean> {
+  // Authorize at the atomic write boundary. A publication after the caller's
+  // read must preserve both the public item and its media.
+  const results = await db.batch([
+    db.prepare("DELETE FROM media WHERE item_id = ? AND EXISTS (SELECT 1 FROM items WHERE id = ? AND version = 0)").bind(item.id, item.id),
+    db.prepare("DELETE FROM items WHERE id = ? AND version = 0").bind(item.id),
   ]);
+  return results[1].meta.changes > 0;
 }
 
 /** Thrown by restoreVersion() when the target version can't serve as a working copy. */
@@ -573,13 +580,16 @@ export async function feedEvents(db: D1Database, limit: number): Promise<FeedEve
 export async function insertMedia(
   db: D1Database,
   row: Omit<MediaRow, "created">,
-): Promise<MediaRow> {
+  unpublishedOnly = false,
+): Promise<MediaRow | null> {
   const created = nowIso();
-  await db
-    .prepare("INSERT INTO media (id, item_id, r2_key, mime, alt, created, inline) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .bind(row.id, row.item_id, row.r2_key, row.mime, row.alt, created, row.inline)
+  // Evaluate publication and insert in one statement. A publisher can run while
+  // the R2 upload awaits; a separate earlier read is not an authorization gate.
+  const result = await db
+    .prepare("INSERT INTO media (id, item_id, r2_key, mime, alt, created, inline) SELECT ?, ?, ?, ?, ?, ?, ? WHERE ? = 0 OR ? IS NULL OR EXISTS (SELECT 1 FROM items WHERE id = ? AND version = 0)")
+    .bind(row.id, row.item_id, row.r2_key, row.mime, row.alt, created, row.inline, unpublishedOnly ? 1 : 0, row.item_id, row.item_id)
     .run();
-  return { ...row, created };
+  return result.meta.changes ? { ...row, created } : null;
 }
 
 export async function getMedia(db: D1Database, id: string): Promise<MediaRow | null> {

@@ -24,7 +24,9 @@ import {
   mount,
   useChrome,
   useSettings,
+  SourceLink,
 } from './components.tsx';
+import { sourceTitleAndUrl } from '../importer/util.ts';
 import { confirm } from './sheets.tsx';
 import { formatDateIn } from '../dates.ts';
 import './reading.css';
@@ -67,7 +69,9 @@ export function AddFeedForm({ onSubscribed }: { onSubscribed?: () => void }) {
     else {
       setConfirmation(undefined);
       setUrl('');
-      await changed('subscriptions', 'reading');
+      // The backfill runs on the server after this reply; polling brings its
+      // items in, so the sheet need not wait on the refetch.
+      void changed('subscriptions', 'reading');
       onSubscribed?.();
     }
   };
@@ -101,7 +105,7 @@ export function AddFeedForm({ onSubscribed }: { onSubscribed?: () => void }) {
               disabled={action.busy}
               type="submit"
             >
-              subscribe
+              {action.busy ? 'checking…' : 'subscribe'}
             </Button>
           </div>
         )}
@@ -123,7 +127,7 @@ export function AddFeedForm({ onSubscribed }: { onSubscribed?: () => void }) {
               disabled={action.busy}
               onClick={() => void action.run(() => add(true))}
             >
-              confirm subscribe
+              {action.busy ? 'subscribing…' : 'confirm subscribe'}
             </Button>
           </div>
         </div>
@@ -393,6 +397,13 @@ export function HopperPage({ id }: { id: string }) {
               <div className="entry-body content">
                 <Html html={item?.content_html || ''} />
               </div>
+              <SourceLink
+                url={
+                  item && source
+                    ? sourceTitleAndUrl({ ...item, l0: item.l0 ? 1 : 0 }, source.origin).url
+                    : undefined
+                }
+              />
             </div>
             <div className="entry-bar">
               <span className="spacer" />

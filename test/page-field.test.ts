@@ -71,6 +71,26 @@ describe("the page field (§2.3.2)", () => {
   });
 });
 
+describe("page stability (decision #56)", () => {
+  // `page` SHOULD be stable for the life of an item: readers hold it,
+  // `cited.url` freezes it, and Webmention targets name it. Slugs (studio#19)
+  // must not be able to move it between versions without this failing.
+  it("is identical across an edit and a withdrawal endcap", async () => {
+    const cookie = await login();
+    const id = await createAndPublish(cookie, "first words");
+    const page1 = (await (await getPublic(`/blyg/items/${id}.json`)).json<any>()).page;
+    expect(page1).toBe(`f/${id}/`);
+    expect((await apiJson(cookie, "PUT", `/api/items/${id}/versions/1/pin`)).status).toBe(200);
+    expect((await apiJson(cookie, "PATCH", `/api/items/${id}`, { content_md: "second words" })).status).toBe(200);
+    expect((await apiJson(cookie, "POST", `/api/items/${id}/publish`, {})).status).toBe(200);
+    expect((await (await getPublic(`/blyg/items/${id}.json`)).json<any>()).page).toBe(page1);
+    expect((await apiJson(cookie, "POST", `/api/items/${id}/withdraw`, {})).status).toBe(200);
+    const endcap = await (await getPublic(`/blyg/items/${id}.json`)).json<any>();
+    expect(endcap.kind).toBe("withdrawn");
+    expect(endcap.page).toBe(page1);
+  });
+});
+
 describe("provenance lines (§2.1 presentation)", () => {
   it("links a remote source at its own declared page, named by its blyg", async () => {
     const cookie = await login();
