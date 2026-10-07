@@ -12,6 +12,7 @@ import { routes } from "../contract/routes.ts";
 import { pollSubscription, reconcileIndex } from "./poll.ts";
 import { pollAll } from "./schedule.ts";
 import { listSubscriptions } from "./store.ts";
+import { markRead, markReadBatch, READ_ID_MAX, type ReadMark } from "./read-state.ts";
 import { resolve } from "./resolve.ts";
 import {
   addHopperItem,
@@ -216,4 +217,23 @@ importerApi.openapi(routes.setSignal, async (c) => {
 importerApi.openapi(routes.deleteSignal, async (c) => {
   await deleteSignal(c.env.DB, c.req.param("sub"), c.req.param("remoteId"));
   return c.json({ ok: true });
+});
+
+// Read state (read-state.ts). An unknown subscription or item is 200 with
+// `stored: false`, never 404: clients take a 404 here to mean the server
+// keeps no read state, and turn sync off.
+importerApi.openapi(routes.markRead, async (c) => {
+  const sub = c.req.param("sub"), remoteId = c.req.param("remoteId");
+  if (sub.length > READ_ID_MAX || remoteId.length > READ_ID_MAX) return c.json({ error: "id too long" }, 400);
+  const { version } = await readJson<{ version: number }>(c);
+  const stored = await markRead(c.env.DB, sub, remoteId, version);
+  return c.json({ ok: true, stored: stored !== null, read_version: stored }, 200);
+});
+
+// The whole list is validated before anything is written, and the writes are
+// one batch: one request, one transaction, one unit of the write budget.
+importerApi.openapi(routes.markReadBatch, async (c) => {
+  const { items } = await readJson<{ items: ReadMark[] }>(c);
+  await markReadBatch(c.env.DB, items);
+  return c.json({ ok: true, received: items.length }, 200);
 });

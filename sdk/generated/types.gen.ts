@@ -331,6 +331,10 @@ export type ReadingEntry = {
         contentHtml: string;
         pinnedVersionRetained: number | null;
         sourceUrl: string | null;
+        /**
+         * The highest version the owner has marked read; null when unread.
+         */
+        readVersion: number | null;
     };
 };
 
@@ -3037,6 +3041,162 @@ export type SetSignalResponses = {
 
 export type SetSignalResponse = SetSignalResponses[keyof SetSignalResponses];
 
+export type MarkReadData = {
+    body: {
+        version: number;
+    };
+    path: {
+        sub: string;
+        remoteId: string;
+    };
+    query?: never;
+    url: '/api/reading/{sub}/{remoteId}/read';
+};
+
+export type MarkReadErrors = {
+    /**
+     * Request failed
+     */
+    400: ApiError;
+    /**
+     * Request failed
+     */
+    401: ApiError;
+    /**
+     * Request failed
+     */
+    403: ApiError;
+    /**
+     * Request failed
+     */
+    404: ApiError;
+    /**
+     * Request failed
+     */
+    405: ApiError;
+    /**
+     * Request failed
+     */
+    409: ApiError;
+    /**
+     * Request failed
+     */
+    413: ApiError;
+    /**
+     * Request failed
+     */
+    415: ApiError;
+    /**
+     * Request failed
+     */
+    422: ApiError;
+    /**
+     * Request failed
+     */
+    429: ApiError;
+    /**
+     * Request failed
+     */
+    500: ApiError;
+    /**
+     * Request failed
+     */
+    502: ApiError;
+};
+
+export type MarkReadError = MarkReadErrors[keyof MarkReadErrors];
+
+export type MarkReadResponses = {
+    /**
+     * Success
+     */
+    200: {
+        ok: boolean;
+        stored: boolean;
+        read_version: number | null;
+    };
+};
+
+export type MarkReadResponse = MarkReadResponses[keyof MarkReadResponses];
+
+export type MarkReadBatchData = {
+    body: {
+        items: Array<{
+            sub: string;
+            remote_id: string;
+            version: number;
+        }>;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/reading/read';
+};
+
+export type MarkReadBatchErrors = {
+    /**
+     * Request failed
+     */
+    400: ApiError;
+    /**
+     * Request failed
+     */
+    401: ApiError;
+    /**
+     * Request failed
+     */
+    403: ApiError;
+    /**
+     * Request failed
+     */
+    404: ApiError;
+    /**
+     * Request failed
+     */
+    405: ApiError;
+    /**
+     * Request failed
+     */
+    409: ApiError;
+    /**
+     * Request failed
+     */
+    413: ApiError;
+    /**
+     * Request failed
+     */
+    415: ApiError;
+    /**
+     * Request failed
+     */
+    422: ApiError;
+    /**
+     * Request failed
+     */
+    429: ApiError;
+    /**
+     * Request failed
+     */
+    500: ApiError;
+    /**
+     * Request failed
+     */
+    502: ApiError;
+};
+
+export type MarkReadBatchError = MarkReadBatchErrors[keyof MarkReadBatchErrors];
+
+export type MarkReadBatchResponses = {
+    /**
+     * Success
+     */
+    200: {
+        ok: boolean;
+        received: number;
+    };
+};
+
+export type MarkReadBatchResponse = MarkReadBatchResponses[keyof MarkReadBatchResponses];
+
 export type UpdateMentionData = {
     body: {
         hidden: boolean;
@@ -3828,6 +3988,10 @@ export type ListReadingResponses = {
         offset: number;
         limit: number;
         selected: string;
+        /**
+         * This server stores read state: each imported entry's readVersion is meaningful.
+         */
+        read_state: true;
     };
 };
 

@@ -42,6 +42,8 @@ export interface ImportedEntryInput {
    * linked out, so the one thing a reader most often wants next had no door.
    */
   sourceUrl: string | null;
+  /** The highest version the owner has marked read (migration 0026); null when unread. */
+  readVersion: number | null;
 }
 
 export interface ReadingFeedEntry {

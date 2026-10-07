@@ -41,7 +41,7 @@ beforeEach(async () => {
   for (const sql of triggerDefinitions) await env.DB.prepare(sql.replace('CREATE TRIGGER ', 'CREATE TRIGGER IF NOT EXISTS ')).run();
   await env.DB.prepare('INSERT OR IGNORE INTO change_state(id) VALUES(1)').run();
   await env.DB.prepare("UPDATE change_state SET epoch=lower(hex(randomblob(16))),items=0,reading=0,subscriptions=0,hoppers=0,signals=0,settings=0,feed=0 WHERE id=1").run();
-  await env.DB.batch(['versions','media','items','settings','hopper_items','signals','imported_items','subscriptions','hoppers'].map(table => env.DB.prepare(`DELETE FROM ${table}`)));
+  await env.DB.batch(['versions','media','items','settings','hopper_items','signals','read_state','imported_items','subscriptions','hoppers'].map(table => env.DB.prepare(`DELETE FROM ${table}`)));
   await clearArtifacts();
 });
 afterEach(() => vi.useRealTimers());
@@ -164,6 +164,27 @@ describe('trigger revision oracle', () => {
     // the trusted receiver; separate content oracles own their HTML semantics.
     expect(after[0]).not.toEqual(before[0]); expect(after[1]).not.toEqual(before[1]);
     expect(changed.domains.reading).toBeGreaterThan(counters.domains.reading); expect(changed.domains.hoppers).toBeGreaterThan(counters.domains.hoppers);
+  });
+  it('a read mark changes the Reading DTO and its domain, and a replay changes neither', async () => {
+    const cookie = await login();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO subscriptions(id,kind,origin,feed_url,title,created) VALUES('read-source','blyg','https://source/','https://source/feed.xml','Source','2026-01-01')"),
+      env.DB.prepare("INSERT INTO imported_items(subscription_id,remote_id,kind,state,version,observed_at,content_html) VALUES('read-source','r','fragment','current',2,'2026-01-01T00:00:00Z','<p>Body</p>')"),
+    ]);
+    async function call(method: string, path: string, body?: unknown) {
+      const ctx = createExecutionContext();
+      const response = await app.fetch(new Request(BASE + path, { method, headers: { cookie, ...(body ? { 'content-type': 'application/json', origin: BASE } : {}) }, body: body ? JSON.stringify(body) : undefined }), env, ctx);
+      expect(response.status).toBe(200); const data = await response.json(); await waitOnExecutionContext(ctx); return data;
+    }
+    const before = await call('GET', '/api/reading'), counters = await changes(cookie);
+    await call('PUT', '/api/reading/read-source/r/read', { version: 2 });
+    const after = await call('GET', '/api/reading'), changed = await changes(cookie);
+    // Observed through the fresh response, not the production classifier.
+    expect(after).not.toEqual(before);
+    atCheckpoint('trigger exact domain effects', () => expect(changedDomains(counters, changed)).toEqual(['reading']));
+    await call('PUT', '/api/reading/read-source/r/read', { version: 1 });
+    expect(await call('GET', '/api/reading')).toEqual(after);
+    expect(await changes(cookie)).toEqual(changed);
   });
   it('the timed update-state read crosses its exact daily deadline without source changes', async () => {
     vi.useFakeTimers({ toFake: ['Date'] }); const start = Date.parse('2026-10-01T12:00:00Z'); vi.setSystemTime(start);

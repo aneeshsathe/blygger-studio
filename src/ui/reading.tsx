@@ -1262,6 +1262,8 @@ function hopperEntry(
         ? sourceTitleAndUrl({ ...item, l0: item.l0 ? 1 : 0 }, source.origin)
             .url
         : null,
+      // Hopper detail reads the stored import, which carries no read state.
+      readVersion: null,
     },
   };
 }

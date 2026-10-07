@@ -30,6 +30,7 @@ Consult `openapi.json` for every field and response.
 | Media | Included in item detail | `POST /media` with a multipart file (`inline=true` when the client places it in the text), `DELETE /media/{id}` (detaches; deletes the file only when no published version shows it) |
 | Imported items | `GET /imports/{sub}/{id}`, `GET /imports/{sub}/{id}/history`, `GET /imports/{sub}/{id}/versions/{v}` (history and public versions, read from the origin) | The subscription importer manages these items |
 | Reading | `GET /reading` | Read only |
+| Read state | `readVersion` on each imported Reading entry | `PUT /reading/{sub}/{remoteId}/read`, `POST /reading/read` |
 | Change revisions | `GET /changes` | Maintained by database triggers |
 | Quote freshness | `GET /freshness`, `GET /items/{id}/freshness` | `POST /items/{id}/refresh` |
 
@@ -155,6 +156,31 @@ Subscription resources omit internal HTTP cache fields.
 Hopper detail includes `total` and `source_count`.
 Use `?preview=true` for an index preview of three memberships and bodies.
 The default hopper detail still includes all memberships and bodies.
+
+## Read state
+
+A client that keeps "read" for imported items can store it here, so a post read
+on one device reads as read on the owner's others. Each reading row holds one
+number: the highest version the owner has read. It is Studio-private. No public
+page, feed, item document, `blyg.json` or export reads it.
+
+- `PUT /reading/{sub}/{remoteId}/read` with `{ version }` stores the larger of
+  the held and requested values and returns `{ ok, stored, read_version }`.
+  A replay or a stale client never lowers it.
+- `POST /reading/read` with `{ items: [{ sub, remote_id, version }] }` does the
+  same for up to 500 rows in one transaction and returns `{ ok, received }`.
+  Any malformed entry fails the whole request with 400, and nothing is written.
+  The batch is one request against the write budget, however many rows it marks.
+- A row this server does not hold, by subscription or by item, is acknowledged
+  with 200 and `stored: false`, never 404. Clients may read a 404 from these
+  routes as "this server keeps no read state".
+- `GET /reading` returns `read_state: true`, and each imported entry carries
+  `readVersion`: an integer, or null when unread. A client can rely on the flag
+  rather than probing the write routes.
+
+Version is an integer from 1 (items start there) to 2^32 − 1. Both writes need `owner:manage`, like
+signals. Read state goes with its imported item or subscription when either is
+deleted, and a change advances the `reading` revision in `GET /changes`.
 
 ## Quote freshness
 

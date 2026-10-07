@@ -2,7 +2,7 @@ export const SCOPE_DESCRIPTIONS = {
   'owner:read': 'Read private drafts, reading material, media, and settings',
   'owner:draft': 'Create and edit drafts, upload media, and use configured AI generation',
   'owner:publish': 'Publish, withdraw, refresh, pin, and change public item responses or media',
-  'owner:manage': 'Change settings, subscriptions, signals, collections, and response moderation',
+  'owner:manage': 'Change settings, subscriptions, signals, read state, collections, and response moderation',
 } as const;
 export type OwnerScope = keyof typeof SCOPE_DESCRIPTIONS;
 export const OWNER_SCOPES = Object.keys(SCOPE_DESCRIPTIONS) as OwnerScope[];

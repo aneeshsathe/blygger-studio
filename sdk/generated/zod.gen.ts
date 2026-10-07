@@ -388,7 +388,8 @@ export const zReadingEntry = z.object({
         observedAt: z.string(),
         contentHtml: z.string(),
         pinnedVersionRetained: z.number().nullable(),
-        sourceUrl: z.string().nullable()
+        sourceUrl: z.string().nullable(),
+        readVersion: z.int().nullable()
     }).optional()
 });
 
@@ -1000,6 +1001,40 @@ export const zSetSignalResponse = z.object({
     ok: z.boolean()
 });
 
+export const zMarkReadBody = z.object({
+    version: z.int().gte(1).lte(4294967295)
+}).strict();
+
+export const zMarkReadPath = z.object({
+    sub: z.string().min(1),
+    remoteId: z.string().min(1)
+});
+
+/**
+ * Success
+ */
+export const zMarkReadResponse = z.object({
+    ok: z.boolean(),
+    stored: z.boolean(),
+    read_version: z.int().nullable()
+});
+
+export const zMarkReadBatchBody = z.object({
+    items: z.array(z.object({
+        sub: z.string().min(1).max(1024),
+        remote_id: z.string().min(1).max(1024),
+        version: z.int().gte(1).lte(4294967295)
+    }).strict()).max(500)
+}).strict();
+
+/**
+ * Success
+ */
+export const zMarkReadBatchResponse = z.object({
+    ok: z.boolean(),
+    received: z.int().gte(0)
+});
+
 export const zUpdateMentionBody = z.object({
     hidden: z.boolean()
 }).strict();
@@ -1180,7 +1215,8 @@ export const zListReadingResponse = z.object({
     total: z.number(),
     offset: z.number(),
     limit: z.number(),
-    selected: z.string()
+    selected: z.string(),
+    read_state: z.literal(true)
 });
 
 export const zGetImportedItemPath = z.object({

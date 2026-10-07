@@ -39,8 +39,11 @@ export async function readingData(db: D1Database, requestedOffset: number, limit
       FROM items i LEFT JOIN versions v ON v.item_id = i.id AND v.version = i.version
       LEFT JOIN versions previous ON previous.item_id = i.id AND previous.version = i.version - 1
       WHERE i.id IN (${ownIds.map(() => "?").join(",")})`).bind(...ownIds).all<{ id: string; kind: string; updated: string; content_html: string | null; previous_transclusions: string | null }>() : { results: [] },
-    importedIds.length ? db.prepare(`SELECT * FROM imported_items WHERE ${importedIds.map(() => "(subscription_id = ? AND remote_id = ?)").join(" OR ")}`)
-      .bind(...importedIds.flatMap((r) => [r.sub, r.id])).all<ImportedItemRow>() : { results: [] },
+    // read_state is the owner's own (migration 0026); null means unread.
+    importedIds.length ? db.prepare(`SELECT i.*, rs.read_version FROM imported_items i
+      LEFT JOIN read_state rs ON rs.subscription_id = i.subscription_id AND rs.remote_id = i.remote_id
+      WHERE ${importedIds.map(() => "(i.subscription_id = ? AND i.remote_id = ?)").join(" OR ")}`)
+      .bind(...importedIds.flatMap((r) => [r.sub, r.id])).all<ImportedItemRow & { read_version: number | null }>() : { results: [] },
   ]);
   const ownById = new Map(ownBodies.results.map((r) => [r.id, r]));
   const importedById = new Map(importedBodies.results.map((r) => [JSON.stringify([r.subscription_id, r.remote_id]), r]));
@@ -56,7 +59,7 @@ export async function readingData(db: D1Database, requestedOffset: number, limit
     const row = importedById.get(JSON.stringify([identity.sub, identity.id]));
     if (!row) return null;
     const sub = subs.find((s) => s.id === row.subscription_id);
-    const input: ImportedEntryInput = { subscriptionId: row.subscription_id, subscriptionTitle: sub?.title || sub?.origin || row.subscription_id, remoteId: row.remote_id, sourceUrl: sub ? sourceTitleAndUrl(row, sub.origin).url : null, kind: row.kind, withdrawn: row.state === "tombstone", l0: row.l0 === 1, updated: row.updated, observedAt: row.observed_at, contentHtml: await sanitizeHtml(row.content_html), pinnedVersionRetained: row.pinned_version_retained };
+    const input: ImportedEntryInput = { subscriptionId: row.subscription_id, subscriptionTitle: sub?.title || sub?.origin || row.subscription_id, remoteId: row.remote_id, sourceUrl: sub ? sourceTitleAndUrl(row, sub.origin).url : null, kind: row.kind, withdrawn: row.state === "tombstone", l0: row.l0 === 1, updated: row.updated, observedAt: row.observed_at, contentHtml: await sanitizeHtml(row.content_html), pinnedVersionRetained: row.pinned_version_retained, readVersion: row.read_version ?? null };
     return { ...buildReadingFeed([], [input])[0], key: `imported:${JSON.stringify([row.subscription_id, row.remote_id])}` };
   }));
   return { items: entries.filter((e) => e !== null), counts, selected, total, offset, limit };
