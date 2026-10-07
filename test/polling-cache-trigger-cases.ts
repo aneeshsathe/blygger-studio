@@ -23,5 +23,7 @@ export const triggerFields = [
   { family: 4, field: 'title_auto', value: 0, domains: ['subscriptions'] },
   ...['created','updated','forked_from','fork_cite','id','kind','version'].map(field => ({ family: 0, field, value: field === 'kind' ? 'thread' : field === 'version' ? 2 : field === 'id' ? 'renamed' : 'changed', domains: ['items','reading','feed'] })),
   ...['id','origin','title'].map(field => ({ family: 4, field, value: 'changed', domains: ['subscriptions','reading','hoppers','feed'] })),
+  // A clear's tombstone alone (0026) is a Reading change: it decides whether a later read applies.
+  { family: 9, field: 'unread_at', value: 'later', domains: ['reading'] },
   ...['subscription_id','remote_id','kind','page'].map(field => ({ family: 5, field, value: field === 'kind' ? 'thread' : 'changed', domains: ['reading','hoppers','feed'] })),
 ];

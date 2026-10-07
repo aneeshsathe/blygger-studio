@@ -3041,9 +3041,89 @@ export type SetSignalResponses = {
 
 export type SetSignalResponse = SetSignalResponses[keyof SetSignalResponses];
 
+export type MarkUnreadData = {
+    body?: never;
+    path: {
+        sub: string;
+        remoteId: string;
+    };
+    query?: never;
+    url: '/api/reading/{sub}/{remoteId}/read';
+};
+
+export type MarkUnreadErrors = {
+    /**
+     * Request failed
+     */
+    400: ApiError;
+    /**
+     * Request failed
+     */
+    401: ApiError;
+    /**
+     * Request failed
+     */
+    403: ApiError;
+    /**
+     * Request failed
+     */
+    404: ApiError;
+    /**
+     * Request failed
+     */
+    405: ApiError;
+    /**
+     * Request failed
+     */
+    409: ApiError;
+    /**
+     * Request failed
+     */
+    413: ApiError;
+    /**
+     * Request failed
+     */
+    415: ApiError;
+    /**
+     * Request failed
+     */
+    422: ApiError;
+    /**
+     * Request failed
+     */
+    429: ApiError;
+    /**
+     * Request failed
+     */
+    500: ApiError;
+    /**
+     * Request failed
+     */
+    502: ApiError;
+};
+
+export type MarkUnreadError = MarkUnreadErrors[keyof MarkUnreadErrors];
+
+export type MarkUnreadResponses = {
+    /**
+     * Success
+     */
+    200: {
+        ok: boolean;
+        stored: false;
+        read_version: null;
+    };
+};
+
+export type MarkUnreadResponse = MarkUnreadResponses[keyof MarkUnreadResponses];
+
 export type MarkReadData = {
     body: {
         version: number;
+        /**
+         * When the client read it (ISO-8601). A read earlier than the row's latest clear is ignored; omitted, the read always applies.
+         */
+        read_at?: string;
     };
     path: {
         sub: string;
@@ -3125,6 +3205,10 @@ export type MarkReadBatchData = {
             sub: string;
             remote_id: string;
             version: number;
+            /**
+             * When the client read it (ISO-8601). A read earlier than the row's latest clear is ignored; omitted, the read always applies.
+             */
+            read_at?: string;
         }>;
     };
     path?: never;
@@ -3196,6 +3280,83 @@ export type MarkReadBatchResponses = {
 };
 
 export type MarkReadBatchResponse = MarkReadBatchResponses[keyof MarkReadBatchResponses];
+
+export type MarkUnreadBatchData = {
+    body: {
+        items: Array<{
+            sub: string;
+            remote_id: string;
+        }>;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/reading/unread';
+};
+
+export type MarkUnreadBatchErrors = {
+    /**
+     * Request failed
+     */
+    400: ApiError;
+    /**
+     * Request failed
+     */
+    401: ApiError;
+    /**
+     * Request failed
+     */
+    403: ApiError;
+    /**
+     * Request failed
+     */
+    404: ApiError;
+    /**
+     * Request failed
+     */
+    405: ApiError;
+    /**
+     * Request failed
+     */
+    409: ApiError;
+    /**
+     * Request failed
+     */
+    413: ApiError;
+    /**
+     * Request failed
+     */
+    415: ApiError;
+    /**
+     * Request failed
+     */
+    422: ApiError;
+    /**
+     * Request failed
+     */
+    429: ApiError;
+    /**
+     * Request failed
+     */
+    500: ApiError;
+    /**
+     * Request failed
+     */
+    502: ApiError;
+};
+
+export type MarkUnreadBatchError = MarkUnreadBatchErrors[keyof MarkUnreadBatchErrors];
+
+export type MarkUnreadBatchResponses = {
+    /**
+     * Success
+     */
+    200: {
+        ok: boolean;
+        received: number;
+    };
+};
+
+export type MarkUnreadBatchResponse = MarkUnreadBatchResponses[keyof MarkUnreadBatchResponses];
 
 export type UpdateMentionData = {
     body: {
@@ -3992,6 +4153,10 @@ export type ListReadingResponses = {
          * This server stores read state: each imported entry's readVersion is meaningful.
          */
         read_state: true;
+        /**
+         * Read state can be cleared: DELETE /reading/{sub}/{remoteId}/read, POST /reading/unread, and read_at on reads.
+         */
+        read_state_clear: true;
     };
 };
 

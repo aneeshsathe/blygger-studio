@@ -30,7 +30,7 @@ Consult `openapi.json` for every field and response.
 | Media | Included in item detail | `POST /media` with a multipart file (`inline=true` when the client places it in the text), `DELETE /media/{id}` (detaches; deletes the file only when no published version shows it) |
 | Imported items | `GET /imports/{sub}/{id}`, `GET /imports/{sub}/{id}/history`, `GET /imports/{sub}/{id}/versions/{v}` (history and public versions, read from the origin) | The subscription importer manages these items |
 | Reading | `GET /reading` | Read only |
-| Read state | `readVersion` on each imported Reading entry | `PUT /reading/{sub}/{remoteId}/read`, `POST /reading/read` |
+| Read state | `readVersion` on each imported Reading entry | `PUT`/`DELETE /reading/{sub}/{remoteId}/read`, `POST /reading/read`, `POST /reading/unread` |
 | Change revisions | `GET /changes` | Maintained by database triggers |
 | Quote freshness | `GET /freshness`, `GET /items/{id}/freshness` | `POST /items/{id}/refresh` |
 
@@ -178,9 +178,44 @@ page, feed, item document, `blyg.json` or export reads it.
   `readVersion`: an integer, or null when unread. A client can rely on the flag
   rather than probing the write routes.
 
-Version is an integer from 1 (items start there) to 2^32 − 1. Both writes need `owner:manage`, like
-signals. Read state goes with its imported item or subscription when either is
-deleted, and a change advances the `reading` revision in `GET /changes`.
+### Marking unread
+
+- `DELETE /reading/{sub}/{remoteId}/read` clears the row and always returns
+  `{ ok: true, stored: false, read_version: null }`. It is idempotent, and an
+  unknown subscription or item is 200 as well, never 404.
+- `POST /reading/unread` with `{ items: [{ sub, remote_id }] }` clears up to 500
+  rows in one transaction and returns `{ ok, received }`, validated whole like
+  `POST /reading/read`.
+- `GET /reading` returns `read_state_clear: true` when the server supports both.
+
+A clear leaves a tombstone: the server records `unread_at`, its own time of
+the clear, and `readVersion` reads null. Both read writes accept an optional
+`read_at` (ISO-8601 with `Z` or an offset; on `PUT` beside `version`, in the
+batch on each item), the time the client read the post:
+
+- A read whose `read_at` is earlier than the row's latest clear is ignored.
+  `PUT` answers `stored: false` with whatever is held; the batch skips that row.
+  Nothing changes, so no revision advances.
+- A read with a later `read_at`, or the same instant, applies.
+- A read with no `read_at` applies, as before clearing existed. Send `read_at`
+  from any client that queues reads offline, or a queued read can undo a later
+  "mark unread" from another device.
+
+A clear resets the row, so the next accepted read stores its own version
+rather than the larger of it and the value held before the clear. From there
+reads are monotonic again. The tombstone stays after a read applies, so a
+second stale read is still refused.
+
+`read_at` is compared as an instant (the server normalizes it to UTC) against
+the server's clock. A client whose clock runs fast can make a read look later
+than a clear that followed it; one that runs slow can have a fresh read
+ignored. Clients that cannot trust their clock may omit `read_at` and accept
+last-write-wins.
+
+Version is an integer from 1 (items start there) to 2^32 − 1. All four writes need `owner:manage`,
+like signals. Read state goes with its imported item or subscription when either
+is deleted, and a change, including a clear, advances the `reading` revision in
+`GET /changes`.
 
 ## Quote freshness
 

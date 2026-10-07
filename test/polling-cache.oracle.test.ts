@@ -185,6 +185,15 @@ describe('trigger revision oracle', () => {
     await call('PUT', '/api/reading/read-source/r/read', { version: 1 });
     expect(await call('GET', '/api/reading')).toEqual(after);
     expect(await changes(cookie)).toEqual(changed);
+    // Clearing (0026) changes the DTO and its domain; a read from before the
+    // clear is refused by the tombstone and changes neither.
+    await call('DELETE', '/api/reading/read-source/r/read');
+    const cleared = await call('GET', '/api/reading'), clearedChanges = await changes(cookie);
+    expect(cleared).not.toEqual(after);
+    atCheckpoint('trigger exact domain effects', () => expect(changedDomains(changed, clearedChanges)).toEqual(['reading']));
+    await call('PUT', '/api/reading/read-source/r/read', { version: 2, read_at: '2000-01-01T00:00:00Z' });
+    expect(await call('GET', '/api/reading')).toEqual(cleared);
+    expect(await changes(cookie)).toEqual(clearedChanges);
   });
   it('the timed update-state read crosses its exact daily deadline without source changes', async () => {
     vi.useFakeTimers({ toFake: ['Date'] }); const start = Date.parse('2026-10-01T12:00:00Z'); vi.setSystemTime(start);

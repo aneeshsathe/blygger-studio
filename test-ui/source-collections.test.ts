@@ -60,7 +60,7 @@ beforeAll(async () => {
       // Another feed or lens must not overwrite either position.
       const entries = offset > 0 ? [entry('next', kind)] :
         sub === 'all' ? [entry('first', kind), entry('shared', kind)] : [entry('shared', kind)];
-      return json({ items: entries, offset, limit: 25, selected: sub === 'invalid' ? 'all' : sub, read_state: true, total: 30, counts: { all: 30, own: 30, subscriptions: {} } });
+      return json({ items: entries, offset, limit: 25, selected: sub === 'invalid' ? 'all' : sub, read_state: true, read_state_clear: true, total: 30, counts: { all: 30, own: 30, subscriptions: {} } });
     }
     if (url.pathname === '/api/mentions/m/source') return json({ holder: 's', subscription: null });
     throw new Error(`Unexpected request: ${request.method} ${request.url}`);

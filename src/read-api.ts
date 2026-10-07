@@ -107,7 +107,7 @@ readApi.openapi(routes.getAiModels, async (c) => {
 readApi.openapi(routes.listThumbs, async (c) => c.json({ items: await listThumbs(c.env.DB) }));
 // `read_state: true` advertises that imported entries carry the owner's
 // readVersion, so a client can tell "unread" from "this server keeps none".
-readApi.openapi(routes.listReading, async (c) => c.json({ ...await readingData(c.env.DB, Number(c.req.query("offset") ?? 0), Number(c.req.query("limit") ?? 25), c.req.query("sub"), readingKind(c.req.query("kind"))), read_state: true as const }));
+readApi.openapi(routes.listReading, async (c) => c.json({ ...await readingData(c.env.DB, Number(c.req.query("offset") ?? 0), Number(c.req.query("limit") ?? 25), c.req.query("sub"), readingKind(c.req.query("kind"))), read_state: true as const, read_state_clear: true as const }));
 function readingKind(raw: string | undefined): "thread" | "fragment" | undefined {
   return raw === "thread" || raw === "fragment" ? raw : undefined;
 }

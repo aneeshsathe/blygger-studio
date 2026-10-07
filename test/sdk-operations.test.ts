@@ -41,6 +41,8 @@ it("exercises every declared operation through its named SDK method, including a
     ["deleteSignal", 200, client => api.deleteSignal({ client, path: signal })],
     ["markRead", 200, client => api.markRead({ client, path: signal, body: { version: 1 } })],
     ["markReadBatch", 200, client => api.markReadBatch({ client, body: { items: [{ sub: sub.id, remote_id: "remote", version: 1 }] } })],
+    ["markUnread", 200, client => api.markUnread({ client, path: signal })],
+    ["markUnreadBatch", 200, client => api.markUnreadBatch({ client, body: { items: [{ sub: sub.id, remote_id: "remote" }] } })],
     ["updateMention", 200, client => api.updateMention({ client, path: { id: "matrix-mention" }, body: { hidden: true } })],
     ["listItems", 200, client => api.listItems({ client, query: { offset: 0, limit: 1 } })],
     ["getItem", 200, client => api.getItem({ client, path: { id } })],
