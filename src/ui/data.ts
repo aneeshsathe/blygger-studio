@@ -1,6 +1,7 @@
 import {
   createCollection,
   createLiveQueryCollection,
+  createOptimisticAction,
   and,
   gte,
   lt,
@@ -31,6 +32,7 @@ import type { ChangeDomain } from '../change-state.ts';
 import { scoped } from './scoped.ts';
 import { sourceSchemas, readingResponseSchema } from './data-schemas.ts';
 import { zGetItemResponse } from '../../sdk/dist/schemas.js';
+import { planReadWrites, type ReadWrite, type UnreadWrite } from './read-state.ts';
 
 export const client = createBlyggerClient({ baseUrl: location.origin });
 export const queryClient = new QueryClient({
@@ -445,6 +447,47 @@ export const readingView = (sub: string, offset: number) =>
 export function refreshReading() {
   return reading.utils.refetch({ throwOnError: true });
 }
+
+/** Store read marks: one PUT or DELETE for a single row, else batches of ≤ 500. */
+export async function saveReadState(read: ReadWrite[], unread: UnreadWrite[]) {
+  for (const step of planReadWrites(read, unread)) {
+    if (step.op === 'put')
+      await unwrap(BlyggerApi.markRead({ client, path: { sub: step.mark.sub, remoteId: step.mark.remote_id }, body: { version: step.mark.version } }));
+    else if (step.op === 'delete')
+      await unwrap(BlyggerApi.markUnread({ client, path: { sub: step.mark.sub, remoteId: step.mark.remote_id } }));
+    else if (step.op === 'read') await unwrap(BlyggerApi.markReadBatch({ client, body: { items: step.items } }));
+    else await unwrap(BlyggerApi.markUnreadBatch({ client, body: { items: step.items } }));
+  }
+}
+/**
+ * Mark reading entries read or unread, by entry key. Every loaded reading row
+ * for those entries changes at once, under every view and lens that holds
+ * one; the writes may also cover rows not loaded here ("mark all read" pages
+ * through the view). If a write fails the optimistic change is rolled back.
+ * The reading source refetches before the transaction settles, so nothing
+ * flickers back.
+ */
+export const markReading = createOptimisticAction<{
+  keys: string[];
+  read: boolean;
+  writes: { read: ReadWrite[]; unread: UnreadWrite[] };
+}>({
+  onMutate: ({ keys, read }) => {
+    const wanted = new Set(keys);
+    const present = reading.toArray
+      .filter((row) => wanted.has(row.key) && row.imported)
+      .map((row) => JSON.stringify([row.view, row.key]));
+    if (!present.length) return;
+    reading.update(present, (drafts) => {
+      for (const draft of drafts)
+        if (draft.imported) draft.imported.readVersion = read ? draft.imported.version : null;
+    });
+  },
+  mutationFn: async ({ writes }) => {
+    await saveReadState(writes.read, writes.unread);
+    await changed('reading');
+  },
+});
 
 export const hopperStats = createCollection(
   queryCollectionOptions({

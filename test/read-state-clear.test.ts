@@ -68,6 +68,12 @@ describe("clearing read state", () => {
     expect(json.read_state_clear).toBe(true);
   });
 
+  it("Reading entries carry the held version beside readVersion, so 'updated since read' is visible", async () => {
+    const { json } = await apiJson(cookie, "GET", "/api/reading?sub=rcA&limit=50");
+    const entry = (json.items as any[]).find((e) => e.imported?.remoteId === "c1").imported;
+    expect(entry).toMatchObject({ version: 3, readVersion: null });
+  });
+
   it("DELETE clears to null on Reading and answers the agreed body, idempotently", async () => {
     await apiJson(cookie, "PUT", "/api/reading/rcA/c1/read", { version: 3 });
     expect(await readingVersion(cookie, "rcA", "c1")).toBe(3);

@@ -40,7 +40,9 @@ import {
   refreshHoppers,
   hopperDetail,
   hopperPreview,
+  markReading,
 } from './data.ts';
+import { needsRead, readStatus, readWrites } from './read-state.ts';
 import {
   Button,
   Failure,
@@ -179,9 +181,37 @@ function useReadingActions() {
 }
 type Actions = ReturnType<typeof useReadingActions>;
 
+/* ---------------- read state (migration 0026) ---------------- */
+
+type Markable = Pick<Reading, 'key' | 'imported'>;
+/**
+ * Mark imported entries read (at the version held here) or unread. Loaded
+ * reading rows for them change at once and roll back if the write fails.
+ */
+function markEntries(entries: Markable[], read: boolean) {
+  const rows = entries.filter((entry) => entry.imported);
+  return markReading({ keys: rows.map((entry) => entry.key), read, writes: readWrites(rows, read) }).isPersisted.promise;
+}
+interface ReadUi {
+  /** Whether rows show read state and can be selected (timelines; not hoppers). */
+  shown: boolean;
+  selecting: boolean;
+  selected: ReadonlySet<string>;
+  toggle: (key: string) => void;
+  /** The owner opened this entry: expanded it or followed it to its origin. */
+  opened: (entry: Reading) => void;
+}
+const ReadContext = createContext<ReadUi>({
+  shown: false,
+  selecting: false,
+  selected: new Set(),
+  toggle: () => {},
+  opened: () => {},
+});
+
 /* ---------------- entry body ---------------- */
 
-function Body({ html, url, l0 }: { html: string; url?: string; l0: boolean }) {
+function Body({ html, url, l0, onOpen }: { html: string; url?: string; l0: boolean; onOpen?: () => void }) {
   const [expanded, setExpanded] = useState(false),
     [overflow, setOverflow] = useState(false);
   const body = useRef<HTMLDivElement>(null);
@@ -231,7 +261,13 @@ function Body({ html, url, l0 }: { html: string; url?: string; l0: boolean }) {
         dangerouslySetInnerHTML={{ __html: content.html }}
       />
       {overflow && !expanded ? (
-        <Button className="more expand-btn" onClick={() => setExpanded(true)}>
+        <Button
+          className="more expand-btn"
+          onClick={() => {
+            setExpanded(true);
+            onOpen?.();
+          }}
+        >
           more
         </Button>
       ) : null}
@@ -279,6 +315,11 @@ function Entry({
 }) {
   const { run, openDraft, navigate } = actions;
   const settings = useSettings();
+  const readUi = useContext(ReadContext);
+  const status = readUi.shown ? readStatus(entry.imported) : null;
+  const opened = () => {
+    if (entry.imported) readUi.opened(entry);
+  };
   const [historyOpen, setHistoryOpen] = useState(false);
   const { imported, id, url, source } = entryParts(entry);
   const signal = votes.find(
@@ -380,7 +421,10 @@ function Entry({
           icon: '↗',
           label: `${displayUrl(url!)} ↗`,
           description: url,
-          onSelect: () => void window.open(url, '_blank', 'noreferrer'),
+          onSelect: () => {
+            opened();
+            void window.open(url, '_blank', 'noreferrer');
+          },
         },
         !!imported &&
           !entry.l0 && {
@@ -416,9 +460,37 @@ function Entry({
           <span className="sr">stub ↗</span>
         </div>
       ) : null}
-      <article className="entry reading-entry" data-key={entry.key}>
-        <div className="entry-in">
+      <article
+        className={`entry reading-entry${status ? ` is-${status}` : ''}`}
+        data-key={entry.key}
+        data-read={status ?? undefined}
+      >
+        <div
+          className="entry-in"
+          // Following the entry to its origin (title or source link) opens it.
+          onClick={(event) => {
+            if ((event.target as Element).closest('.entry-title a, a.entry-src')) opened();
+          }}
+        >
           <p className="byline">
+            {readUi.selecting && imported ? (
+              <label className="entry-select">
+                <input
+                  type="checkbox"
+                  aria-label={`select ${entryTitle(entry.contentHtml) || plainExcerpt(entry.contentHtml).slice(0, 40) || imported.remoteId}`}
+                  checked={readUi.selected.has(entry.key)}
+                  onChange={() => readUi.toggle(entry.key)}
+                />
+              </label>
+            ) : null}
+            {status === 'unread' || status === 'updated' ? (
+              <span
+                className={`read-dot ${status}`}
+                role="img"
+                aria-label={status === 'unread' ? 'unread' : 'updated since read'}
+                title={status === 'unread' ? 'unread' : 'updated since you read it'}
+              />
+            ) : null}
             <span className="badge">{entry.kind}</span>
             {entry.l0 ? (
               <span className="badge badge-line">legacy rss</span>
@@ -434,7 +506,7 @@ function Entry({
                 : ''}
             </p>
           ) : null}
-          <Body html={entry.contentHtml} url={url} l0={entry.l0} />
+          <Body html={entry.contentHtml} url={url} l0={entry.l0} onOpen={opened} />
           <SourceLink url={url} />
         </div>
         {imported && !entry.l0 && historyOpen ? (
@@ -1141,6 +1213,117 @@ function ReadingHead({
     </>
   );
 }
+/**
+ * Read state on a timeline: unread dots, mark-read-on-open, select mode with
+ * mark read / mark unread for the ticked rows, and "mark all read" for the
+ * whole view — every page of this source under this lens, not only the page
+ * on screen, sent in batches of at most 500.
+ */
+function useReadSelection(key: string, offset: number, entries: Reading[], actions: Actions, title: string, lens: Lens) {
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  // A selection belongs to the rows on screen; a new page or view starts clean.
+  useEffect(() => setPicked(new Set()), [key, offset]);
+  const stop = () => {
+    setSelecting(false);
+    setPicked(new Set());
+  };
+  const ui = useMemo<ReadUi>(
+    () => ({
+      shown: true,
+      selecting,
+      selected: picked,
+      toggle: (entryKey) =>
+        setPicked((current) => {
+          const next = new Set(current);
+          if (!next.delete(entryKey)) next.add(entryKey);
+          return next;
+        }),
+      opened: (entry) => {
+        if (needsRead(readStatus(entry.imported))) void actions.run(() => markEntries([entry], true));
+      },
+    }),
+    [selecting, picked, key, actions],
+  );
+  const importedRows = entries.filter((entry) => entry.imported);
+  const apply = (read: boolean) => {
+    const chosen = importedRows.filter((entry) => picked.has(entry.key));
+    stop();
+    if (chosen.length) void actions.run(() => markEntries(chosen, read));
+  };
+  const markAll = () =>
+    actions.run(async () => {
+      const [sub, kind] = key.split('~') as [string, 'thread' | 'fragment' | undefined];
+      const rows: Markable[] = [];
+      for (let at = 0; ; at += 50) {
+        const page = await unwrap(BlyggerApi.listReading({ client, query: { sub, offset: at, limit: 50, ...(kind ? { kind } : {}) } }));
+        rows.push(...page.items);
+        if (!page.items.length || at + page.items.length >= page.total) break;
+      }
+      const unread = rows.filter((entry) => needsRead(readStatus(entry.imported)));
+      if (!unread.length) {
+        toast('nothing unread here');
+        return;
+      }
+      const n = unread.length;
+      const ok = await confirm({
+        title: `Mark ${n} item${n === 1 ? '' : 's'} read?`,
+        body: `Every unread entry in “${title}”${lens === 'all' ? '' : ` (${LENS_LABELS[lens]})`}, on every page.`,
+        ok: 'mark read',
+      });
+      if (!ok) return;
+      stop();
+      await markEntries(unread, true);
+      toast(`marked ${n} read`);
+    });
+  const openMenu = () =>
+    void menu({
+      title: 'read state',
+      rows: [
+        selecting
+          ? { icon: '✕', label: 'stop selecting', onSelect: stop }
+          : { icon: '☑', label: 'select…', onSelect: () => setSelecting(true) },
+        { icon: '✓', label: 'mark all read…', onSelect: () => void markAll() },
+      ],
+    });
+  const button = (
+    <Button
+      className="icon-btn"
+      aria-label="read state"
+      title="select, mark read or unread"
+      aria-pressed={selecting}
+      onClick={openMenu}
+    >
+      ☑
+    </Button>
+  );
+  const allPicked = importedRows.length > 0 && importedRows.every((entry) => picked.has(entry.key));
+  const bar = selecting ? (
+    <>
+      <div className="select-spacer" aria-hidden="true" />
+      <div className="select-bar" role="toolbar" aria-label="selection">
+        <span className="state">{picked.size} selected</span>
+        <Button
+          className="btn btn-ghost btn-mini"
+          aria-label={allPicked ? 'select none' : 'select all on this page'}
+          onClick={() => setPicked(allPicked ? new Set() : new Set(importedRows.map((entry) => entry.key)))}
+        >
+          {allPicked ? 'none' : 'all'}
+        </Button>
+        <Button className="btn btn-primary btn-mini" disabled={!picked.size} onClick={() => apply(true)}>
+          mark read
+        </Button>
+        <Button className="btn btn-ghost btn-mini" disabled={!picked.size} onClick={() => apply(false)}>
+          mark unread
+        </Button>
+        <Button className="btn btn-ghost btn-mini" onClick={stop}>
+          done
+        </Button>
+      </div>
+    </>
+  ) : null;
+  return { ui, button, bar };
+}
 function Timeline({ sub, offset }: { sub: string; offset: number }) {
   const lensSearch = useLensSearch();
   useChrome({ framed: false, wide: false });
@@ -1166,9 +1349,12 @@ function Timeline({ sub, offset }: { sub: string; offset: number }) {
         : selected
           ? sourceName(selected)
           : 'all';
+  const readable = sub !== 'own' && !isPlaceholder(lens);
+  const read = useReadSelection(key, offset, entries.data ?? [], actions, title, lens);
   return (
-    <>
+    <ReadContext.Provider value={read.ui}>
       <ReadingHead title={title} count={metadata?.total}>
+        {readable ? read.button : null}
         {selected ? (
           <Button
             className="icon-btn"
@@ -1213,6 +1399,7 @@ function Timeline({ sub, offset }: { sub: string; offset: number }) {
               })
             }
           />
+          {readable ? read.bar : null}
         </>
       )}
       <Inspector
@@ -1224,7 +1411,7 @@ function Timeline({ sub, offset }: { sub: string; offset: number }) {
           void actions.navigate({ to: '/reading', search: { view: 'sources' } })
         }
       />
-    </>
+    </ReadContext.Provider>
   );
 }
 /** A hopper member as a reading entry, so it gets every entry action. */
@@ -1262,11 +1449,21 @@ function hopperEntry(
         ? sourceTitleAndUrl({ ...item, l0: item.l0 ? 1 : 0 }, source.origin)
             .url
         : null,
-      // Hopper detail reads the stored import, which carries no read state.
+      version: item.version,
+      // Hopper detail reads the stored import, which carries no read state,
+      // so a hopper shows none (HOPPER_READ); opening an entry still marks it.
       readVersion: null,
     },
   };
 }
+/** Hoppers show no read state; opening a member still stores the read. */
+const HOPPER_READ: ReadUi = {
+  shown: false,
+  selecting: false,
+  selected: new Set(),
+  toggle: () => {},
+  opened: (entry) => void markEntries([entry], true).catch(() => toast('Could not store the read mark.')),
+};
 function HopperTimeline({ id, offset }: { id: string; offset: number }) {
   const lensSearch = useLensSearch();
   useChrome({ framed: false, wide: false });
@@ -1322,10 +1519,12 @@ function HopperTimeline({ id, offset }: { id: string; offset: number }) {
         <LensPlaceholder lens={lens} />
       ) : (
         <>
-      <EntryList
-        entries={entries.slice(start, start + PAGE)}
-        actions={actions}
-      />
+      <ReadContext.Provider value={HOPPER_READ}>
+        <EntryList
+          entries={entries.slice(start, start + PAGE)}
+          actions={actions}
+        />
+      </ReadContext.Provider>
       {!entries.length ? (
         <div className="empty">
           <span className="em" aria-hidden="true">

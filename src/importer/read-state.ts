@@ -23,12 +23,7 @@
 // comparing them as strings compares them as instants. read_at is normalized
 // to that form on the way in; a client's clock skew is the client's to own.
 
-/** One request marks at most this many rows. Enough for a whole feed at once. */
-export const READ_BATCH_MAX = 500;
-/** Read versions are the origin's item versions; 32 bits is ample. */
-export const READ_VERSION_MAX = 0xffffffff;
-/** Longer ids cannot name an imported item; they are refused rather than looked up. */
-export const READ_ID_MAX = 1024;
+export { READ_BATCH_MAX, READ_VERSION_MAX, READ_ID_MAX } from "./read-limits.ts";
 
 /** The one instant format stored in read_state.unread_at and compared against. */
 export function normalizeInstant(iso: string): string {

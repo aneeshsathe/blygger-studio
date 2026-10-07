@@ -332,7 +332,11 @@ export type ReadingEntry = {
         pinnedVersionRetained: number | null;
         sourceUrl: string | null;
         /**
-         * The highest version the owner has marked read; null when unread.
+         * The version of the item held here. A readVersion below it means a newer version arrived after the owner read it.
+         */
+        version: number;
+        /**
+         * The highest version the owner has marked read; null when unread or cleared.
          */
         readVersion: number | null;
     };

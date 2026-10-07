@@ -59,7 +59,7 @@ export async function readingData(db: D1Database, requestedOffset: number, limit
     const row = importedById.get(JSON.stringify([identity.sub, identity.id]));
     if (!row) return null;
     const sub = subs.find((s) => s.id === row.subscription_id);
-    const input: ImportedEntryInput = { subscriptionId: row.subscription_id, subscriptionTitle: sub?.title || sub?.origin || row.subscription_id, remoteId: row.remote_id, sourceUrl: sub ? sourceTitleAndUrl(row, sub.origin).url : null, kind: row.kind, withdrawn: row.state === "tombstone", l0: row.l0 === 1, updated: row.updated, observedAt: row.observed_at, contentHtml: await sanitizeHtml(row.content_html), pinnedVersionRetained: row.pinned_version_retained, readVersion: row.read_version ?? null };
+    const input: ImportedEntryInput = { subscriptionId: row.subscription_id, subscriptionTitle: sub?.title || sub?.origin || row.subscription_id, remoteId: row.remote_id, sourceUrl: sub ? sourceTitleAndUrl(row, sub.origin).url : null, kind: row.kind, withdrawn: row.state === "tombstone", l0: row.l0 === 1, updated: row.updated, observedAt: row.observed_at, contentHtml: await sanitizeHtml(row.content_html), pinnedVersionRetained: row.pinned_version_retained, version: row.version, readVersion: row.read_version ?? null };
     return { ...buildReadingFeed([], [input])[0], key: `imported:${JSON.stringify([row.subscription_id, row.remote_id])}` };
   }));
   return { items: entries.filter((e) => e !== null), counts, selected, total, offset, limit };

@@ -81,6 +81,22 @@
 .entry-bar .more-btn { font-size: 1.15rem; }
 .tomb { font-size: .78rem; color: var(--alert); margin: 0 0 8px; }
 
+/* Read state (0026): a dot on unread imported entries, a ring on ones
+ * updated since they were read. Nothing on read ones and nothing on your own.
+ * Select mode adds a checkbox to each imported byline and a bar above the
+ * tab bar (or at the bottom beside the rail on wide screens). */
+.read-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--pencil); flex: 0 0 auto; }
+.read-dot.updated { background: transparent; box-shadow: inset 0 0 0 2px var(--pencil); }
+.entry-select { display: inline-flex; align-items: center; margin: -6px 2px -6px -6px; padding: 6px; cursor: pointer; }
+.entry-select input { margin: 0; width: 18px; height: 18px; accent-color: var(--pencil); }
+.select-spacer { height: 64px; }
+.select-bar { position: fixed; left: 0; right: 0; bottom: calc(52px + env(safe-area-inset-bottom)); z-index: 31;
+  display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+  background: var(--card); color: var(--ink); border-top: 1px solid var(--rule); box-shadow: 0 -6px 18px rgba(0,0,0,.08); }
+.select-bar .state { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .82rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.select-bar .btn-mini { padding: 7px 9px; white-space: nowrap; flex: 0 0 auto; }
+@media (min-width: 900px) { .select-bar { left: var(--rail); bottom: 0; padding-bottom: max(8px, env(safe-area-inset-bottom)); } }
+
 /* Imported history (#40) and the word diff between public versions. */
 .entry-history { border-top: 1px dashed var(--rule); padding: 10px 14px 12px; background: var(--sunk); font-size: .84rem; }
 .entry-history .h-list { list-style: none; margin: 0; padding: 0; }

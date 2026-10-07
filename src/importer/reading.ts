@@ -42,7 +42,9 @@ export interface ImportedEntryInput {
    * linked out, so the one thing a reader most often wants next had no door.
    */
   sourceUrl: string | null;
-  /** The highest version the owner has marked read (migration 0026); null when unread. */
+  /** The version held here; readVersion below it means "updated since read". */
+  version: number;
+  /** The highest version the owner has marked read (migration 0026); null when unread or cleared. */
   readVersion: number | null;
 }
 

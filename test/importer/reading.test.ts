@@ -32,11 +32,11 @@ describe("buildReadingFeed() — §3.6", () => {
     const imported: ImportedEntryInput[] = [
       {
         subscriptionId: "sub-blyg", subscriptionTitle: "Friend", remoteId: "rid-1", kind: "fragment", withdrawn: false, l0: false,
-        updated: "2026-08-06T00:00:00Z", observedAt: "2026-08-06T00:05:00Z", contentHtml: "<p>imported</p>", pinnedVersionRetained: null, sourceUrl: null, readVersion: null,
+        updated: "2026-08-06T00:00:00Z", observedAt: "2026-08-06T00:05:00Z", contentHtml: "<p>imported</p>", pinnedVersionRetained: null, sourceUrl: null, version: 1, readVersion: null,
       },
       {
         subscriptionId: "sub-l0", subscriptionTitle: "Legacy Blog", remoteId: "rid-2", kind: "fragment", withdrawn: false, l0: true,
-        updated: "2026-08-04T00:00:00Z", observedAt: "2026-08-04T00:00:00Z", contentHtml: "<p>l0</p>", pinnedVersionRetained: null, sourceUrl: null, readVersion: null,
+        updated: "2026-08-04T00:00:00Z", observedAt: "2026-08-04T00:00:00Z", contentHtml: "<p>l0</p>", pinnedVersionRetained: null, sourceUrl: null, version: 1, readVersion: null,
       },
     ];
     const feed = buildReadingFeed(own, imported);
@@ -50,11 +50,11 @@ describe("buildReadingFeed() — §3.6", () => {
     const imported: ImportedEntryInput[] = [
       {
         subscriptionId: "s", subscriptionTitle: "S", remoteId: "future-dated", kind: "fragment", withdrawn: false, l0: false,
-        updated: "2099-01-01T00:00:00Z", observedAt: "2026-08-01T00:00:00Z", contentHtml: "<p>a</p>", pinnedVersionRetained: null, sourceUrl: null, readVersion: null,
+        updated: "2099-01-01T00:00:00Z", observedAt: "2026-08-01T00:00:00Z", contentHtml: "<p>a</p>", pinnedVersionRetained: null, sourceUrl: null, version: 1, readVersion: null,
       },
       {
         subscriptionId: "s", subscriptionTitle: "S", remoteId: "honest", kind: "fragment", withdrawn: false, l0: false,
-        updated: "2026-08-10T00:00:00Z", observedAt: "2026-08-10T00:00:00Z", contentHtml: "<p>b</p>", pinnedVersionRetained: null, sourceUrl: null, readVersion: null,
+        updated: "2026-08-10T00:00:00Z", observedAt: "2026-08-10T00:00:00Z", contentHtml: "<p>b</p>", pinnedVersionRetained: null, sourceUrl: null, version: 1, readVersion: null,
       },
     ];
     const feed = buildReadingFeed([], imported);
@@ -66,7 +66,7 @@ describe("buildReadingFeed() — §3.6", () => {
     const imported: ImportedEntryInput[] = [
       {
         subscriptionId: "s", subscriptionTitle: "S", remoteId: "gone", kind: "fragment", withdrawn: true, l0: false,
-        updated: "2026-08-05T00:00:00Z", observedAt: "2026-08-05T00:00:00Z", contentHtml: "", pinnedVersionRetained: null, sourceUrl: null, readVersion: null,
+        updated: "2026-08-05T00:00:00Z", observedAt: "2026-08-05T00:00:00Z", contentHtml: "", pinnedVersionRetained: null, sourceUrl: null, version: 1, readVersion: null,
       },
     ];
     const feed = buildReadingFeed([], imported);
@@ -98,7 +98,7 @@ describe("buildReadingFeed() — foreign date formats (live regression)", () => 
     return {
       subscriptionId: "sub-l0", subscriptionTitle: "Contraptions", remoteId: label, kind: "fragment",
       withdrawn: false, l0: true, updated, observedAt: "2026-09-01T00:00:00Z",
-      contentHtml: `<p>${label}</p>`, pinnedVersionRetained: null, sourceUrl: null, readVersion: null,
+      contentHtml: `<p>${label}</p>`, pinnedVersionRetained: null, sourceUrl: null, version: 1, readVersion: null,
     };
   }
 

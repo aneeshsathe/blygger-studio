@@ -176,7 +176,10 @@ page, feed, item document, `blyg.json` or export reads it.
   routes as "this server keeps no read state".
 - `GET /reading` returns `read_state: true`, and each imported entry carries
   `readVersion`: an integer, or null when unread. A client can rely on the flag
-  rather than probing the write routes.
+  rather than probing the write routes. Each imported entry also carries
+  `version`, the version held here: `readVersion` below it means a newer
+  version arrived after the owner read it, and it is the value to send when
+  marking the entry read.
 
 ### Marking unread
 
@@ -200,6 +203,7 @@ batch on each item), the time the client read the post:
 - A read with no `read_at` applies, as before clearing existed. Send `read_at`
   from any client that queues reads offline, or a queued read can undo a later
   "mark unread" from another device.
+  The Studio acts online and sends none, so its reads always apply.
 
 A clear resets the row, so the next accepted read stores its own version
 rather than the larger of it and the value held before the clear. From there

@@ -389,6 +389,7 @@ export const zReadingEntry = z.object({
         contentHtml: z.string(),
         pinnedVersionRetained: z.number().nullable(),
         sourceUrl: z.string().nullable(),
+        version: z.int(),
         readVersion: z.int().nullable()
     }).optional()
 });
