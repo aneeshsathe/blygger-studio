@@ -19,7 +19,7 @@ import { previewFromHtml } from '../preview.ts';
 import type { ListItemsResponses, Version } from '../../sdk/dist/browser.js';
 import { BlyggerApi, unwrap } from '../../sdk/dist/browser.js';
 import type { Detail } from './data.ts';
-import { client, items, itemDetail, changed, refreshItems } from './data.ts';
+import { client, items, itemDetail, changed, refreshItems, createDraftAction } from './data.ts';
 import {
   ActionBar,
   Button,
@@ -35,6 +35,7 @@ import {
 import { Sheet, confirm, menu, prompt, toast } from './sheets.tsx';
 import { BracketPicker } from './picker.tsx';
 import { Draft } from './draft.ts';
+
 import { stripStaleUploads, uploadToken } from './upload-tokens.ts';
 import { FRAGMENT_MAX_CHARS as MAX } from '../client.ts';
 import { insertLink, isUrl, linkToast } from './links.ts';
@@ -673,7 +674,7 @@ function textareaProps(upload: ReturnType<typeof useUpload>, tools: TextTools) {
  * confirmed text is exactly what the model drafted.
  */
 type NoteChoice = { note: string; generated: boolean };
-function useNoteConfirm() {
+function useNoteConfirm(write: ReturnType<typeof createDraftAction>) {
   const settings = useSettings();
   const [state, setState] = useState<{
     version: number;
@@ -695,7 +696,7 @@ function useNoteConfirm() {
     return new Promise((resolve) => {
       setState({ version: item.version + 1, text: typed, drafted, loading: auto, resolve });
       if (!auto) return;
-      unwrap(BlyggerApi.draftNote({ client, path: { id: item.id } }))
+      write({ type: 'draft-note' })
         .then((r) => setState((s) => s && { ...s, text: r.note, drafted: r.note, loading: false }))
         .catch((error) => setState((s) => s && { ...s, loading: false, error }));
     });
@@ -788,43 +789,18 @@ export function Compose() {
   usePoll('items', refreshItems);
   const current = useRef({ text, kind, id });
   current.current = { text, kind, id };
-  const queue = useRef(Promise.resolve<string | undefined>(undefined));
-  const save = () => {
-    const snapshot = current.current;
-    const pending = queue.current.then(async (existing) => {
-      const existingId = existing || current.current.id;
-      const item = existingId
-        ? await unwrap(
-            BlyggerApi.updateItem({
-              client,
-              path: { id: existingId },
-              body: { content_md: snapshot.text, kind: snapshot.kind },
-            }),
-          )
-        : await unwrap(
-            BlyggerApi.createItem({
-              client,
-              body: { content_md: snapshot.text, kind: snapshot.kind },
-            }),
-          );
-      setId(item.id);
-      current.current.id = item.id;
-      items.utils.writeUpsert(item);
-      if (
-        current.current.text === snapshot.text &&
-        current.current.kind === snapshot.kind
-      ) {
-        setSaved(true);
-      }
-      return item.id;
-    });
-    queue.current = pending.catch(() => current.current.id);
-    return pending.then((id) =>
-      current.current.text === snapshot.text &&
-      current.current.kind === snapshot.kind
-        ? id
-        : undefined,
-    );
+  const [draftKey, setDraftKey] = useState(0);
+  const write = useMemo(() => createDraftAction(), [draftKey]);
+  const save = async () => {
+    const snapshot = { text: current.current.text, kind: current.current.kind };
+    const result = await write({ type: 'save', text: snapshot.text, kind: snapshot.kind });
+    const savedId = result.id;
+    setId(savedId);
+    current.current.id = savedId;
+    if (current.current.text !== snapshot.text || current.current.kind !== snapshot.kind)
+      return undefined;
+    setSaved(true);
+    return savedId;
   };
   useBlocker({
     enableBeforeUnload: () => !!current.current.text && !saved,
@@ -868,17 +844,15 @@ export function Compose() {
   const publish = async () => {
     const savedId = await save();
     if (!savedId) return;
-    const result = await unwrap(
-      BlyggerApi.publishItem({ client, path: { id: savedId } }),
-    );
+    const result = await write({ type: 'publish', note: '', generated: false });
     setPublished({ id: savedId, kind, md: text, version: result.version });
     if (current.current.text === text) {
       setText('');
       setId(undefined);
-      queue.current = Promise.resolve(undefined);
+      current.current.id = undefined;
+      setDraftKey(key => key + 1);
       setSaved(false);
     }
-    await changed('items', 'reading');
     return result;
   };
   const rows = result.data ?? [];
@@ -1040,31 +1014,23 @@ function ItemRow({
   const settings = useSettings();
   const sharing = useSharing();
   const action = useAction();
-  const confirmNote = useNoteConfirm();
   const [expanded, setExpanded] = useState(false);
   const [open, setOpen] = useState(false);
   const [text, setText] = useState(item.content_md);
   const [saved, setSaved] = useState(false);
+  const write = useMemo(() => createDraftAction(item.id), [item.id]);
+  const confirmNote = useNoteConfirm(write);
   const draft = useRef<Draft | null>(null);
   if (!draft.current)
     draft.current = new Draft(item.content_md, async (content) => {
-      await items.update(item.id, (row) => {
-        row.content_md = content;
-      }).isPersisted.promise;
-      await changed('item', 'reading');
+      await write({ type: 'save', text: content });
     });
   const kind: Kind = item.kind === 'thread' ? 'thread' : 'fragment';
   const publishRow = async () => {
     const choice = await confirmNote.request(item, '');
     if (!choice) return;
     const md = draft.current!.text;
-    const result = await unwrap(
-      BlyggerApi.publishItem({
-        client,
-        path: { id: item.id },
-        body: { ...(choice.note ? { note: choice.note } : {}), note_generated: choice.generated },
-      }),
-    );
+    const result = await write({ type: 'publish', note: choice.note, generated: choice.generated });
     onPublished({ id: item.id, kind, md, version: result.version });
     return result;
   };
@@ -1124,9 +1090,7 @@ function ItemRow({
   const mutate = (fn: () => Promise<unknown>) =>
     void action.run(async () => {
       if (draft.current!.dirty && !(await save())) return;
-      const result = await fn();
-      await changed('items', 'item', 'reading');
-      return result;
+      return fn();
     });
   const dot = rowDot(item);
   const pin = async () => {
@@ -1136,14 +1100,7 @@ function ItemRow({
         ok: `pin v${item.version}`,
       })
     )
-      mutate(() =>
-        unwrap(
-          BlyggerApi.pinItem({
-            client,
-            path: { id: item.id, version: item.version },
-          }),
-        ),
-      );
+      mutate(() => write({ type: 'pin', version: item.version }));
   };
   return (
     <li
@@ -1296,10 +1253,8 @@ function ItemRow({
                       danger: true,
                     })
                   )
-                    // Not mutate(): its follow-up refetch of this item 404s on
-                    // the draft just deleted and showed "not found" as an error.
                     void action.run(async () => {
-                      await items.delete(item.id).isPersisted.promise;
+                      await write({ type: 'delete' });
                       await changed('items', 'reading');
                       toast('Draft discarded', { tone: 'ok' });
                     });
@@ -1343,14 +1298,7 @@ function ItemRow({
                         danger: true,
                       })
                     )
-                      mutate(() =>
-                        unwrap(
-                          BlyggerApi.withdrawItem({
-                            client,
-                            path: { id: item.id },
-                          }),
-                        ),
-                      );
+                      mutate(() => write({ type: 'withdraw' }));
                   }}
                 >
                   withdraw
@@ -1420,14 +1368,11 @@ function Editor({ item }: { item: Detail }) {
   const settings = useSettings();
   const sharing = useSharing();
   const action = useAction();
+  const write = useMemo(() => createDraftAction(item.id), [item.id]);
   const draft = useRef<Draft | null>(null);
   if (!draft.current) {
     draft.current = new Draft(item.content_md, async (text) => {
-      const transaction = items.update(item.id, (row) => {
-        row.content_md = text;
-      });
-      await transaction.isPersisted.promise;
-      await changed('items', 'reading');
+      await write({ type: 'save', text });
     });
     const cleaned = stripStaleUploads(item.content_md);
     if (cleaned !== item.content_md) draft.current.edit(cleaned);
@@ -1437,7 +1382,7 @@ function Editor({ item }: { item: Detail }) {
   // The note the studio drafted (#40); `generated` is sent only while the
   // field still holds exactly that text — an edit makes the words the author's.
   const [drafted, setDrafted] = useState<string>();
-  const confirmNote = useNoteConfirm();
+  const confirmNote = useNoteConfirm(write);
   const [preview, setPreview] =
     useState<Awaited<ReturnType<typeof getPreview>>>();
   const [version, setVersion] = useState<Version>();
@@ -1510,20 +1455,11 @@ function Editor({ item }: { item: Detail }) {
   const operation = (fn: () => Promise<unknown>) =>
     void action.run(async () => {
       if (!(await save())) return;
-      const result = await fn();
-      await changed('item', 'items', 'reading');
-      return result;
+      return fn();
     });
-  const switchKind = async () => {
-    const next = item.authored_kind === 'fragment' ? 'thread' : 'fragment';
-    await unwrap(
-      BlyggerApi.updateItem({
-        client,
-        path: { id: item.id },
-        body: { kind: next },
-      }),
-    );
-  };
+  const switchKind = () => write({ type: 'update', changes: {
+    kind: item.authored_kind === 'fragment' ? 'thread' : 'fragment',
+  } });
   const restore = async (version: number, discardChanges = false) => {
     const question = discardChanges
       ? {
@@ -1543,22 +1479,10 @@ function Editor({ item }: { item: Detail }) {
     clearTimeout(saveTimer.current);
     setReplacing(true);
     try {
-      // Finish queued PATCHes before replacing the working copy on the server.
-      await draft.current!.settle();
-      await unwrap(
-        BlyggerApi.restoreItem({
-          client,
-          path: { id: item.id },
-          body: { version },
-        }),
-      );
-      const restored = await unwrap(
-        BlyggerApi.getItem({ client, path: { id: item.id } }),
-      );
+      const restored = await write({ type: 'restore', version });
       draft.current!.accept(restored.content_md);
       setText(restored.content_md);
       setSaved(true);
-      await changed('item', 'items', 'reading');
     } finally {
       setReplacing(false);
     }
@@ -1575,11 +1499,10 @@ function Editor({ item }: { item: Detail }) {
     clearTimeout(saveTimer.current);
     setReplacing(true);
     try {
-      await draft.current!.settle();
-      await unwrap(BlyggerApi.deleteItem({ client, path: { id: item.id } }));
+      await write({ type: 'delete' });
       leaving.current = true;
       await navigate({ to: '/' });
-      await changed('items');
+      await changed('items', 'reading');
       toast('Draft discarded', { tone: 'ok' });
     } finally {
       setReplacing(false);
@@ -1595,21 +1518,11 @@ function Editor({ item }: { item: Detail }) {
       }))
     )
       return;
-    operation(() =>
-      unwrap(BlyggerApi.withdrawItem({ client, path: { id: item.id } })),
-    );
+    operation(() => write({ type: 'withdraw' }));
   };
   const generate = async (scope: number) => {
     const revision = draft.current!.revision;
-    const result = await draft.current!.mutate(() =>
-      unwrap(
-        BlyggerApi.generateItem({
-          client,
-          path: { id: item.id },
-          body: { scope },
-        }),
-      ),
-    );
+    const result = await write({ type: 'generate', scope });
     // `text` is the scope's output alone; the draft is the whole document with
     // it spliced in, which the server has already saved. Replacing the draft
     // with `text` threw away everything around the scope (0.10.0–0.27.1).
@@ -1623,23 +1536,14 @@ function Editor({ item }: { item: Detail }) {
       }))
     )
       return;
-    await unwrap(
-      BlyggerApi.pinItem({ client, path: { id: item.id, version } }),
-    );
-    await changed('item', 'items');
+    await write({ type: 'pin', version });
   };
   const publish = () =>
     operation(async () => {
       const choice = await confirmNote.request(item, note, drafted);
       if (!choice) return;
       const md = draft.current!.text;
-      const result = await unwrap(
-        BlyggerApi.publishItem({
-          client,
-          path: { id: item.id },
-          body: { note: choice.note, note_generated: choice.generated },
-        }),
-      );
+      const result = await write({ type: 'publish', note: choice.note, generated: choice.generated });
       // A note describes one change; it must not ride along on the next.
       setNote('');
       setDrafted(undefined);
@@ -1762,13 +1666,7 @@ function Editor({ item }: { item: Detail }) {
             className="btn btn-ghost btn-mini"
             onClick={() =>
               operation(async () => {
-                await unwrap(
-                  BlyggerApi.updateItem({
-                    client,
-                    path: { id: item.id },
-                    body: { stub_of: null },
-                  }),
-                );
+                await write({ type: 'update', changes: { stub_of: null } });
               })
             }
           >
@@ -1907,9 +1805,7 @@ function Editor({ item }: { item: Detail }) {
                 title="Describe the change from the published version; you can edit it before publishing"
                 onClick={() =>
                   operation(async () => {
-                    const result = await unwrap(
-                      BlyggerApi.draftNote({ client, path: { id: item.id } }),
-                    );
+                    const result = await write({ type: 'draft-note' });
                     setNote(result.note);
                     setDrafted(result.note);
                   })
@@ -2003,13 +1899,7 @@ function Editor({ item }: { item: Detail }) {
                     item.highlight === value
                       ? undefined
                       : operation(() =>
-                          unwrap(
-                            BlyggerApi.updateItem({
-                              client,
-                              path: { id: item.id },
-                              body: { highlight: value },
-                            }),
-                          ),
+                          write({ type: 'update', changes: { highlight: value } }),
                         )
                   }
                 >

@@ -10,6 +10,7 @@ import {
   subscriptions,
   hoppers,
   items,
+  createDraftAction,
   changed,
   hopperDetail,
   hopperPreview,
@@ -590,6 +591,56 @@ function MentionRow({ mention }: { mention: Mention }) {
     </div>
   );
 }
+function ResponseVisibility({ id, mode, defaultShowing, disabled }: {
+  id: string;
+  mode: 'default' | 'show' | 'hide';
+  defaultShowing: boolean;
+  disabled: boolean;
+}) {
+  const write = useMemo(() => createDraftAction(id), [id]);
+  const action = useAction();
+  return (
+    <>
+      <div className="field">
+        <span id={`responses-${id}`}>
+          Responses on this item's public page:
+        </span>
+        <div
+          className="segmented"
+          role="group"
+          aria-labelledby={`responses-${id}`}
+        >
+          {(
+            [
+              [
+                'default',
+                `default (${defaultShowing ? 'showing' : 'hidden'})`,
+              ],
+              ['show', 'show'],
+              ['hide', 'hide'],
+            ] as const
+          ).map(([value, label]) => (
+            <Button
+              key={value}
+              className={mode === value ? 'seg is-active' : 'seg'}
+              aria-pressed={mode === value}
+              disabled={disabled || action.busy}
+              onClick={() =>
+                void action.run(async () => {
+                  if (mode === value) return;
+                  await write({ type: 'update', changes: { responses: value } });
+                })
+              }
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+      </div>
+      <Failure error={action.error} />
+    </>
+  );
+}
 export function MentionsPage() {
   useChrome({ framed: false });
   const incoming =
@@ -598,8 +649,7 @@ export function MentionsPage() {
     useLiveQuery({ query: (q) => q.from({ mention: outbound }) }).data ?? [];
   const owned =
     useLiveQuery({ query: (q) => q.from({ item: items }) }).data ?? [];
-  const settings = useSettings(),
-    action = useAction();
+  const settings = useSettings();
   const [direction, setDirection] = useState<'inbound' | 'outbound'>(
     'inbound',
   );
@@ -618,7 +668,6 @@ export function MentionsPage() {
       <p className="view-sub mentions-note">
         Verified responses from other blygs.
       </p>
-      <Failure error={action.error} />
       <div className="segmented" role="group" aria-label="direction">
         {(['inbound', 'outbound'] as const).map((value) => (
           <Button
@@ -665,44 +714,7 @@ export function MentionsPage() {
                   {rows.length} responses · {showing ? visible : 0} on the page
                   now
                 </p>
-                <div className="field">
-                  <span id={`responses-${id}`}>
-                    Responses on this item's public page:
-                  </span>
-                  <div
-                    className="segmented"
-                    role="group"
-                    aria-labelledby={`responses-${id}`}
-                  >
-                    {(
-                      [
-                        [
-                          'default',
-                          `default (${settings?.show_responses_default ? 'showing' : 'hidden'})`,
-                        ],
-                        ['show', 'show'],
-                        ['hide', 'hide'],
-                      ] as const
-                    ).map(([value, label]) => (
-                      <Button
-                        key={value}
-                        className={mode === value ? 'seg is-active' : 'seg'}
-                        aria-pressed={mode === value}
-                        disabled={!item || action.busy}
-                        onClick={() =>
-                          void action.run(async () => {
-                            if (mode === value) return;
-                            await items.update(id, (row) => {
-                              row.responses = value;
-                            }).isPersisted.promise;
-                          })
-                        }
-                      >
-                        {label}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
+                <ResponseVisibility id={id} mode={mode} defaultShowing={!!settings?.show_responses_default} disabled={!item} />
                 <p className="muted small">
                   The public page can take about a minute to reflect a change
                   here: it is cached at the edge.

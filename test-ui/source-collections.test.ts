@@ -281,6 +281,9 @@ test('backend source collections are top-level singletons with on-demand sync', 
     const file = ts.createSourceFile(name, readFileSync(new URL(name, directory), 'utf8'), ts.ScriptTarget.Latest, true);
     const visit = (node: ts.Node) => {
       if (ts.isCallExpression(node) && node.expression.getText(file) === 'createCollection') {
+        const collectionOptions = node.arguments[0];
+        // Command collections store local requests and have no backend query.
+        if (ts.isCallExpression(collectionOptions) && collectionOptions.expression.getText(file) === 'localOnlyCollectionOptions') return;
         expect(name).toBe('data.ts');
         expect(ts.isVariableDeclaration(node.parent)).toBe(true);
         expect(ts.isVariableStatement(node.parent.parent.parent)).toBe(true);

@@ -29,6 +29,7 @@ import { Polling } from './polling.ts';
 import { readIfChanged, type CachedResponse, type Generation } from './revision-query.ts';
 import type { ChangeDomain } from '../change-state.ts';
 import { scoped } from './scoped.ts';
+import { createPacedDraftAction } from './paced-write.ts';
 import { sourceSchemas, readingResponseSchema } from './data-schemas.ts';
 import { zGetItemResponse, zGetHopperResponse } from '../../sdk/dist/schemas.js';
 
@@ -378,6 +379,41 @@ export const itemDetail = scoped((id) => createLiveQueryCollection({
     .where(({ item, history }) => and(eq(item.id, id), eq(history.id, id)))
     .fn.select(({ item, history }): Detail => ({ ...item, ...history })),
 }));
+export function createDraftAction(id?: string) {
+  let itemId = id;
+  return createPacedDraftAction(async command => {
+    let result;
+    if (command.type === 'save' && !itemId) {
+      result = await unwrap(BlyggerApi.createItem({ client, body: {
+        content_md: command.text, kind: command.kind,
+      } }));
+      itemId = result.id;
+    } else {
+      if (!itemId) throw new Error('Save the draft before running this command');
+      const path = { id: itemId };
+      switch (command.type) {
+        case 'save': result = await unwrap(BlyggerApi.updateItem({ client, path, body: { content_md: command.text, kind: command.kind } })); break;
+        case 'generate': result = await unwrap(BlyggerApi.generateItem({ client, path, body: { scope: command.scope } })); break;
+        case 'restore':
+          await unwrap(BlyggerApi.restoreItem({ client, path, body: { version: command.version } }));
+          result = await unwrap(BlyggerApi.getItem({ client, path })); break;
+        case 'publish': result = await unwrap(BlyggerApi.publishItem({ client, path, body: { note: command.note, note_generated: command.generated } })); break;
+        case 'delete': result = await unwrap(BlyggerApi.deleteItem({ client, path })); break;
+        case 'withdraw': result = await unwrap(BlyggerApi.withdrawItem({ client, path })); break;
+        case 'pin': result = await unwrap(BlyggerApi.pinItem({ client, path: { ...path, version: command.version } })); break;
+        case 'draft-note': result = await unwrap(BlyggerApi.draftNote({ client, path })); break;
+        case 'update': result = await unwrap(BlyggerApi.updateItem({ client, path, body: command.changes })); break;
+      }
+    }
+    // Finish read-back inside the handler, before another command starts.
+    if (command.type === 'save' || command.type === 'update') items.utils.writeUpsert(sourceSchemas.items.parse({ ...result, pins: items.get(itemId!)?.pins }));
+    // A delete caller refreshes after leaving the editor, so its active view
+    // does not report the discarded item as missing before navigation.
+    if (command.type !== 'delete') await changed('item', 'items', 'reading');
+    return result;
+  });
+}
+
 export type Reading = Omit<z.infer<typeof sourceSchemas.reading>, 'view'>;
 /**
  * Reading lenses (0.25.0). "threads" and "fragments" narrow a timeline and its
