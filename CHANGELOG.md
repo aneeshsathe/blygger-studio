@@ -18,6 +18,39 @@ not have its own repo until session 26.
 
 ---
 
+## 0.37.0 — 2026-10-09
+
+**Migrations: none.**
+
+- **Studio extensions** (Aneesh Sathe, blygger-studio#52). A way to run UI
+  experiments on a real node without them becoming the reference design.
+  An extension is first-party TypeScript in `extensions/<name>/`, compiled in
+  only when the operator lists it in a gitignored `extensions.local.json`, and
+  then enabled per node in Settings → extensions. Releases compile none in, and
+  with none enabled the Studio's markup is unchanged. Extensions get slots on
+  the reading entry (byline, ⋯ sheet rows, a sheet of their own) and a page at
+  `/studio/ext/<name>` linked from More. Server routes are owner reads only, at
+  `GET /api/ext/<name>/…`, behind the owner API's auth, scope and budget
+  middleware, and 404 while disabled. Nothing reaches the wire. Read the
+  security model in `docs/extensions.md` before compiling one in: an
+  extension's UI holds the owner's session. New setting: `extensions` (empty).
+- **Fresh installs deploy again** (ruthvik-947, blygger-studio#46). Since 0.28,
+  `npm run init` wrote a config without `nodejs_compat`, so a new install's
+  first deploy failed with `No such module "node:crypto"`. Init now writes it,
+  and CI checks that init's config and `wrangler.jsonc` agree on every runtime
+  setting. An install that hit the error can add
+  `"compatibility_flags": ["nodejs_compat"]` to its own `wrangler.jsonc`.
+- **Autosave keeps one write in flight** (Kyle Mathews, blygger-studio#47).
+  Typing that outpaces the backend now merges into the latest pending save
+  instead of queueing every snapshot; generate, publish, restore and delete
+  still run in order after the saves before them. TanStack DB paced mutations
+  replace the hand-written promise queues. Upgrades React DB to 0.5.7 and
+  Query DB Collection to 1.4.2.
+- **Shared item and hopper reads** (Kyle Mathews, blygger-studio#55). Opening
+  an editor makes one item request, and hopper collections share identical
+  requests instead of each fetching the same response. A discarded draft no
+  longer shows a false read-error banner.
+
 ## 0.36.1 — 2026-10-07
 
 **Migrations: none.**
