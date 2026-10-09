@@ -17,6 +17,8 @@ deploy-targets.json
 
 # An operator's own edits to the model list (see models.json); merged at build.
 models.local.json
+# An operator's choice of Studio extensions to compile in (docs/extensions.md).
+extensions.local.json
 
 # init's resume marker — records what has already been provisioned.
 .blyg-init.json

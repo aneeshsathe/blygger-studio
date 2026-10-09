@@ -117,6 +117,10 @@ export type Settings = {
     picker_typing: 'auto' | 'editor' | 'panel';
     update_feed_url: string;
     update_notice_ack: boolean;
+    /**
+     * Studio extensions enabled on this node (docs/extensions.md). Only names compiled into this build are accepted; every extension starts disabled.
+     */
+    extensions: Array<string>;
 };
 
 export type Subscription = {
@@ -1763,6 +1767,10 @@ export type UpdateSettingsData = {
         picker_typing?: 'auto' | 'editor' | 'panel';
         update_feed_url?: string;
         update_notice_ack?: boolean;
+        /**
+         * Studio extensions enabled on this node (docs/extensions.md). Only names compiled into this build are accepted; every extension starts disabled.
+         */
+        extensions?: Array<string>;
     };
     path?: never;
     query?: never;

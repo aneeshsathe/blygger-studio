@@ -4,6 +4,7 @@ import { z } from "@hono/zod-openapi";
 import { createResponseDraft } from "./item-create.ts";
 import { contractApp, readJson, readForm } from "./contract/app.ts";
 import { ItemCreateSchema, ItemEditSchema, routes } from "./contract/routes.ts";
+import { compiledExtensionNames } from "../build/extensions.names.ts";
 // Owner API (cookie auth, JSON) — v0.1-plan §3.3.
 
 import { type Context } from "hono";
@@ -487,6 +488,13 @@ api.openapi(routes.updateSettings, async (c) => {
     const links = body.author_links as { label?: unknown; url?: unknown }[];
     if (!links.every((l) => typeof l?.label === "string" && typeof l?.url === "string" && isFollowableUrl(l.url))) return c.json({ error: "author_links need a label and an absolute http(s) or mailto url" }, 400);
     patch.author_links = JSON.stringify(links);
+  }
+  if (Array.isArray(body.extensions)) {
+    // Only an extension this build carries can be turned on (docs/extensions.md).
+    const names = body.extensions as unknown[];
+    const unknown = names.filter((name) => typeof name !== "string" || !compiledExtensionNames.includes(name));
+    if (unknown.length) return c.json({ error: `not an extension compiled into this build: ${unknown.map(String).join(", ")}` }, 400);
+    patch.extensions = JSON.stringify([...new Set(names as string[])].sort());
   }
   await putSettings(c.env.DB, patch);
   return c.json(await getSettings(c.env.DB));

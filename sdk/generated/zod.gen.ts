@@ -134,7 +134,8 @@ export const zSettings = z.object({
         'panel'
     ]),
     update_feed_url: z.string(),
-    update_notice_ack: z.boolean()
+    update_notice_ack: z.boolean(),
+    extensions: z.array(z.string())
 });
 
 export const zSubscription = z.object({
@@ -776,7 +777,8 @@ export const zUpdateSettingsBody = z.object({
         'panel'
     ]).optional(),
     update_feed_url: z.string().optional(),
-    update_notice_ack: z.boolean().optional()
+    update_notice_ack: z.boolean().optional(),
+    extensions: z.array(z.string()).optional()
 }).strict();
 
 /**

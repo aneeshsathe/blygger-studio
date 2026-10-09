@@ -14,6 +14,7 @@ import { Link } from '@tanstack/react-router';
 import './reading.css';
 import { THEMES } from '../themes.ts';
 import { CLIENT } from '../client.ts';
+import { compiledExtensions } from '../../build/extensions.ui.ts';
 
 const fields = [
   'site_title',
@@ -37,6 +38,7 @@ const fields = [
   'highlight_generated_default',
   'auto_change_notes',
   'update_feed_url',
+  'extensions',
 ] as const;
 function editable(row: Settings): Settings {
   return Object.fromEntries(fields.map((key) => [key, row[key]])) as Settings;
@@ -464,6 +466,41 @@ function SettingsForm({ initial }: { initial: Settings }) {
           </>,
         )}
       </section>
+      {compiledExtensions.length ? (
+        <section className="card" id="extensions">
+          <h3 className="card-h">extensions</h3>
+          <p className="hint">
+            Experiments compiled into this build by its operator. They are not
+            part of the reference Studio and change only what you see here,
+            never your public pages or what other blygs read. Each starts off.
+          </p>
+          {compiledExtensions.map((extension) => (
+            <div key={extension.name}>
+              <label className="check">
+                <input
+                  id={`extension-${extension.name}`}
+                  type="checkbox"
+                  data-extension={extension.name}
+                  checked={form.extensions.includes(extension.name)}
+                  aria-describedby={`extension-${extension.name}-hint`}
+                  onChange={(event) =>
+                    change(
+                      'extensions',
+                      event.target.checked
+                        ? [...form.extensions, extension.name].sort()
+                        : form.extensions.filter((name) => name !== extension.name),
+                    )
+                  }
+                />
+                <span>{extension.label}</span>
+              </label>
+              <p className="hint check-hint" id={`extension-${extension.name}-hint`}>
+                {extension.description}
+              </p>
+            </div>
+          ))}
+        </section>
+      ) : null}
       <div className="save-bar">
         <span className="state">
           {saved ? <span role="status">saved</span> : null}

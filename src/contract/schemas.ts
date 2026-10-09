@@ -169,4 +169,5 @@ export const SettingsSchema = z.object({
   picker_typing: z.enum(["auto", "editor", "panel"]),
   update_feed_url: z.string(),
   update_notice_ack: z.boolean(),
+  extensions: z.array(z.string()).describe("Studio extensions enabled on this node (docs/extensions.md). Only names compiled into this build are accepted; every extension starts disabled."),
 }).openapi("Settings");

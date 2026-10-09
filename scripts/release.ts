@@ -17,6 +17,11 @@ const worker = join(output, workerName);
 mkdirSync(worker);
 // The shipped model list, without any local models.local.json.
 execFileSync("node", ["--import", "tsx", "scripts/build-models.ts"], { stdio: "inherit", env: { ...process.env, BLYG_MODELS_SHIPPED_ONLY: "1" } });
+// The shipped extension list (extensions.json), without any extensions.local.json,
+// and the Studio bundle rebuilt against it, since the Worker embeds that bundle.
+const { BLYG_EXTENSIONS: _override, ...shippedEnv } = process.env;
+execFileSync("node", ["--import", "tsx", "scripts/build-extensions.ts"], { stdio: "inherit", env: { ...shippedEnv, BLYG_EXTENSIONS_SHIPPED_ONLY: "1" } });
+execFileSync("node", ["--import", "tsx", "scripts/build-spa.ts"], { stdio: "inherit" });
 await build({ entryPoints: ["src/index.ts"], outfile: join(worker, "worker.js"), bundle: true, platform: "neutral", conditions: ["workerd"], external: ["cloudflare:*", "node:*"], mainFields: ["module", "main"], format: "esm", target: "es2022", loader: { ".txt": "text" } });
 // Use the committed generic template, never a contributor's local deployment config.
 const config = execFileSync("git", ["show", "HEAD:wrangler.jsonc"], { encoding: "utf8" });

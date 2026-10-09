@@ -56,6 +56,9 @@ import { formatDateIn } from '../dates.ts';
 import { AddFeedForm } from './catalog.tsx';
 import { diffText, type DiffOp } from '../word-diff.ts';
 import { useSwipe } from './swipe.ts';
+import type { EntryContext, StudioExtension } from './extension-api.ts';
+import { EntryBylineSlot, EntrySheetSlot, entryActionRows, enabledExtensions, type OpenSheet } from './extensions.tsx';
+import { compiledExtensions } from '../../build/extensions.ui.ts';
 import './reading.css';
 
 import type { CachedResponse } from './revision-query.ts';
@@ -280,6 +283,8 @@ function Entry({
   const { run, openDraft, navigate } = actions;
   const settings = useSettings();
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [extensionSheet, setExtensionSheet] = useState<OpenSheet | null>(null);
+  const extensions = enabledExtensions(compiledExtensions, settings?.extensions);
   const { imported, id, url, source } = entryParts(entry);
   const signal = votes.find(
     (vote) =>
@@ -299,6 +304,35 @@ function Entry({
     });
   const stub = () =>
     source ? run(() => openDraft({ mode: 'response', source })) : undefined;
+  const linkPost = () =>
+    void run(() => openDraft({ content_md: `[[${id}]]\n\n`, kind: 'fragment' }));
+  const forkPage = () => {
+    if (imported)
+      void navigate({ to: '/fork', search: { id, sub: imported.subscriptionId } });
+  };
+  const openPage = () => void window.open(url, '_blank', 'noreferrer');
+  // What an extension's slots see of this entry (extension-api.ts). Built only
+  // when an extension asks, so an entry with none enabled does no extra work.
+  const extensionContext = (extension: StudioExtension): EntryContext => ({
+    entry,
+    id,
+    imported: imported
+      ? { subscriptionId: imported.subscriptionId, remoteId: imported.remoteId }
+      : undefined,
+    url,
+    client,
+    openDraft,
+    navigate: (location) => navigate(location as never),
+    run: (action) => run(async () => action()),
+    actions: {
+      stub: source ? () => void stub() : undefined,
+      fork: canQuote(entry) && imported ? forkPage : undefined,
+      linkPost: canLink(entry) ? linkPost : undefined,
+      history: imported && !entry.l0 ? () => setHistoryOpen(true) : undefined,
+      open: url ? openPage : undefined,
+    },
+    openSheet: (render) => setExtensionSheet({ name: extension.name, render }),
+  });
   const addToHopper = () =>
     run(async () => {
       if (!imported) return;
@@ -340,20 +374,13 @@ function Entry({
         canLink(entry) && {
           icon: '⇢',
           label: 'link post ↗',
-          onSelect: () =>
-            void run(() =>
-              openDraft({ content_md: `[[${id}]]\n\n`, kind: 'fragment' }),
-            ),
+          onSelect: linkPost,
         },
         canQuote(entry) &&
           imported && {
             icon: '⑂',
             label: 'fork',
-            onSelect: () =>
-              void navigate({
-                to: '/fork',
-                search: { id, sub: imported.subscriptionId },
-              }),
+            onSelect: forkPage,
           },
         canLink(entry) && {
           icon: '⟦',
@@ -380,7 +407,7 @@ function Entry({
           icon: '↗',
           label: `${displayUrl(url!)} ↗`,
           description: url,
-          onSelect: () => void window.open(url, '_blank', 'noreferrer'),
+          onSelect: openPage,
         },
         !!imported &&
           !entry.l0 && {
@@ -389,6 +416,7 @@ function Entry({
             label: historyOpen ? 'hide history' : 'history',
             onSelect: () => setHistoryOpen((open) => !open),
           },
+        ...entryActionRows(extensions, extensionContext),
       ],
     });
   };
@@ -425,6 +453,7 @@ function Entry({
             ) : null}
             <span className="src">{imported?.subscriptionTitle || 'you'}</span>
             <span>· {date}</span>
+            <EntryBylineSlot extensions={extensions} context={extensionContext} />
           </p>
           {entry.withdrawn ? (
             <p className="tomb">
@@ -494,6 +523,7 @@ function Entry({
             ⋯
           </Button>
         </div>
+        <EntrySheetSlot sheet={extensionSheet} close={() => setExtensionSheet(null)} />
       </article>
     </div>
   );

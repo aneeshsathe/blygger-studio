@@ -10,6 +10,11 @@ export default defineConfig({
   define: {
     __ORACLE_REPLAY__: JSON.stringify({ target: process.env.ORACLE_TARGET, seed: process.env.ORACLE_SEED, path: process.env.ORACLE_PATH }),
   },
+  // Every extension in the repository is compiled into the suite, whatever the
+  // operator's extensions.local.json says (test/fixtures/extensions.*.ts).
+  resolve: {
+    alias: [{ find: /^(?:\.\.\/)+build\/extensions\.(names|server)\.ts$/, replacement: path.join(import.meta.dirname, "test/fixtures/extensions.$1.ts") }],
+  },
   plugins: [
     cloudflareTest(async () => {
       const migrations = await readD1Migrations(path.join(import.meta.dirname, "migrations"));
