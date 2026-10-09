@@ -592,8 +592,8 @@ project's **local config**; it adds to the base and never replaces it.
 
 **Ritual config**
 - **Log:** `../blygger-spec/DEVLOG.md` (the one program log for all four repos; dated entry, non-skippable).
-- **Startup extras (S5):** none
+- **Startup extras (S5):** new PRs and issues in all four repos (S5b in `../blygger-spec/CLAUDE.md`)
 - **Verification (W2):** tests plus a real click-through on a node; for key changes see the Anthropic-keys section above.
-- **Wrap-up extras (after W5):** none
+- **Wrap-up extras (after W5):** update `../blygger-spec/ROADMAP.md` (W5b in `../blygger-spec/CLAUDE.md`)
 - **Deploy policy:** `wrangler`-based; authenticate with `wrangler login`, always `--name` for secrets; only on request.
 - **Carry-overs (S6):** none
