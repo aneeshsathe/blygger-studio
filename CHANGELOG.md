@@ -18,6 +18,28 @@ not have its own repo until session 26.
 
 ---
 
+## 0.38.0 — 2026-10-09
+
+**Migrations: none.**
+
+- **Two extensions come with every release, both off.** Until now releases
+  compiled in no extensions, so trying the 0.37.0 mechanism meant building
+  from source. Two browser-only ones now ship, each turned on in Settings →
+  extensions:
+  - **Reading time** puts an estimate at the end of each reading entry's
+    byline ("· 4 min", the word count on hover). Words count at 230 a minute,
+    Han, kana and Hangul characters at 500.
+  - **Inspect** adds "inspect" to an entry's ⋯ sheet: the record this Studio
+    holds for it (id, kind, version, state, content hash, `stub_of`,
+    `forked_from`, transclusions) and its JSON with the bodies left out, with
+    a copy button. It reads your own item or the imported copy through the
+    existing API and fetches nothing from the item's origin.
+
+  Neither has a server half or routes, and a test keeps anything that does
+  out of `extensions.json`. An operator who wants neither can put
+  `{"remove": ["inspect", "reading-time"]}` in `extensions.local.json`. The
+  Settings card now appears on every node.
+
 ## 0.37.0 — 2026-10-09
 
 **Migrations: none.**
