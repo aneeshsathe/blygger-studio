@@ -85,3 +85,28 @@ test('a compiled-in extension starts off, fills its slots once enabled, and leav
     await patchSettings(page, { extensions: [], timezone: zone });
   }
 });
+
+test('the extensions releases carry: reading time in the byline, inspect in the ⋯ sheet', async ({ page }) => {
+  await login(page);
+  const zone = await timezone(page);
+  try {
+    await setExtensions(page, ['inspect', 'reading-time']);
+    await page.goto('/studio/reading?sub=parity-native');
+    const native = page.locator('.reading-entry').filter({ hasText: 'Native title' });
+    const minutes = native.locator('[data-extension=reading-time]');
+    await expect(minutes).toHaveText(/^· (< 1|\d+) min$/);
+    await expect(minutes).toHaveAttribute('title', /\d+ words/);
+
+    const rows = await entryMenu(page, native);
+    await expect(rows.getByRole('button').last()).toContainText('inspect');
+    await rows.getByRole('button').last().click();
+    const sheet = page.getByRole('dialog', { name: 'inspect' });
+    await expect(sheet.locator('[data-extension-sheet=inspect] dl')).toContainText('version');
+    await expect(sheet.locator('.inspect-json')).toContainText('"subscription_id"');
+    await expect(sheet.locator('.inspect-json')).toContainText('characters, not shown');
+    await page.keyboard.press('Escape');
+    await expect(sheet).toHaveCount(0);
+  } finally {
+    await patchSettings(page, { extensions: [], timezone: zone });
+  }
+});

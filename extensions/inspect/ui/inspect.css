@@ -1,0 +1,35 @@
+/* inspect extension: every class is prefixed with the extension's name. */
+.inspect-summary {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0 0 0.75rem;
+}
+.inspect-summary > div {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: 0.5rem;
+}
+.inspect-summary dt {
+  opacity: 0.7;
+}
+.inspect-summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+  font-size: 0.85em;
+}
+.inspect-json {
+  max-height: 50vh;
+  overflow: auto;
+  margin: 0 0 0.75rem;
+  padding: 0.5rem;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+}
+.inspect-error {
+  color: var(--alert);
+}

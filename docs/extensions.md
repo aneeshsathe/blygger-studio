@@ -95,13 +95,13 @@ The same holds for MCP, which serves the contract: an extension's reads are MCP 
 
 Two steps. Both are needed, and both default to off.
 
-1. **Compile it in.** `extensions.json` (committed) ships an empty list. Put your own list in a gitignored `extensions.local.json` at the repository root, which is merged at build like `models.local.json`:
+1. **Compile it in.** `extensions.json` (committed) lists what every release carries: `inspect` and `reading-time`, the two browser-only extensions with no server half, so a node can try the mechanism with one switch in Settings. Anything with a server half (`lineage-glyph`, any route under `/api/ext/`) is never in it and needs your own build. Put your own list in a gitignored `extensions.local.json` at the repository root, which is merged at build like `models.local.json`:
 
    ```json
    { "compile": ["lineage-glyph"] }
    ```
 
-   `npm run build` (which also runs before `dev`, `deploy` and `test`) writes the selection to `build/extensions.*.ts`. Without the local file, nothing is compiled in. A release download is always built from `extensions.json` alone. `BLYG_EXTENSIONS=a,b` (or `all`) overrides both files for one build. The browser suite uses `all`.
+   `npm run build` (which also runs before `dev`, `deploy` and `test`) writes the selection to `build/extensions.*.ts`. Without the local file, the build carries what `extensions.json` lists. `"remove": ["reading-time"]` in the local file drops a shipped one. A release download is always built from `extensions.json` alone. `BLYG_EXTENSIONS=a,b` (or `all`) overrides both files for one build. The browser suite uses `all`.
 
 2. **Turn it on.** In **Settings → extensions**, check the extension and save. The card appears only when the build carries at least one extension. The setting is per node (`extensions` in `GET/PATCH /api/settings`, `owner:manage`). Only compiled-in names are accepted, and every extension starts unchecked. If you stop compiling an extension in, its stored setting does nothing. If you compile it in again later, the stored setting turns it back on.
 

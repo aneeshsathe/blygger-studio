@@ -470,9 +470,10 @@ function SettingsForm({ initial }: { initial: Settings }) {
         <section className="card" id="extensions">
           <h3 className="card-h">extensions</h3>
           <p className="hint">
-            Experiments compiled into this build by its operator. They are not
-            part of the reference Studio and change only what you see here,
-            never your public pages or what other blygs read. Each starts off.
+            Experiments compiled into this build, by the release or by its
+            operator. They are not part of the reference Studio and change
+            only what you see here, never your public pages or what other
+            blygs read. Each starts off.
           </p>
           {compiledExtensions.map((extension) => (
             <div key={extension.name}>

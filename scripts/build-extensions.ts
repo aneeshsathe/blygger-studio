@@ -2,7 +2,7 @@
 //
 // Extensions are first-party TypeScript in extensions/<name>/, listed in
 // extensions/catalog.ts. Which of them a build carries is the operator's call:
-// extensions.json (committed, ships empty) merged with an optional, gitignored
+// extensions.json (committed: the browser-only extensions releases carry) merged with an optional, gitignored
 // extensions.local.json, the same way models.local.json works. The result is
 // three generated modules:
 //
