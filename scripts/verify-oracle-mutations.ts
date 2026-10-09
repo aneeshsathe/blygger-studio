@@ -40,7 +40,7 @@ try {
   cpSync(join(root, "test/mention-delivery.oracle.test.ts"), join(temp, "test/mention-delivery.oracle.test.ts"));
   cpSync(join(root, "sdk/dist"), join(temp, "sdk/dist"), { recursive: true });
   mkdirSync(join(temp, "build"));
-  for (const file of ["studio-spa.txt", "studio-spa-style.txt", "models.json"]) cpSync(join(root, "build", file), join(temp, "build", file));
+  for (const file of ["studio-spa.txt", "studio-spa-style.txt", "models.json", "extensions.names.ts", "extensions.server.ts", "extensions.ui.ts"]) cpSync(join(root, "build", file), join(temp, "build", file));
   symlinkSync(join(root, "node_modules"), join(temp, "node_modules"), "dir");
   const execute = (test: string, pattern: string, replay?: { target: string; seed: string; path: string }) => {
     const result = spawnSync(process.execPath, [join(root, "node_modules/vitest/vitest.mjs"), "run", "--maxWorkers=1", test, "-t", replay ? `${replay.target}: replay` : pattern], { cwd: temp, encoding: "utf8", timeout: 90_000, env: { ...process.env, ORACLE_TARGET: replay?.target, ORACLE_SEED: replay?.seed, ORACLE_PATH: replay?.path, NO_COLOR: "1" } });

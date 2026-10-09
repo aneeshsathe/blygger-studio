@@ -15,6 +15,7 @@ import {
 } from "./transclusion.ts";
 import type { ForkedFrom, ItemRow, MediaRow, ScopeProvenance, Settings, StubCite, StubOf, Transclusion, VersionRow } from "./types.ts";
 import { FRAGMENT_MAX_CHARS } from "./types.ts";
+import { parseEnabledExtensions } from "./extensions/names.ts";
 import { absolutizeHtml, authoredText, contentHash, isFollowableUrl, newId, nowIso } from "./util.ts";
 
 export { TkPublishError, TransclusionResolveError };
@@ -117,6 +118,8 @@ export async function getSettings(db: D1Database): Promise<Settings> {
     update_feed_url: map.update_feed_url ?? "",
     /** Cleared until the operator has seen the "alerts are on" notice once. */
     update_notice_ack: map.update_notice_ack === "on",
+    // Studio extensions this node has turned on (docs/extensions.md). Empty by default.
+    extensions: parseEnabledExtensions(map.extensions),
   };
 }
 

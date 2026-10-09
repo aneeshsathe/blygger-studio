@@ -22,6 +22,8 @@
   "include": [
     "src/ui/**/*.ts",
     "src/ui/**/*.tsx",
+    "extensions/*/ui/**/*.ts",
+    "extensions/*/ui/**/*.tsx",
     "test-ui/**/*.ts",
     "vitest.ui.config.ts",
     "e2e/**/*.ts"

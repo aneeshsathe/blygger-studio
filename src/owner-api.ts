@@ -11,8 +11,15 @@ import { verifyBearer, bearerChallenge, authLocations } from './oauth.ts';
 import { matchOperation, operationScopes, type OwnerAccess } from './permissions.ts';
 import spec from "../openapi.json";
 import { readApi } from "./read-api.ts";
+import { extensionApi, type ServerExtension } from "./extensions/server.ts";
+import { compiledServerExtensions } from "../build/extensions.server.ts";
 
-export function createOwnerApi(access?: OwnerAccess) {
+/**
+ * `extensions` is the server half of the Studio extensions compiled into this
+ * build (scripts/build-extensions.ts); tests pass their own. Their routes sit
+ * behind the same middleware as every other route here.
+ */
+export function createOwnerApi(access?: OwnerAccess, extensions: readonly ServerExtension[] = compiledServerExtensions) {
 const ownerApi = contractApp();
 ownerApi.use('*', (c, next) => bodyLimit({ maxSize: securityLimit(c.env.API_BODY_LIMIT, 8 * 1024 * 1024), onError: c => c.json({ error: 'request body exceeds byte limit' }, 413) })(c, next));
 ownerApi.use("*", async (c, next) => {
@@ -66,6 +73,7 @@ ownerApi.route("/", api);
 ownerApi.route("/", importerApi);
 ownerApi.route("/", mentionsApi);
 ownerApi.route("/", readApi);
+ownerApi.route("/", extensionApi(extensions));
 
 ownerApi.get('/openapi.json', c => {
   const document = structuredClone(spec);

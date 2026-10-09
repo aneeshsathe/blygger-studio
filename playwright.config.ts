@@ -10,5 +10,5 @@ export default defineConfig({
   // Ready only once the mounted proxy (8789) answers. e2e-server.ts starts it last,
   // after the 8787 instance is already serving, so gating on 8787 let early tests
   // race the proxy (ECONNREFUSED on CI, run 37085553974).
-  webServer: { command: "npm run build && node --import tsx scripts/e2e-server.ts", url: "http://127.0.0.1:8789/notes/b/studio/login", reuseExistingServer: false },
+  webServer: { command: "BLYG_EXTENSIONS=all npm run build && node --import tsx scripts/e2e-server.ts", url: "http://127.0.0.1:8789/notes/b/studio/login", reuseExistingServer: false },
 });

@@ -259,6 +259,11 @@ The deployed contract is also available to a signed-in owner at
 `/api/openapi.json`. Downloading the spec does not grant access to the API.
 See [the owner API guide](docs/api.md) for resource routes, partial edits, creation, and pagination.
 
+Interface experiments that should not become the reference design ship as
+[Studio extensions](docs/extensions.md): first-party code an operator compiles
+in with `extensions.local.json` and the owner turns on in Settings. None is
+compiled in or on by default.
+
 ### Upgrade a Worker archive installation
 
 Download the new Worker archive. Check its checksum. Extract it into a new directory.

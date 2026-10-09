@@ -21,7 +21,7 @@
     "deploy:pi": "wrangler deploy --config wrangler.private.jsonc --env protocolInstitute",
     "openapi": "node --import tsx scripts/openapi.ts",
     "sdk:generate": "npm run openapi && node --import tsx scripts/generate-sdk.ts && npm run build",
-    "build": "node --import tsx scripts/build-models.ts && node --import tsx scripts/build-sdk.ts && node --import tsx scripts/build-spa.ts",
+    "build": "node --import tsx scripts/build-extensions.ts && node --import tsx scripts/build-models.ts && node --import tsx scripts/build-sdk.ts && node --import tsx scripts/build-spa.ts",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.ui.json",
     "test:e2e": "playwright test",
     "test:upgrade": "node --import tsx scripts/verify-upgrade.ts",

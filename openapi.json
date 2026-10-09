@@ -510,6 +510,13 @@
           },
           "update_notice_ack": {
             "type": "boolean"
+          },
+          "extensions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Studio extensions enabled on this node (docs/extensions.md). Only names compiled into this build are accepted; every extension starts disabled."
           }
         },
         "required": [
@@ -535,7 +542,8 @@
           "auto_change_notes",
           "picker_typing",
           "update_feed_url",
-          "update_notice_ack"
+          "update_notice_ack",
+          "extensions"
         ]
       },
       "Subscription": {
@@ -5164,6 +5172,13 @@
                   },
                   "update_notice_ack": {
                     "type": "boolean"
+                  },
+                  "extensions": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Studio extensions enabled on this node (docs/extensions.md). Only names compiled into this build are accepted; every extension starts disabled."
                   }
                 },
                 "additionalProperties": false

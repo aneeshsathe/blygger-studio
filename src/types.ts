@@ -464,6 +464,8 @@ export interface Settings {
    * saying so plainly is what buys the default.
    */
   update_notice_ack: boolean;
+  /** Studio extensions enabled on this node (docs/extensions.md). Every extension starts disabled. */
+  extensions: string[];
 }
 
 /**

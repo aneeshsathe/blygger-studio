@@ -11,6 +11,8 @@ import {
   useUpdateState,
 } from './components.tsx';
 import { CLIENT } from '../client.ts';
+import { compiledExtensions } from '../../build/extensions.ui.ts';
+import { enabledExtensions } from './extensions.tsx';
 
 /** The fifth tab: update notices, the less-used screens, the public page, log out. */
 export function MorePage() {
@@ -19,6 +21,9 @@ export function MorePage() {
   const update = useUpdateState();
   const [error, setError] = useState<unknown>();
   const publicUrl = new URL(`${mount}/`, location.origin).href;
+  const pages = enabledExtensions(compiledExtensions, settings?.extensions).filter(
+    (extension) => extension.page,
+  );
   return (
     <>
       <h2 className="view-h">more</h2>
@@ -117,6 +122,26 @@ export function MorePage() {
           </Link>
         </li>
       </ul>
+      {pages.length ? (
+        <ul className="nav-list" aria-label="extensions">
+          {pages.map((extension) => (
+            <li key={extension.name}>
+              <Link to="/ext/$name" params={{ name: extension.name }}>
+                <span className="mi" aria-hidden="true">
+                  ⧉
+                </span>
+                <span className="ml">
+                  {extension.page!.title}
+                  <span className="md">extension · {extension.label}</span>
+                </span>
+                <span className="chev" aria-hidden="true">
+                  ›
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <ul className="nav-list">
         <li>
           <a

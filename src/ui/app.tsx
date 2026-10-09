@@ -41,6 +41,7 @@ import { MorePage } from './more.tsx';
 import { UpdatesPage } from './updates.tsx';
 import { SignalsPage } from './signals.tsx';
 import { SheetHost } from './sheets.tsx';
+import { ExtensionPage } from './extension-page.tsx';
 import { applyCachedTheme } from './theme.ts';
 // Paint the last theme this device saw before the first render; settings
 // repaint it once they load (see theme.ts).
@@ -267,6 +268,12 @@ const more = createRoute({
   path: '/more',
   component: MorePage,
 });
+// A page an enabled Studio extension owns (docs/extensions.md).
+const extensionPage = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/ext/$name',
+  component: () => <ExtensionPage name={extensionPage.useParams().name} />,
+});
 const syntax = createRoute({
   getParentRoute: () => rootRoute,
   path: '/syntax',
@@ -288,6 +295,7 @@ export const router = createRouter({
     fork,
     more,
     syntax,
+    extensionPage,
   ]),
   basepath,
   trailingSlash: 'never',

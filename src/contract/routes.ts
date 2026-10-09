@@ -1,11 +1,12 @@
 import { ItemSchema, VersionSchema, MediaSchema, SubscriptionSchema, HopperSchema, ImportedItemSchema, MentionSchema, VersionReferenceSchema, StubSchema, TransclusionSchema, ProvenanceSchema } from "./resources.ts";
-import { optionalJsonBody } from "./app.ts";
-import { createRoute, z, type RouteConfig } from "@hono/zod-openapi";
+import { createRoute, z } from "@hono/zod-openapi";
+import { ErrorSchema, route } from "./route.ts";
+import { extensionRoutes } from "../../extensions/catalog.ts";
 import { SettingsSchema, HopperItemRowSchema, SignalRowSchema, MentionOutRowSchema } from "./schemas.ts";
 import { CHANGE_DOMAINS } from '../change-state.ts';
 
 const json = (schema: z.ZodType) => ({ "application/json": { schema } });
-export const ErrorSchema = z.object({ error: z.string(), errors: z.array(z.object({ reason: z.string().optional(), at: z.number().optional(), id: z.string().optional(), directive: z.string().optional() }).passthrough()).optional(), tried: z.array(z.string()).optional(), issues: z.array(z.object({ path: z.array(z.union([z.string(), z.number()])), message: z.string() })).optional() }).passthrough().openapi("ApiError");
+export { ErrorSchema };
 const ok = z.object({ ok: z.boolean() });
 const created = ItemSchema;
 const ref = VersionReferenceSchema;
@@ -44,15 +45,6 @@ export const AiModelsSchema = z.object({
 }).openapi("AiModels");
 const counts = z.object({ all: z.number(), own: z.number(), subscriptions: z.record(z.string(), z.number()) });
 
-function route<P extends string>(id: string, method: RouteConfig["method"], path: P, response: z.ZodType, body?: z.ZodType, status = 200, query?: z.ZodObject, optionalBody = false): RouteConfig & { path: P } {
-  if (body instanceof z.ZodObject) body = body.strict();
-  const params = Object.fromEntries([...path.matchAll(/\{(\w+)\}/g)].map((m) => [m[1], ["v", "version"].includes(m[1]) ? z.coerce.number().int().positive() : z.string().min(1)]));
-  return createRoute({
-    operationId: id, method, path, ...(body ? { middleware: optionalBody ? optionalJsonBody : undefined } : {}), tags: ["studio"], security: [{ ownerSession: [] }],
-    request: { ...(Object.keys(params).length ? { params: z.object(params) } : {}), ...(query ? { query } : {}), ...(body ? { body: { required: !optionalBody, content: json(body) } } : {}) },
-    responses: { [status]: { description: "Success", content: json(response) }, ...Object.fromEntries([400, 401, 403, 404, 405, 409, 413, 415, 422, 429, 500, 502].map((s) => [s, { description: "Request failed", content: json(ErrorSchema) }])) },
-  });
-}
 
 export const routes = {
   getChanges: route('getChanges', 'get', '/changes', z.object({ epoch: z.string().min(1), domains: z.object(Object.fromEntries(CHANGE_DOMAINS.map(domain => [domain, z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)])) as Record<typeof CHANGE_DOMAINS[number], z.ZodNumber>) }).openapi('ChangeState')),
@@ -106,6 +98,8 @@ export const routes = {
   getItemFreshness: route("getItemFreshness", "get", "/items/{id}/freshness", ThreadFreshnessSchema, undefined, 200, z.object({ probe: z.enum(["true", "false"]).optional() })),
   refreshItem: route("refreshItem", "post", "/items/{id}/refresh", ok.extend({ version: z.number(), refreshed: z.array(z.string()), resynced: z.number().int().nonnegative(), warning: z.string().optional() }), note, 200, undefined, true),
   getForkOptions: route("getForkOptions", "get", "/fork-options", z.object({ origin: z.string(), ourOrigin: z.string(), versions: z.array(z.object({ version: z.number(), at: z.string(), note: z.string().nullable() })), error: z.string().optional() }), undefined, 200, z.object({ id: z.string(), sub: z.string().optional(), origin: z.string().optional() })),
+  // Read routes contributed by the extensions in this repository (extensions/catalog.ts).
+  ...extensionRoutes,
 };
 // The resolve/confirm operation has two successful response shapes and statuses.
 routes.createSubscription.responses[201] = { description: "Subscribed", content: json(subscribed) };
