@@ -24,7 +24,7 @@ const controls = [
 ] as const;
 let primary: unknown;
 try {
-  for (const path of ['src', 'test', 'test-ui', 'migrations', 'sdk', 'build', 'package.json', 'package-lock.json', 'models.json', 'openapi.json', 'wrangler.jsonc', 'vitest.config.ts', 'vitest.ui.config.ts', 'tsconfig.json', 'tsconfig.ui.json']) cpSync(join(root, path), join(temp, path), { recursive: true });
+  for (const path of ['src', 'test', 'test-ui', 'migrations', 'extensions', 'sdk', 'build', 'package.json', 'package-lock.json', 'models.json', 'openapi.json', 'wrangler.jsonc', 'vitest.config.ts', 'vitest.ui.config.ts', 'tsconfig.json', 'tsconfig.ui.json']) cpSync(join(root, path), join(temp, path), { recursive: true });
   mkdirSync(join(temp, 'scripts')); cpSync(join(root, 'scripts/reset-change-epoch.sql'), join(temp, 'scripts/reset-change-epoch.sql'));
   symlinkSync(join(root, 'node_modules'), join(temp, 'node_modules'), 'dir');
   const run = (control: typeof controls[number], replay?: { seed: string; path: string }) => {
