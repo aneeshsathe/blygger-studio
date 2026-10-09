@@ -8,6 +8,7 @@ import { zListItemsResponse, zHopper, zSubscription, zAuthorization } from '../s
 
 let db: typeof import('../src/ui/data.ts');
 let revision = 0;
+let epoch = 'test';
 let text = 'original';
 let missing = false;
 let failWrite = false;
@@ -32,7 +33,7 @@ beforeAll(async () => {
   vi.stubGlobal('fetch', async (request: Request) => {
     const url = new URL(request.url);
     requests.push({ path: url.pathname, params: url.searchParams });
-    if (url.pathname === '/api/changes') return json({ epoch: 'test', domains: Object.fromEntries(['items', 'reading', 'hoppers', 'subscriptions', 'signals', 'settings', 'feed'].map((domain) => [domain, revision])) });
+    if (url.pathname === '/api/changes') return json({ epoch, domains: Object.fromEntries(['items', 'reading', 'hoppers', 'subscriptions', 'signals', 'settings', 'feed'].map((domain) => [domain, revision])) });
     if (url.pathname === '/api/items/a' && request.method === 'PATCH') {
       const body = await request.json();
       await writeGate;
@@ -42,7 +43,7 @@ beforeAll(async () => {
     }
     if (url.pathname === '/api/items/a') {
       if (failRead) return json({ error: 'read failed' }, 503);
-      return missing ? json({ error: 'not found' }, 404) : json(detail());
+      return missing ? json({ error: 'not found' }, 404) : json({ ...detail(), ...(invalidItem ? { content_md: 42 } : {}) });
     }
     if (url.pathname === '/api/items') return json({ items: missing ? [] : [{ ...item(), ...(invalidItem ? { content_md: 42 } : {}) }], total: missing ? 0 : 1, offset: 0, limit: 100 });
     if (url.pathname === '/api/hoppers') return json({ items: [hopper], total: 1, offset: 0, limit: 100 });
@@ -68,7 +69,7 @@ beforeAll(async () => {
   db = await import('../src/ui/data.ts');
 });
 
-beforeEach(() => { revision = 0; text = 'original'; missing = false; failWrite = false; failRead = false; orphanMember = false; invalidItem = false; writeGate = undefined; releaseWrite = undefined; requests.length = 0; });
+beforeEach(() => { revision = 0; epoch = 'test'; text = 'original'; missing = false; failWrite = false; failRead = false; orphanMember = false; invalidItem = false; writeGate = undefined; releaseWrite = undefined; requests.length = 0; });
 afterEach(async () => {
   releaseWrite?.();
   await Promise.all(views.splice(0).map((view) => view.cleanup()));
@@ -77,6 +78,59 @@ afterEach(async () => {
   db.queryClient.clear();
 });
 afterAll(() => { db.polling.stop(); db.queryClient.unmount(); vi.unstubAllGlobals(); });
+
+test('editor projections share one item read on open and per changed revision', async () => {
+  const editor = db.itemDetail('a'); views.push(editor);
+  await editor.preload();
+  expect(requests.filter((request) => request.path === '/api/items/a')).toHaveLength(1);
+  await db.refreshItems();
+  expect(requests.filter((request) => request.path === '/api/items/a')).toHaveLength(1);
+  text = 'fresh'; revision++;
+  await db.changed('items');
+  expect(requests.filter((request) => request.path === '/api/items/a')).toHaveLength(2);
+  expect(editor.toArray[0].content_md).toBe('fresh');
+});
+
+test('hopper projections share each preview and full response per revision', async () => {
+  const preview = db.hopperPreview('h'), full = db.hopperDetail('h'); views.push(preview, full);
+  await preview.preload();
+  const reads = () => requests.filter((request) => request.path === '/api/hoppers/h');
+  expect(reads()).toHaveLength(1);
+  expect(reads()[0].params.get('preview')).toBe('true');
+  await full.preload();
+  expect(reads()).toHaveLength(2);
+  expect(reads()[1].params.get('preview')).toBeNull();
+  await db.refreshHoppers();
+  expect(reads()).toHaveLength(2);
+  text = 'fresh'; revision++;
+  await db.changed('hoppers');
+  expect(reads()).toHaveLength(4);
+  expect(full.toArray[0].items).toHaveLength(4);
+  expect(preview.toArray[0].items).toHaveLength(3);
+  expect(full.toArray[0].items[0].content_html).toBe('fresh 0');
+});
+
+test('shared owner reads reload after an epoch change with the same revision', async () => {
+  const editor = db.itemDetail('a'), hopperView = db.hopperPreview('h'); views.push(editor, hopperView);
+  await Promise.all([editor.preload(), hopperView.preload()]);
+  epoch = 'restored'; text = 'restored content';
+  await Promise.all([db.refreshItems(), db.refreshHoppers()]);
+  expect(requests.filter((request) => request.path === '/api/items/a')).toHaveLength(2);
+  expect(requests.filter((request) => request.path === '/api/hoppers/h')).toHaveLength(2);
+  expect(editor.toArray[0].content_md).toBe('restored content');
+  expect(hopperView.toArray[0].items[0].content_html).toBe('restored content 0');
+});
+
+test('invalid owner responses are not shared as successful reads and retry at the same revision', async () => {
+  const editor = db.itemDetail('a'); views.push(editor);
+  invalidItem = true;
+  await expect(db.preloadView(editor)).rejects.toThrow('expected string');
+  expect(db.items.get('a')).toBeUndefined();
+  invalidItem = false;
+  await db.queryClient.resetQueries({ predicate: (query) => query.state.status === 'error' });
+  await db.preloadView(editor);
+  expect(editor.toArray[0].content_md).toBe('original');
+});
 
 test('editor and list share optimistic item fields and roll back together', async () => {
   const editor = db.itemDetail('a'); views.push(editor);

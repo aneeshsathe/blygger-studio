@@ -12,7 +12,7 @@ import {
   parseLoadSubsetOptions,
   queryCollectionOptions,
 } from '@tanstack/query-db-collection';
-import { QueryClient, type QueryFunction, type QueryFunctionContext } from '@tanstack/query-core';
+import { QueryClient, type QueryFunctionContext } from '@tanstack/query-core';
 import { z } from 'zod';
 import type {
   ListReadingResponses,
@@ -26,11 +26,11 @@ import {
   unwrap,
 } from '../../sdk/dist/browser.js';
 import { Polling } from './polling.ts';
-import { readIfChanged, type CachedResponse } from './revision-query.ts';
+import { readIfChanged, type CachedResponse, type Generation } from './revision-query.ts';
 import type { ChangeDomain } from '../change-state.ts';
 import { scoped } from './scoped.ts';
 import { sourceSchemas, readingResponseSchema } from './data-schemas.ts';
-import { zGetItemResponse } from '../../sdk/dist/schemas.js';
+import { zGetItemResponse, zGetHopperResponse } from '../../sdk/dist/schemas.js';
 
 export const client = createBlyggerClient({ baseUrl: location.origin });
 export const queryClient = new QueryClient({
@@ -57,7 +57,7 @@ function cachedQuery<S extends z.ZodType>(
   context: QueryFunctionContext,
   domain: ChangeDomain,
   schema: S,
-  load: QueryFunction<z.input<S>>,
+  load: (context: QueryFunctionContext, generation: Generation) => Promise<z.input<S>>,
 ) {
   // Parse before caching the revision envelope. A bad response must remain a
   // failed read, so retry can fetch it again without waiting for a new revision.
@@ -65,9 +65,29 @@ function cachedQuery<S extends z.ZodType>(
     context,
     domain,
     ({ signal }) => unwrap(BlyggerApi.getChanges({ client, signal })),
-    async (context) => schema.parse(await load(context)),
+    async (context, generation) => schema.parse(await load(context, generation)),
   );
 }
+
+// Source collections keep separate rows and optimistic overlays, but projections
+// of one owner response share a validated read for the same server generation.
+function ownerRead<S extends z.ZodType>(
+  key: readonly unknown[],
+  generation: Generation,
+  schema: S,
+  load: (signal: AbortSignal) => Promise<z.input<S>>,
+) {
+  return queryClient.fetchQuery({
+    queryKey: ['owner-read', ...key, generation.epoch, generation.revision],
+    queryFn: async ({ signal }) => schema.parse(await load(signal)),
+  });
+}
+const readItem = (id: string, generation: Generation) =>
+  ownerRead(['items', id], generation, zGetItemResponse,
+    (signal) => unwrap(BlyggerApi.getItem({ client, path: { id }, signal })));
+const readHopper = (id: string, preview: boolean, generation: Generation) =>
+  ownerRead(['hoppers', id, preview], generation, zGetHopperResponse,
+    (signal) => unwrap(BlyggerApi.getHopper({ client, path: { id }, query: preview ? { preview: 'true' } : {}, signal })));
 
 async function pages<T>(
   read: (offset: number) => Promise<{ items: T[]; total: number }>,
@@ -123,12 +143,12 @@ export const items = createCollection(
     queryClient,
     getKey: (row) => row.id,
     queryFn: (context) =>
-      cachedQuery(context, 'items', sourceSchemas.items.array(), async ({ signal }) => {
+      cachedQuery(context, 'items', sourceSchemas.items.array(), async ({ signal }, generation) => {
         const ids = subsetIds(context);
         if (ids) {
           return existing(ids, async (id) => {
             const { authored_kind: _kind, media: _media, versions, published: _published, ...item } =
-              await unwrap(BlyggerApi.getItem({ client, path: { id }, signal }));
+              await readItem(id, generation);
             const pins = versions
               .filter((version) => version.pinned)
               .map(({ version, kind }) => ({
@@ -265,10 +285,10 @@ export const hoppers = createCollection(
     queryClient,
     getKey: (row) => row.id,
     queryFn: (context) =>
-      cachedQuery(context, 'hoppers', sourceSchemas.hoppers.array(), async ({ signal }) => {
+      cachedQuery(context, 'hoppers', sourceSchemas.hoppers.array(), async ({ signal }, generation) => {
         const ids = subsetIds(context);
         if (ids) return existing(ids, async (id) =>
-          (await unwrap(BlyggerApi.getHopper({ client, path: { id }, query: { preview: 'true' }, signal }))).hopper);
+          (await readHopper(id, true, generation)).hopper);
         return pages((offset) =>
           unwrap(
             BlyggerApi.listHoppers({
@@ -339,12 +359,12 @@ export const itemHistory = createCollection(
     queryClient,
     getKey: (row) => row.id,
     queryFn: (context) =>
-      cachedQuery(context, 'items', sourceSchemas.itemHistory.array(), async ({ signal }) => {
+      cachedQuery(context, 'items', sourceSchemas.itemHistory.array(), async (_context, generation) => {
         const ids = subsetIds(context);
         if (!ids) throw new Error('Item history requires an id predicate');
         return existing(ids, async (id) => {
           const { authored_kind, media, versions, published } =
-            await unwrap(BlyggerApi.getItem({ client, path: { id }, signal }));
+            await readItem(id, generation);
           return { id, authored_kind, media, versions, published };
         });
       }),
@@ -455,11 +475,11 @@ export const hopperStats = createCollection(
     queryClient,
     getKey: (row) => row.id,
     queryFn: (context) =>
-      cachedQuery(context, 'hoppers', sourceSchemas.hopperStats.array(), async ({ signal }) => {
+      cachedQuery(context, 'hoppers', sourceSchemas.hopperStats.array(), async (_context, generation) => {
         const ids = subsetIds(context);
         if (!ids) throw new Error('Hopper stats require an id predicate');
         return existing(ids, async (id) => {
-          const { total, source_count } = await unwrap(BlyggerApi.getHopper({ client, path: { id }, query: { preview: 'true' }, signal }));
+          const { total, source_count } = await readHopper(id, true, generation);
           return { id, total, source_count };
         });
       }),
@@ -483,15 +503,10 @@ export const hopperEntries = createCollection(queryCollectionOptions({
   queryKey: ['hopper-entries'],
   queryClient,
   getKey: (row) => JSON.stringify([row.hopper_id, row.item.subscription_id, row.item.remote_id]),
-  queryFn: (context) => cachedQuery(context, 'hoppers', sourceSchemas.hopperEntries.array(), async ({ signal }) => {
+  queryFn: (context) => cachedQuery(context, 'hoppers', sourceSchemas.hopperEntries.array(), async (_context, generation) => {
     const { ids, offset, limit, preview } = hopperSubset(context);
     const groups = await existing(ids, async (id) => {
-      const result = await unwrap(BlyggerApi.getHopper({
-        client,
-        path: { id },
-        query: preview ? { preview: 'true' } : {},
-        signal,
-      }));
+      const result = await readHopper(id, preview, generation);
       const entries = result.items.map((item, rank) => ({ hopper_id: id, rank, item }));
       return entries.slice(offset, limit === undefined ? undefined : offset + limit);
     });
@@ -505,12 +520,10 @@ export const hopperMemberships = createCollection(queryCollectionOptions({
   schema: sourceSchemas.hopperMemberships,
   id: 'hopper-memberships', syncMode: 'on-demand', queryKey: ['hopper-memberships'], queryClient,
   getKey: (row) => JSON.stringify([row.hopper_id, row.subscription_id, row.remote_id]),
-  queryFn: (context) => cachedQuery(context, 'hoppers', sourceSchemas.hopperMemberships.array(), async ({ signal }) => {
+  queryFn: (context) => cachedQuery(context, 'hoppers', sourceSchemas.hopperMemberships.array(), async (_context, generation) => {
     const { ids, offset, limit, preview } = hopperSubset(context);
     const groups = await existing(ids, async (id) => {
-      const result = await unwrap(BlyggerApi.getHopper({
-        client, path: { id }, query: preview ? { preview: 'true' } : {}, signal,
-      }));
+      const result = await readHopper(id, preview, generation);
       return result.memberships.map((member, rank) => ({ ...member, rank }))
         .slice(offset, limit === undefined ? undefined : offset + limit);
     });
@@ -583,9 +596,11 @@ export async function changed(...keys: string[]) {
         return [key];
     }
   }))];
-  await Promise.all(
-    sourceKeys.map((key) => queryClient.cancelQueries({ queryKey: [key] })),
-  );
+  await Promise.all([
+    ...sourceKeys.map((key) => queryClient.cancelQueries({ queryKey: [key] })),
+    ...['items', 'hoppers'].filter((key) => sourceKeys.includes(key))
+      .map((key) => queryClient.cancelQueries({ queryKey: ['owner-read', key] })),
+  ]);
   await Promise.all(
     sourceKeys.map((key) =>
       queryClient.invalidateQueries({ queryKey: [key], refetchType: 'active' }),

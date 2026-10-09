@@ -173,7 +173,9 @@ export function Layout({ children }: { children: ReactNode }) {
     const failure = (event: Event) => setError((event as CustomEvent).detail);
     window.addEventListener('studio-read-error', failure);
     const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
-      if (event.type === 'updated' && event.query.state.status === 'error')
+      // Source collections report shared-read failures after handling expected 404s.
+      if (event.type === 'updated' && event.query.queryKey[0] !== 'owner-read' &&
+          event.query.state.status === 'error')
         setError(event.query.state.error);
     });
     return () => {
