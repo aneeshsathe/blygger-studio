@@ -75,5 +75,6 @@ describe("the embed script ships where item HTML renders publicly", () => {
     const css = await (await getPublic("/blyg/style.css")).text();
     expect(css).toContain(".yt-facade .yt-play");
     expect(css).toContain("aspect-ratio: 16 / 9");
+    expect(css).toContain(".img-fallback");
   });
 });

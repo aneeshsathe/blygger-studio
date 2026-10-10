@@ -15,6 +15,8 @@
 //    YouTube video, becomes a click-to-play poster. Nothing is loaded from
 //    YouTube itself until the reader presses play; the poster comes from
 //    i.ytimg.com with no referrer, and the player from youtube-nocookie.com.
+//  - An off-origin image that fails to load becomes "Image: <alt> ↗ (host)",
+//    a link to the image, instead of a broken-image icon.
 //  - With scripts off the link stays a link, exactly as published.
 //
 // Inline-script hazard: this is a TS template literal emitted as JavaScript.
@@ -126,11 +128,52 @@ ${YT_PARSE_JS}
     if (btn) { e.preventDefault(); play(btn); }
   });
 
+  // An off-origin image that fails (a hotlink block, a bot challenge, a dead
+  // host) becomes a visible link to it instead of a broken-image icon. Own
+  // images (attachments, the avatar) are left alone, and only http(s) URLs
+  // become links, the same followable rule the server applies to hrefs.
+  function offOrigin(img) {
+    if (!img || img.tagName !== "IMG" || !img.closest("article") || img.closest(".yt-facade")) return null;
+    var src = img.getAttribute("src");
+    if (!src) return null;
+    try {
+      var u = new URL(src, location.href);
+      if (u.origin === location.origin || (u.protocol !== "https:" && u.protocol !== "http:")) return null;
+      return u;
+    } catch (e) { return null; }
+  }
+  function fallback(img) {
+    var u = offOrigin(img);
+    if (!u || !img.parentNode) return;
+    var alt = (img.getAttribute("alt") || "").trim();
+    // Inside a link already, a second link would nest; say it in a span.
+    var el = document.createElement(img.parentNode.closest("a") ? "span" : "a");
+    if (el.tagName === "A") { el.href = u.href; el.rel = "noopener noreferrer"; }
+    el.className = "img-fallback";
+    el.title = "This image could not be loaded from " + u.host;
+    el.textContent = "Image" + (alt ? ": " + alt : "") + " ↗ (" + u.host + ")";
+    img.parentNode.replaceChild(el, img);
+  }
+  // error does not bubble, so listen in the capture phase. That also catches
+  // lazy images and ones a swapped-in version brings.
+  document.addEventListener("error", function (e) { fallback(e.target); }, true);
+  // One that failed before this script ran has fired its error already.
+  // decode() rejects only for a broken image, so an image that loaded with no
+  // intrinsic size (an SVG, say) is not mistaken for one.
+  function sweep(img) {
+    if (!img.complete || img.naturalWidth !== 0 || !offOrigin(img)) return;
+    if (img.decode) img.decode().then(null, function () { fallback(img); });
+    else fallback(img);
+  }
+
   function scan(root) {
     if (root.nodeType !== 1) return;
     if (root.matches("article p")) facade(root);
     var ps = root.querySelectorAll("article p");
     for (var i = 0; i < ps.length; i++) facade(ps[i]);
+    if (root.tagName === "IMG") sweep(root);
+    var imgs = root.querySelectorAll("article img");
+    for (var k = 0; k < imgs.length; k++) sweep(imgs[k]);
   }
   scan(document.documentElement);
   // The version carousel swaps a pinned version's body in place.
@@ -167,4 +210,9 @@ article .yt-facade .yt-play img { position: absolute; inset: 0; width: 100%; hei
 .yt-facade figcaption { margin-top: 0.35rem; font: var(--apparatus); color: var(--ink-soft); overflow-wrap: anywhere; }
 .yt-facade figcaption a { color: var(--ink-soft); }
 @media (prefers-reduced-motion: reduce) { .yt-facade .yt-play::before { transition: none; } }
+/* An off-origin image that failed to load, shown as a link to it. */
+.img-fallback {
+  display: inline-block; padding: 0.35rem 0.6rem; border: 1px dashed var(--rule); border-radius: 2px;
+  font: var(--apparatus); color: var(--pencil); overflow-wrap: anywhere;
+}
 `;

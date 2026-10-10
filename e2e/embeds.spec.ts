@@ -77,3 +77,32 @@ test('a lookalike host stays a plain link', async ({ page }) => {
   await expect(page.locator('article p a', { hasText: 'evil.example' })).toBeVisible();
   await expect(page.locator('.yt-facade')).toHaveCount(0);
 });
+
+test('an off-origin image that fails becomes a visible link; own and working images stay images', async ({ page }) => {
+  await page.route('https://dead.example/**', (r) => r.fulfill({ status: 404, body: 'gone' }));
+  // Answered late, so its error fires after the script is listening; the
+  // first fails at once, typically before the script runs (the sweep's case).
+  await page.route('https://slow.example/**', async (r) => { await new Promise((ok) => setTimeout(ok, 800)); await r.fulfill({ status: 404, body: 'gone' }); });
+  await page.route('https://live.example/**', (r) => r.fulfill({ contentType: 'image/png', body: PIXEL }));
+  await login(page);
+  const id = await publish(page, [
+    '![a chart](https://dead.example/chart.png)',
+    '![](https://slow.example/late.png)',
+    '[![linked figure](https://dead.example/linked.png)](https://elsewhere.example/post)',
+    '![works](https://live.example/ok.png)',
+    '![own](/missing-own.png)',
+  ].join('\n\n'));
+  await page.goto(`/f/${id}/`);
+
+  const chart = page.locator('article a.img-fallback', { hasText: 'a chart' });
+  await expect(chart).toHaveText('Image: a chart ↗ (dead.example)');
+  await expect(chart).toHaveAttribute('href', 'https://dead.example/chart.png');
+  await expect(chart).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(page.locator('article a.img-fallback', { hasText: 'slow.example' })).toHaveText('Image ↗ (slow.example)');
+  // Already inside a link: a span, so links never nest; the outer link is kept.
+  const inner = page.locator('article a[href="https://elsewhere.example/post"] > span.img-fallback');
+  await expect(inner).toHaveText('Image: linked figure ↗ (dead.example)');
+  await expect(page.locator('article img[alt=works]')).toBeVisible();
+  await expect(page.locator('article img[alt=own]')).toHaveCount(1);
+  await expect(page.locator('article .img-fallback')).toHaveCount(3);
+});
