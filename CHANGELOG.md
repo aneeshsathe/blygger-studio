@@ -18,6 +18,28 @@ not have its own repo until session 26.
 
 ---
 
+## 0.39.0 — 2026-10-09
+
+**Migrations: `0026_read_state.sql`** (a `read_state` table and five triggers).
+Apply it before deploying: `wrangler d1 migrations apply <database> --remote`.
+
+- **Read state for imported items** (Aneesh Sathe, #44 and #45). Reading
+  entries show an unread dot. Opening an entry marks it read, and a select mode
+  marks several read or unread at once, or the whole feed read. Read state is
+  stored per imported item with the version you read, so a new version of an
+  item shows as unread again. Marking unread leaves a tombstone, so a stale
+  "read" from a client that was offline cannot undo it. It stays in the studio:
+  nothing about it reaches the feed, the item documents or other blygs.
+- **API:** `PUT` and `DELETE /api/reading/{sub}/{remoteId}/read`, the batch
+  routes `POST /api/reading/read` and `POST /api/reading/unread` (up to the
+  batch limit in one write), and `readVersion` on `GET /api/reading`. A change
+  advances the `reading` revision in `GET /api/changes`. Read state is deleted
+  along with its imported item or subscription.
+- **A new scope, `reading:state`**, for marking read and unread. A reader app
+  that only syncs read state does not need `owner:manage`, which can also
+  delete subscriptions, and `owner:manage` does not include read state. Existing
+  grants are unchanged; a client that wants read state asks for the new scope.
+
 ## 0.38.0 — 2026-10-09
 
 **Migrations: none.**
