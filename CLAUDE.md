@@ -155,6 +155,8 @@ saying so.
 
 ## Status
 
+**0.39.0** (session 43, 2026-10-09): read state for imported items (Aneesh's #44/#45: unread dots, select mode, mark all read, mark read on open; unread tombstones against stale reads; `readVersion` on `/api/reading`), under a new **`reading:state`** scope, which `owner:manage` no longer covers. **Migration 0026** (`read_state` + five triggers), applied to all three D1s before deploy and proven first on a throwaway remote D1.
+
 **0.38.0** (session 42, 2026-10-09): releases carry two browser-only extensions, both off until enabled in Settings → extensions: `reading-time` (byline estimate) and `inspect` (⋯ sheet: the stored record, bodies elided). `extensions.json` lists what ships; `test-ui/default-extensions.test.ts` keeps anything with `server.ts`/`contract.ts` out; `{"remove": [...]}` in `extensions.local.json` drops a shipped one. No migration.
 
 **0.37.0** (session 42, 2026-10-09): studio extensions (Aneesh's #52: catalog, build-time compile, per-node `extensions` setting, slots, GET-only `/api/ext/<name>/…`; read `docs/extensions.md`); init writes `nodejs_compat` (#46); paced autosave on TanStack DB (#47); shared item and hopper reads (#55). No migration.
