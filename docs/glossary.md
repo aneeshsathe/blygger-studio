@@ -43,7 +43,7 @@ The [oracle-writing guide](oracle-tests.md) describes how to keep contracts, mod
 | Grant / authorization | In Blygger, one approved delegation record with scopes, resource and deadline. The API calls it an authorization. Several records can belong to one client. OAuth’s formal authorization grant is a credential representing authorization, such as a code; it is not this database record. |
 | Grant family | Blygger’s related access and refresh credentials keyed by one `grantId`. Its tombstone denies that grant. This differs from the native provider’s broader refresh family. |
 | Native refresh family | Better Auth1.7.7 groups refresh rows by client and user. Detected reuse deletes that group and related access rows. Its cleanup can affect refresh credentials from another Blygger grant for the same client/owner. |
-| Scope | One explicitly granted capability: `owner:read`, `owner:draft`, `owner:publish` or `owner:manage`. These scopes do not imply each other. An operation can require more than one. |
+| Scope | One explicitly granted capability: `owner:read`, `owner:draft`, `owner:publish`, `owner:manage` or `reading:state`. These scopes do not imply each other. An operation can require more than one. |
 | Resource | The intended protected endpoint, identified by its absolute URL. REST API and MCP are separate resources. |
 | Audience | The token claim that binds it to its intended receiver. A client audience in an ID token is different from a resource audience in an access token. |
 | Issuer | The authorization server identity, here the origin plus `{mount}/studio/auth`. It is not taken from an untrusted forwarded host. |

@@ -30,9 +30,10 @@ const model = {
   'owner:draft': ['createItem','updateItem','deleteItem','restoreItem','uploadMedia','generateItem','draftNote','preview'],
   'owner:publish': ['publishItem','withdrawItem','pinItem','refreshItem','deleteMedia'],
   'owner:manage': ['updateSettings','createSubscription','updateSubscription','resyncSubscription','pollAllSubscriptions','deleteSubscription','createHopper','updateHopper','deleteHopper','addHopperItem','removeHopperItem','setSignal','deleteSignal','updateMention'],
+  'reading:state': ['markRead','markReadBatch','markUnread','markUnreadBatch'],
 };
 const capabilities = Object.keys(model);
-const subsets = Array.from({ length: 16 }, (_, mask) => capabilities.filter((_, bit) => mask & 1 << bit));
+const subsets = Array.from({ length: 1 << capabilities.length }, (_, mask) => capabilities.filter((_, bit) => mask & 1 << bit));
 async function receive(app: Hono<any>, method: string, path: string, body?: unknown) {
   const ctx = createExecutionContext();
   const response = await app.fetch(new Request('https://permissions.example.test/api' + path, {

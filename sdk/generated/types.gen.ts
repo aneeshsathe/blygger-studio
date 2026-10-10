@@ -335,6 +335,14 @@ export type ReadingEntry = {
         contentHtml: string;
         pinnedVersionRetained: number | null;
         sourceUrl: string | null;
+        /**
+         * The version of the item held here. A readVersion below it means a newer version arrived after the owner read it.
+         */
+        version: number;
+        /**
+         * The highest version the owner has marked read; null when unread or cleared.
+         */
+        readVersion: number | null;
     };
 };
 
@@ -464,7 +472,7 @@ export type ListAuthorizationsResponse = ListAuthorizationsResponses[keyof ListA
 export type CreateAuthorizationData = {
     body: {
         name: string;
-        scope: Array<'owner:read' | 'owner:draft' | 'owner:publish' | 'owner:manage'>;
+        scope: Array<'owner:read' | 'owner:draft' | 'owner:publish' | 'owner:manage' | 'reading:state'>;
         resource: 'api' | 'mcp';
     };
     path?: never;
@@ -3045,6 +3053,323 @@ export type SetSignalResponses = {
 
 export type SetSignalResponse = SetSignalResponses[keyof SetSignalResponses];
 
+export type MarkUnreadData = {
+    body?: never;
+    path: {
+        sub: string;
+        remoteId: string;
+    };
+    query?: never;
+    url: '/api/reading/{sub}/{remoteId}/read';
+};
+
+export type MarkUnreadErrors = {
+    /**
+     * Request failed
+     */
+    400: ApiError;
+    /**
+     * Request failed
+     */
+    401: ApiError;
+    /**
+     * Request failed
+     */
+    403: ApiError;
+    /**
+     * Request failed
+     */
+    404: ApiError;
+    /**
+     * Request failed
+     */
+    405: ApiError;
+    /**
+     * Request failed
+     */
+    409: ApiError;
+    /**
+     * Request failed
+     */
+    413: ApiError;
+    /**
+     * Request failed
+     */
+    415: ApiError;
+    /**
+     * Request failed
+     */
+    422: ApiError;
+    /**
+     * Request failed
+     */
+    429: ApiError;
+    /**
+     * Request failed
+     */
+    500: ApiError;
+    /**
+     * Request failed
+     */
+    502: ApiError;
+};
+
+export type MarkUnreadError = MarkUnreadErrors[keyof MarkUnreadErrors];
+
+export type MarkUnreadResponses = {
+    /**
+     * Success
+     */
+    200: {
+        ok: boolean;
+        stored: false;
+        read_version: null;
+    };
+};
+
+export type MarkUnreadResponse = MarkUnreadResponses[keyof MarkUnreadResponses];
+
+export type MarkReadData = {
+    body: {
+        version: number;
+        /**
+         * When the client read it (ISO-8601). A read earlier than the row's latest clear is ignored; omitted, the read always applies.
+         */
+        read_at?: string;
+    };
+    path: {
+        sub: string;
+        remoteId: string;
+    };
+    query?: never;
+    url: '/api/reading/{sub}/{remoteId}/read';
+};
+
+export type MarkReadErrors = {
+    /**
+     * Request failed
+     */
+    400: ApiError;
+    /**
+     * Request failed
+     */
+    401: ApiError;
+    /**
+     * Request failed
+     */
+    403: ApiError;
+    /**
+     * Request failed
+     */
+    404: ApiError;
+    /**
+     * Request failed
+     */
+    405: ApiError;
+    /**
+     * Request failed
+     */
+    409: ApiError;
+    /**
+     * Request failed
+     */
+    413: ApiError;
+    /**
+     * Request failed
+     */
+    415: ApiError;
+    /**
+     * Request failed
+     */
+    422: ApiError;
+    /**
+     * Request failed
+     */
+    429: ApiError;
+    /**
+     * Request failed
+     */
+    500: ApiError;
+    /**
+     * Request failed
+     */
+    502: ApiError;
+};
+
+export type MarkReadError = MarkReadErrors[keyof MarkReadErrors];
+
+export type MarkReadResponses = {
+    /**
+     * Success
+     */
+    200: {
+        ok: boolean;
+        stored: boolean;
+        read_version: number | null;
+    };
+};
+
+export type MarkReadResponse = MarkReadResponses[keyof MarkReadResponses];
+
+export type MarkReadBatchData = {
+    body: {
+        items: Array<{
+            sub: string;
+            remote_id: string;
+            version: number;
+            /**
+             * When the client read it (ISO-8601). A read earlier than the row's latest clear is ignored; omitted, the read always applies.
+             */
+            read_at?: string;
+        }>;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/reading/read';
+};
+
+export type MarkReadBatchErrors = {
+    /**
+     * Request failed
+     */
+    400: ApiError;
+    /**
+     * Request failed
+     */
+    401: ApiError;
+    /**
+     * Request failed
+     */
+    403: ApiError;
+    /**
+     * Request failed
+     */
+    404: ApiError;
+    /**
+     * Request failed
+     */
+    405: ApiError;
+    /**
+     * Request failed
+     */
+    409: ApiError;
+    /**
+     * Request failed
+     */
+    413: ApiError;
+    /**
+     * Request failed
+     */
+    415: ApiError;
+    /**
+     * Request failed
+     */
+    422: ApiError;
+    /**
+     * Request failed
+     */
+    429: ApiError;
+    /**
+     * Request failed
+     */
+    500: ApiError;
+    /**
+     * Request failed
+     */
+    502: ApiError;
+};
+
+export type MarkReadBatchError = MarkReadBatchErrors[keyof MarkReadBatchErrors];
+
+export type MarkReadBatchResponses = {
+    /**
+     * Success
+     */
+    200: {
+        ok: boolean;
+        received: number;
+    };
+};
+
+export type MarkReadBatchResponse = MarkReadBatchResponses[keyof MarkReadBatchResponses];
+
+export type MarkUnreadBatchData = {
+    body: {
+        items: Array<{
+            sub: string;
+            remote_id: string;
+        }>;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/reading/unread';
+};
+
+export type MarkUnreadBatchErrors = {
+    /**
+     * Request failed
+     */
+    400: ApiError;
+    /**
+     * Request failed
+     */
+    401: ApiError;
+    /**
+     * Request failed
+     */
+    403: ApiError;
+    /**
+     * Request failed
+     */
+    404: ApiError;
+    /**
+     * Request failed
+     */
+    405: ApiError;
+    /**
+     * Request failed
+     */
+    409: ApiError;
+    /**
+     * Request failed
+     */
+    413: ApiError;
+    /**
+     * Request failed
+     */
+    415: ApiError;
+    /**
+     * Request failed
+     */
+    422: ApiError;
+    /**
+     * Request failed
+     */
+    429: ApiError;
+    /**
+     * Request failed
+     */
+    500: ApiError;
+    /**
+     * Request failed
+     */
+    502: ApiError;
+};
+
+export type MarkUnreadBatchError = MarkUnreadBatchErrors[keyof MarkUnreadBatchErrors];
+
+export type MarkUnreadBatchResponses = {
+    /**
+     * Success
+     */
+    200: {
+        ok: boolean;
+        received: number;
+    };
+};
+
+export type MarkUnreadBatchResponse = MarkUnreadBatchResponses[keyof MarkUnreadBatchResponses];
+
 export type UpdateMentionData = {
     body: {
         hidden: boolean;
@@ -3836,6 +4161,14 @@ export type ListReadingResponses = {
         offset: number;
         limit: number;
         selected: string;
+        /**
+         * This server stores read state: each imported entry's readVersion is meaningful.
+         */
+        read_state: true;
+        /**
+         * Read state can be cleared: DELETE /reading/{sub}/{remoteId}/read, POST /reading/unread, and read_at on reads.
+         */
+        read_state_clear: true;
     };
 };
 
