@@ -1,6 +1,7 @@
 /** Handwritten receiving witnesses for the SQLite prototype's nine-table event
- * envelope. These expected domains come from response dependencies, not the
- * production trigger generator. Working-copy edits deliberately exclude Reading.
+ * envelope, plus read_state (migration 0026: Reading carries readVersion).
+ * These expected domains come from response dependencies, not the production
+ * trigger generator. Working-copy edits deliberately exclude Reading.
  */
 export const triggerFamilies = [
   { table: 'items', insert: "INSERT INTO items(id,created,updated) VALUES('matrix-item','t','t')", update: "UPDATE items SET status='public',version=1 WHERE id='matrix-item'", remove: "DELETE FROM items WHERE id='matrix-item'", domains: ['items', 'reading', 'feed'] },
@@ -12,6 +13,7 @@ export const triggerFamilies = [
   { table: 'hoppers', insert: "INSERT INTO hoppers(id,name,created) VALUES('matrix-hopper','name','t')", update: "UPDATE hoppers SET description='description' WHERE id='matrix-hopper'", remove: "DELETE FROM hoppers WHERE id='matrix-hopper'", domains: ['hoppers'] },
   { table: 'hopper_items', insert: "INSERT INTO hopper_items(hopper_id,subscription_id,remote_id,added_at) VALUES('matrix-hopper','matrix-sub','matrix-remote','t')", update: "UPDATE hopper_items SET added_at='later' WHERE hopper_id='matrix-hopper'", remove: "DELETE FROM hopper_items WHERE hopper_id='matrix-hopper'", domains: ['hoppers'] },
   { table: 'signals', insert: "INSERT INTO signals(subscription_id,remote_id,thumb,at) VALUES('matrix-sub','matrix-remote',1,'t')", update: "UPDATE signals SET thumb=-1 WHERE subscription_id='matrix-sub'", remove: "DELETE FROM signals WHERE subscription_id='matrix-sub'", domains: ['signals'] },
+  { table: 'read_state', insert: "INSERT INTO read_state(subscription_id,remote_id,read_version,updated) VALUES('matrix-sub','matrix-remote',1,'t')", update: "UPDATE read_state SET read_version=2,updated='later' WHERE subscription_id='matrix-sub'", remove: "DELETE FROM read_state WHERE subscription_id='matrix-sub'", domains: ['reading'] },
 ] as const;
 
 // Independent one-field branches that the SQLite prototype supplied in SQL
@@ -21,5 +23,7 @@ export const triggerFields = [
   { family: 4, field: 'title_auto', value: 0, domains: ['subscriptions'] },
   ...['created','updated','forked_from','fork_cite','id','kind','version'].map(field => ({ family: 0, field, value: field === 'kind' ? 'thread' : field === 'version' ? 2 : field === 'id' ? 'renamed' : 'changed', domains: ['items','reading','feed'] })),
   ...['id','origin','title'].map(field => ({ family: 4, field, value: 'changed', domains: ['subscriptions','reading','hoppers','feed'] })),
+  // A clear's tombstone alone (0026) is a Reading change: it decides whether a later read applies.
+  { family: 9, field: 'unread_at', value: 'later', domains: ['reading'] },
   ...['subscription_id','remote_id','kind','page'].map(field => ({ family: 5, field, value: field === 'kind' ? 'thread' : 'changed', domains: ['reading','hoppers','feed'] })),
 ];
