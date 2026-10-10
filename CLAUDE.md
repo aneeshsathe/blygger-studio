@@ -177,7 +177,7 @@ saying so.
 
 **0.28.3** (session 36): the outbound DNS check used `redirect: 'error'`, which the Workers runtime rejects, so every poll and Webmention failed on both nodes for ~70 minutes after 0.28 deployed. Now `'manual'`. No migration.
 
-**0.28.0–0.28.2** (session 36): Kyle Mathews' #34 — OAuth grants, manual tokens, MCP, four scopes, the Access page, and a security pass (allowlist sanitizer, SVG sandbox, private draft media, outbound-destination checks, owner/grant work budgets; **migrations 0021, 0022**; needs `nodejs_compat`). 0.28.1 unwraps unlisted tags (0.28.0 deleted their content); 0.28.2 bakes transclusions verbatim again (sanitize at render). **The owner budgets bite in practice:** 120 writes/min throttled live preview (raised in the private config; `fix/preview-budget` moves preview to the read budget) and 20 AI calls/day applied to the owner (interim 200). Follow-ups are on studio#39.
+**0.28.0–0.28.2** (session 36): Kyle Mathews' #34 — OAuth grants, manual tokens, MCP, four scopes, the Access page, and a security pass (allowlist sanitizer, SVG sandbox, private draft media, outbound-destination checks, owner/grant work budgets; **migrations 0021, 0022**; needs `nodejs_compat`). 0.28.1 unwraps unlisted tags (0.28.0 deleted their content); 0.28.2 bakes transclusions verbatim again (sanitize at render). **The owner budgets bite in practice:** 120 writes/min throttled live preview (raised in the private config; preview moved to the read budget in 0.30.1) and 20 AI calls/day applied to the owner (interim 200). Follow-ups are on studio#39.
 
 **0.27.2** (session 35, 2026-10-05): the editor's TK generate kept only the scope's output since 0.10.0; the generate route now also returns the spliced `content_md`. No migration.
 

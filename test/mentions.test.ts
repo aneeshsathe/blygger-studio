@@ -301,6 +301,31 @@ describe("sending (§2.3.3)", () => {
     // First retry is 15 minutes out, not immediately.
     expect(Date.parse(row.next_attempt_at!) - now).toBe(15 * 60_000);
   });
+
+  it("retries a 429 on the backoff schedule, which outlasts the receiver's 60 s pair cooldown", async () => {
+    // 0.36.1's receiver refuses a repeat claim for the same pair within 60 s, so a
+    // quick republish meets a 429. That must stay retryable, not terminal like other 4xx.
+    const cookie = await login();
+    await apiJson(cookie, "PATCH", "/api/settings", { site_url: OURS });
+    const busy = newId();
+    await importFrom("https://busy.example/", { id: busy, kind: "fragment", version: 1, content_md: "busy" }, "Busy");
+    const stub = await apiJson(cookie, "POST", "/api/items", {
+      kind: "thread",
+      content_md: `![[${busy}]]`,
+      stub_of: { origin: "https://busy.example/", id: busy, version: 1 },
+    });
+    await apiJson(cookie, "POST", `/api/items/${stub.json.id}/publish`, {});
+    const limited = fixtureNet({
+      "https://busy.example/blyg.json": { body: JSON.stringify({ blyg: "0.3", site: "https://busy.example/", webmention: "wm" }) },
+      "https://busy.example/wm": { status: 429 },
+    });
+    const now = Date.parse("2026-10-09T12:00:00Z");
+    await drainOutbound(env.DB, limited.fetch, { origin: OURS, now });
+    const row = (await listOutbound(env.DB)).find((r) => r.item_id === stub.json.id)!;
+    expect(row.status).toBe("pending");
+    expect(row.attempts).toBe(1);
+    expect(Date.parse(row.next_attempt_at!) - now).toBeGreaterThan(60_000);
+  });
 });
 
 describe("receiving and structural verification (§2.3.5)", () => {
