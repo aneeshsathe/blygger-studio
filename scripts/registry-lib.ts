@@ -16,7 +16,6 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, posix, resolve } from "node:path";
-import { EXTENSIONS } from "../extensions/catalog.ts";
 import { type RegistryEntry, type RegistryIndex, RANGE, parseIndex } from "./registry-schema.ts";
 import { type TreeFile, readTree, treeHash } from "./registry-tree.ts";
 
@@ -50,9 +49,14 @@ export async function loadIndex(source: string, root = process.cwd()): Promise<R
   return parseIndex(raw);
 }
 
-/** Names a registry extension may not take: everything catalogued, and every directory under extensions/ (a branch may carry one the catalog does not yet list). */
+/**
+ * Names a registry extension may not take: every directory under extensions/.
+ * Every catalogued name is its own directory, and a branch may carry one the
+ * catalog does not yet list. Not read from catalog.ts: that imports the
+ * extensions' server contracts, which reach Worker types the UI build lacks.
+ */
 export function reservedNames(root = process.cwd()): Set<string> {
-  const names = new Set<string>(EXTENSIONS);
+  const names = new Set<string>();
   const dir = join(root, "extensions");
   if (existsSync(dir)) for (const name of readdirSync(dir)) if (statSync(join(dir, name)).isDirectory()) names.add(name);
   return names;
