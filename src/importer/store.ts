@@ -10,17 +10,27 @@ const FLAG_LOG_CAP = 20;
 
 export async function createSubscription(
   db: D1Database,
-  row: { kind: "blyg" | "rss"; origin: string; feedUrl: string; title: string; titleAuto?: boolean; surface?: Surface | null },
+  row: { kind: "blyg" | "rss"; origin: string; feedUrl: string; title: string; titleAuto?: boolean; surface?: Surface | null; hopper?: { feed: string; manifest: string } },
 ): Promise<SubscriptionRow> {
   const id = newId();
   const created = nowIso();
   await db
     .prepare(
-      "INSERT INTO subscriptions (id, kind, origin, feed_url, title, status, fail_count, in_blogroll, flags, created, title_auto, surface) VALUES (?, ?, ?, ?, ?, 'active', 0, 0, '[]', ?, ?, ?)",
+      "INSERT INTO subscriptions (id, kind, origin, feed_url, title, status, fail_count, in_blogroll, flags, created, title_auto, surface, hopper_feed, hopper_manifest) VALUES (?, ?, ?, ?, ?, 'active', 0, 0, '[]', ?, ?, ?, ?, ?)",
     )
-    .bind(id, row.kind, row.origin, row.feedUrl, row.title, created, row.titleAuto === false ? 0 : 1, row.surface ? JSON.stringify(row.surface) : null)
+    .bind(id, row.kind, row.origin, row.feedUrl, row.title, created, row.titleAuto === false ? 0 : 1, row.surface ? JSON.stringify(row.surface) : null, row.hopper?.feed ?? null, row.hopper?.manifest ?? null)
     .run();
   return (await getSubscription(db, id))!;
+}
+
+/**
+ * The subscription to one hopper feed (§12.2, proposed): identity is the
+ * pair (identity origin, hopper feed URL), and the feed URL is absolute, so
+ * it alone keys the row. A plain L0 subscription already holding that feed
+ * URL is the same source too.
+ */
+export async function findHopperSubscription(db: D1Database, hopperFeed: string): Promise<SubscriptionRow | null> {
+  return db.prepare("SELECT * FROM subscriptions WHERE hopper_feed = ? OR feed_url = ? LIMIT 1").bind(hopperFeed, hopperFeed).first<SubscriptionRow>();
 }
 
 /** An existing subscription to the same source: same origin, or the same feed reached another way. */

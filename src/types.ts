@@ -278,6 +278,14 @@ export interface SubscriptionRow {
   title_auto: number;
   /** JSON `Surface` (src/surface.ts): where a templated blyg's files live. NULL = default paths. */
   surface: string | null;
+  /**
+   * A hopper subscription (migration 0033; proposed, §12.1 step 7, §12.2,
+   * §13.5a): the hopper feed's URL, and the manifest that lists it. NULL for
+   * every other subscription. Such a row is `kind: "rss"` with origin and
+   * feed_url equal to the hopper feed, so its entries are L0 rows.
+   */
+  hopper_feed?: string | null;
+  hopper_manifest?: string | null;
 }
 
 export interface ImportedItemRow {

@@ -232,6 +232,10 @@ export type Subscription = {
     fail_count: number;
     last_index_sync_at: string | null;
     created: string;
+    /**
+     * A hopper subscription's feed URL (proposed §12.2: one public hopper at another blyg, its entries L0 rows); null otherwise.
+     */
+    hopper_feed?: string | null;
     title_follows_source: boolean;
     in_blogroll: boolean;
     flags: Array<{
@@ -2358,6 +2362,10 @@ export type CreateSubscriptionData = {
          * With confirm: start importing the archive at once (true, the default). false creates the subscription only; the next quarter-hour poll imports it, since a never-polled subscription is always due. For bulk imports such as OPML.
          */
         backfill?: boolean;
+        /**
+         * When the URL names one of a blyg's public hoppers (kind hopper), subscribe to the whole blyg instead.
+         */
+        whole_blyg?: boolean;
     };
     path?: never;
     query?: never;
@@ -2423,7 +2431,7 @@ export type CreateSubscriptionResponses = {
      */
     200: {
         needsConfirm: true;
-        kind: 'blyg' | 'rss';
+        kind: 'blyg' | 'rss' | 'hopper';
         origin?: string;
         feedUrl?: string;
         title: string;
@@ -2431,6 +2439,18 @@ export type CreateSubscriptionResponses = {
             asserted: string;
             actual: string;
         };
+        /**
+         * kind hopper: the public hopper the URL matched in the blyg's manifest (proposed §12.1 step 7, only while hopper_feeds is on).
+         */
+        hopper?: {
+            title: string;
+            page: string;
+            feed: string;
+        };
+        /**
+         * kind hopper: the whole blyg's title, for the subscribe-to-the-whole-blyg-instead choice.
+         */
+        blygTitle?: string;
     };
     /**
      * Subscribed

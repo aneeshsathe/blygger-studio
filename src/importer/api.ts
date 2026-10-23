@@ -18,6 +18,7 @@ import {
   addHopperItem,
   createHopper,
   createSubscription,
+  findHopperSubscription,
   findSubscription,
   deleteHopper,
   deleteSignal,
@@ -29,7 +30,7 @@ import {
   removeHopperItem,
   setSignal,
 } from "./store.ts";
-import { getItem } from "../model.ts";
+import { getItem, getSettings } from "../model.ts";
 
 export const importerApi = contractApp();
 
@@ -50,12 +51,40 @@ function titleFromUrl(url: string): string {
  * the confirm button for many seconds on a large blyg.
  */
 importerApi.openapi(routes.createSubscription, async (c) => {
-  const body = await readJson<{ url: string; confirm?: boolean; title?: string; backfill?: boolean }>(c);
+  const body = await readJson<{ url: string; confirm?: boolean; title?: string; backfill?: boolean; whole_blyg?: boolean }>(c);
   if (!body.url.trim()) return c.json({ error: "url required" }, 400);
 
-  const result = await resolve(body.url.trim(), platformFetchFor(c.env));
+  // §12.1 step 7 (proposed) runs only while the experimental hopper_feeds setting is on.
+  const settings = await getSettings(c.env.DB);
+  const result = await resolve(body.url.trim(), platformFetchFor(c.env), { hoppers: settings.hopper_feeds });
   if (result.kind === "failure") {
     return c.json({ error: "could not resolve this URL to a blyg or a feed", tried: result.tried }, 422);
+  }
+
+  // A hopper subscription (§12.1 step 7, §12.2): a list at an origin, kept
+  // apart from a subscription to the whole blyg, which the owner may choose
+  // instead (`whole_blyg`). Its entries are L0 rows (§13.5a rule 5).
+  if (result.kind === "blyg" && result.hopper && !body.whole_blyg) {
+    const hopper = result.hopper;
+    const existingHopper = await findHopperSubscription(c.env.DB, hopper.feed);
+    if (existingHopper) return c.json({ error: `already subscribed to ${existingHopper.title || existingHopper.origin}` }, 409);
+    const blygTitle = typeof result.manifest.title === "string" ? result.manifest.title : titleFromUrl(result.origin);
+    const hopperTitle = `${hopper.title} — ${blygTitle}`;
+    if (!body.confirm) {
+      return c.json({ needsConfirm: true, kind: "hopper", origin: result.origin, feedUrl: hopper.feed, title: hopperTitle, hopper, blygTitle, siteMismatch: result.siteMismatch });
+    }
+    const title = body.title?.trim() || undefined;
+    const sub = await createSubscription(c.env.DB, {
+      kind: "rss",
+      origin: hopper.feed,
+      feedUrl: hopper.feed,
+      title: title ?? hopperTitle,
+      titleAuto: title === undefined || title === hopperTitle,
+      hopper: { feed: hopper.feed, manifest: result.manifestUrl },
+    });
+    if (body.backfill !== false) c.executionCtx.waitUntil(pollSubscription(c.env.DB, sub, platformFetchFor(c.env)).catch(() => {}));
+    c.header("Location", `/api/subscriptions/${sub.id}`);
+    return c.json(subscriptionResource(sub), 201);
   }
 
   // One subscription per source: a second one imports every item twice, and

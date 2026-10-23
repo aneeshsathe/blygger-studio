@@ -62,6 +62,7 @@ export const SubscriptionRowSchema = z.object({
   flags: z.string(),
   created: z.string(),
   title_auto: z.number(),
+  hopper_feed: z.string().nullable().optional().describe("A hopper subscription's feed URL (proposed §12.2: one public hopper at another blyg, its entries L0 rows); null otherwise."),
 }).openapi("SubscriptionRow");
 
 export const ImportedItemRowSchema = z.object({
