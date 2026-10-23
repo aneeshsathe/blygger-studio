@@ -1,7 +1,8 @@
 // Protocol surface builders: item JSON, manifest, archive index, feed.xml
 // — v0.1-plan §2.3–2.6. These shapes are protocol; do not change casually.
 
-import { listBlogrollSubscriptions } from "./importer/store.ts";
+import { manifestHopperEntry } from "./hopper-feed-shape.ts";
+import { listBlogrollSubscriptions, listPublicHoppers } from "./importer/store.ts";
 import { excerpt, excerptFromHtml } from "./markdown.ts";
 import { loadProvenance } from "./public-feed.ts";
 import { authorOwnHtml, forkLineage, injectProvenance, respondsToLabel, stubCitation, transclusionProvenance } from "./pages.ts";
@@ -160,6 +161,12 @@ export async function buildManifest(db: D1Database, settings: Settings, origin: 
   const avatarRow = settings.avatar_media_id ? await getMedia(db, settings.avatar_media_id) : null;
   const avatar = avatarRow?.r2_key;
   const hasBlogroll = (await listBlogrollSubscriptions(db)).length > 0;
+  // §6.1 `hoppers` (PROPOSED, pending Fable; fable-round-queue item 14): the
+  // public, slugged hoppers, only while the hopper_feeds setting is on and
+  // only when there is one, so every other manifest stays byte-identical.
+  const hoppers = settings.hopper_feeds
+    ? (await listPublicHoppers(db)).filter((h): h is typeof h & { slug: string } => !!h.slug).map(manifestHopperEntry)
+    : [];
   return {
     blyg: PROTOCOL_VERSION,
     level: PROTOCOL_LEVEL,
@@ -189,6 +196,7 @@ export async function buildManifest(db: D1Database, settings: Settings, origin: 
     // is the caller's override (a static tree accepts none); the setting is the
     // operator's, and either one is enough to withhold the key.
     ...(opts.webmention === false || !settings.accept_mentions ? {} : { webmention: WEBMENTION_PATH }),
+    ...(hoppers.length ? { hoppers } : {}),
   };
 }
 

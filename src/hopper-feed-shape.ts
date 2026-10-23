@@ -38,3 +38,12 @@ export function hopperFeedTitle(hopperName: string, siteTitle: string): string {
 export function hopperGuid(slug: string, origin: string, id: string): string {
   return `hopper:${slug}:${origin}:${id}`;
 }
+
+/**
+ * One entry of the manifest's proposed `hoppers` key (§6.1): origin-relative
+ * paths, like the manifest's other paths. `feed` is present because this
+ * client lists hoppers only while it serves their feeds.
+ */
+export function manifestHopperEntry(hopper: { name: string; slug: string }): { title: string; page: string; feed: string } {
+  return { title: hopper.name, page: hopperPagePath(hopper.slug), feed: hopperFeedPath(hopper.slug) };
+}
