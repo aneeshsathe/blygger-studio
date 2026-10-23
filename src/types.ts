@@ -519,6 +519,12 @@ export interface Settings {
   links_blygger_org: boolean;
   /** A link to blygger.com (the directory) in the links section. On by default. */
   links_blygger_com: boolean;
+  /**
+   * Per-hopper RSS feeds at `{mount}/h/{slug}/feed.xml`, their page links and the
+   * manifest's `hoppers` key (src/hopper-feed.ts). Off by default: the shapes are
+   * proposed and pending a Fable ruling (fable-round-queue item 14).
+   */
+  hopper_feeds: boolean;
   /** The setup wizard's state: `pending` (fresh install), `notice` (existing node, told once), `done`. */
   setup: "pending" | "notice" | "done";
   /** Where to ask. Configurable so a fork checks its own releases, not ours. */

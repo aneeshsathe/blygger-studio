@@ -145,6 +145,8 @@ const blogroll = await trySave("blogroll.opml", "blogroll.opml");
 // v0.2: public hopper pages (§4.2 task 11), operator-named via --hoppers.
 for (const slug of hopperSlugs) {
   await save(`h/${slug}/`, `h/${slug}/index.html`);
+  // Its feed, while the experimental hopper_feeds setting serves one (404 otherwise).
+  await trySave(`h/${slug}/feed.xml`, `h/${slug}/feed.xml`);
 }
 
 console.log(

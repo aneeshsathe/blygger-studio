@@ -534,7 +534,7 @@ api.openapi(routes.updateSettings, async (c) => {
   for (const key of SETTINGS_KEYS) {
     if (typeof body[key] === "string") patch[key] = body[key] as string;
   }
-  for (const key of ["accept_mentions", "update_check", "show_responses_default", "highlight_generated_default", "auto_change_notes", "change_category_in_note", "update_notice_ack", "links_collections", "links_opml", "links_blygger_org", "links_blygger_com"] as const) {
+  for (const key of ["accept_mentions", "update_check", "show_responses_default", "highlight_generated_default", "auto_change_notes", "change_category_in_note", "update_notice_ack", "links_collections", "links_opml", "links_blygger_org", "links_blygger_com", "hopper_feeds"] as const) {
     if (typeof body[key] === "boolean") patch[key] = body[key] ? "on" : "off";
   }
   // Decision models answer questions and write no text (src/ai/models.ts): the

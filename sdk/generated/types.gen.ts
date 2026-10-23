@@ -180,6 +180,10 @@ export type Settings = {
      */
     links_blygger_com: boolean;
     /**
+     * Experimental, off by default, pending a protocol ruling: an RSS feed per public collection at {mount}/h/{slug}/feed.xml, linked from the collection page, and a hoppers list in blyg.json.
+     */
+    hopper_feeds: boolean;
+    /**
      * The setup wizard: pending on a fresh install, notice on a node that published before it existed, done once finished or dismissed.
      */
     setup: 'pending' | 'notice' | 'done';
@@ -2172,6 +2176,10 @@ export type UpdateSettingsData = {
          * Link blygger.com, the directory of blygs, in the links section.
          */
         links_blygger_com?: boolean;
+        /**
+         * Experimental, off by default, pending a protocol ruling: an RSS feed per public collection at {mount}/h/{slug}/feed.xml, linked from the collection page, and a hoppers list in blyg.json.
+         */
+        hopper_feeds?: boolean;
         /**
          * The setup wizard: pending on a fresh install, notice on a node that published before it existed, done once finished or dismissed.
          */

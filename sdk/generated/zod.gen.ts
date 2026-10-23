@@ -174,6 +174,7 @@ export const zSettings = z.object({
     links_opml: z.boolean(),
     links_blygger_org: z.boolean(),
     links_blygger_com: z.boolean(),
+    hopper_feeds: z.boolean(),
     setup: z.enum([
         'pending',
         'notice',
@@ -985,6 +986,7 @@ export const zUpdateSettingsBody = z.object({
     links_opml: z.boolean().optional(),
     links_blygger_org: z.boolean().optional(),
     links_blygger_com: z.boolean().optional(),
+    hopper_feeds: z.boolean().optional(),
     setup: z.enum([
         'pending',
         'notice',

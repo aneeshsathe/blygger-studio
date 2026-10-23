@@ -611,6 +611,10 @@
             "type": "boolean",
             "description": "Link blygger.com, the directory of blygs, in the links section."
           },
+          "hopper_feeds": {
+            "type": "boolean",
+            "description": "Experimental, off by default, pending a protocol ruling: an RSS feed per public collection at {mount}/h/{slug}/feed.xml, linked from the collection page, and a hoppers list in blyg.json."
+          },
           "setup": {
             "type": "string",
             "enum": [
@@ -700,6 +704,7 @@
           "links_opml",
           "links_blygger_org",
           "links_blygger_com",
+          "hopper_feeds",
           "setup",
           "update_feed_url",
           "update_notice_ack",
@@ -6268,6 +6273,10 @@
                   "links_blygger_com": {
                     "type": "boolean",
                     "description": "Link blygger.com, the directory of blygs, in the links section."
+                  },
+                  "hopper_feeds": {
+                    "type": "boolean",
+                    "description": "Experimental, off by default, pending a protocol ruling: an RSS feed per public collection at {mount}/h/{slug}/feed.xml, linked from the collection page, and a hoppers list in blyg.json."
                   },
                   "setup": {
                     "type": "string",

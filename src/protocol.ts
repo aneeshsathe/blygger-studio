@@ -49,6 +49,11 @@ function withCited<T extends object>(ref: T | null, citeJson: string | null): T 
   return cite ? { ...ref, cited: cite } : ref;
 }
 
+/** This client's `page` for its own items (§2.3.2): what item JSON declares, and where a hopper feed links one. */
+export function ownPagePath(isThread: boolean, id: string): string {
+  return `${isThread ? "t" : "f"}/${id}/`;
+}
+
 function author(settings: Settings, origin: string) {
   return { name: settings.author_name, url: settings.author_url || origin };
 }
@@ -102,7 +107,7 @@ export async function buildItemJson(db: D1Database, settings: Settings, item: It
     // has to *infer* it from the f/·t/ convention this client happens to use.
     // Emitted for withdrawn items too — an endcap's page is 200 forever, and a
     // mention may legitimately target it.
-    page: `${isThread ? "t" : "f"}/${item.id}/`,
+    page: ownPagePath(isThread, item.id),
     author: author(settings, origin),
     created: item.created,
     updated: item.updated,
