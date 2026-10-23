@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import { HOPPER_UNLISTED_FLAG, pollSubscription } from "../../src/importer/poll.ts";
 import { matchHopper, resolve } from "../../src/importer/resolve.ts";
 import { createSubscription, findHopperSubscription, findSubscription, getSubscription, listImportedItems } from "../../src/importer/store.ts";
+import { loadProvenance } from "../../src/public-feed.ts";
+import { composeStubCite } from "../../src/stub.ts";
 import { resolveTarget } from "../../src/transclusion.ts";
 import { makeFixtureFetch, manifestBody } from "./fixtures.ts";
 
@@ -18,11 +20,12 @@ function blygFixture() {
   const hoppers = [
     { title: "Picks", page: "h/picks/", feed: "h/picks/feed.xml" },
     { title: "Page Only", page: "h/page-only/" },
+    { title: "More", page: "h/more/", feed: "h/more/feed.xml" },
   ];
-  return { host, origin, hoppers, manifestUrl: `${origin}blyg.json`, feed: `${origin}h/picks/feed.xml`, page: `${origin}h/picks/` };
+  return { host, origin, hoppers, manifestUrl: `${origin}blyg.json`, feed: `${origin}h/picks/feed.xml`, more: `${origin}h/more/feed.xml`, page: `${origin}h/picks/` };
 }
 
-function hopperFeedXml(entries: { guid: string; link: string; title: string }[]): string {
+function hopperFeedXml(entries: { guid: string; link: string; title: string; creator?: string }[]): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
@@ -36,7 +39,7 @@ ${entries
       <link>${e.link}</link>
       <title>${e.title}</title>
       <description><![CDATA[<p>excerpt of ${e.title}</p>]]></description>
-      <pubDate>Sat, 05 Sep 2026 00:00:00 GMT</pubDate>
+      <pubDate>Sat, 05 Sep 2026 00:00:00 GMT</pubDate>${e.creator ? `\n      <dc:creator>${e.creator}</dc:creator>` : ""}
       <source url="https://other.example/feed.xml">Other</source>
     </item>`,
   )
@@ -108,35 +111,74 @@ describe("§12.1 step 7: hopper match", () => {
   });
 });
 
-async function hopperSub(f: ReturnType<typeof blygFixture>) {
-  return createSubscription(env.DB, {
-    kind: "rss",
-    origin: f.feed,
-    feedUrl: f.feed,
-    title: "Picks — Fixture Blyg",
-    hopper: { feed: f.feed, manifest: f.manifestUrl },
-  });
+// §12.2: origin is the blyg's identity origin; hopper_feed is the list at it.
+async function hopperSub(f: ReturnType<typeof blygFixture>, feed = f.feed, title = "Picks — Fixture Blyg") {
+  return createSubscription(env.DB, { kind: "rss", origin: f.origin, feedUrl: feed, title, hopperFeed: feed });
+}
+
+async function importedBlygRow(subId: string, remoteId: string, l0 = 0) {
+  await env.DB.prepare(
+    `INSERT INTO imported_items (subscription_id, remote_id, kind, state, version, observed_at, content_md, content_html, author_json, l0)
+     VALUES (?, ?, 'fragment', 'current', 1, '2026-08-01T00:00:00Z', 'held words', '<p>held words</p>', ?, ?)`,
+  )
+    .bind(subId, remoteId, JSON.stringify({ name: "Held Author" }), l0)
+    .run();
 }
 
 describe("§12.2: a hopper subscription's identity", () => {
-  it("is (origin, hopper feed): it coexists with a whole-blyg subscription to the same origin", async () => {
+  it("is (origin, hopper feed): two hoppers of one blyg and the whole blyg coexist", async () => {
     const f = blygFixture();
+    const picks = await hopperSub(f);
+    const more = await hopperSub(f, f.more, "More — Fixture Blyg");
+    // Hopper subscriptions never count as the whole blyg.
+    expect(await findSubscription(env.DB, f.origin, `${f.origin}feed.xml`)).toBeNull();
     const blyg = await createSubscription(env.DB, { kind: "blyg", origin: f.origin, feedUrl: `${f.origin}feed.xml`, title: "Fixture Blyg" });
-    // A whole-blyg subscription does not block the hopper, and the hopper does not block the blyg.
-    expect(await findHopperSubscription(env.DB, f.feed)).toBeNull();
-    const hopper = await hopperSub(f);
+    expect(picks).toMatchObject({ kind: "rss", origin: f.origin, feed_url: f.feed, hopper_feed: f.feed });
+    expect(more).toMatchObject({ origin: f.origin, hopper_feed: f.more });
     expect((await findSubscription(env.DB, f.origin, `${f.origin}feed.xml`))?.id).toBe(blyg.id);
-    expect((await findHopperSubscription(env.DB, f.feed))?.id).toBe(hopper.id);
-    expect(hopper).toMatchObject({ kind: "rss", hopper_feed: f.feed, hopper_manifest: f.manifestUrl });
-    // One subscription per hopper feed.
+    expect((await findHopperSubscription(env.DB, f.origin, f.feed))?.id).toBe(picks.id);
+    expect((await findHopperSubscription(env.DB, f.origin, f.more))?.id).toBe(more.id);
+    expect(await findHopperSubscription(env.DB, f.origin, `${f.origin}h/none/feed.xml`)).toBeNull();
+  });
+
+  it("refuses a second subscription to the same (origin, hopper feed)", async () => {
+    const f = blygFixture();
+    const first = await hopperSub(f);
+    // The subscribe route's 409 check finds it ...
+    expect((await findHopperSubscription(env.DB, f.origin, f.feed))?.id).toBe(first.id);
+    // ... and migration 0033's unique index backs it.
     await expect(hopperSub(f)).rejects.toThrow();
+  });
+
+  it("never supplies the whole blyg's title, provenance or citation", async () => {
+    const f = blygFixture();
+    // The hopper subscription comes first, so a lookup by origin alone would find it.
+    const hopper = await hopperSub(f);
+    await importedBlygRow(hopper.id, "shared-id");
+    const ref = { origin: f.origin, id: "shared-id", version: 1 };
+    // With no whole-blyg subscription, nothing at this origin is known.
+    let cite = await composeStubCite(env.DB, ref, "https://us.example/", "Us", "2026-09-01T00:00:00Z");
+    expect(cite.source).toBe(new URL(f.origin).host);
+    expect(cite.author).toBeUndefined();
+    expect((await loadProvenance(env.DB, [[ref]])).remoteSources.size).toBe(0);
+    expect((await resolveTarget(env.DB, "shared-id")).ok).toBe(false);
+
+    const blyg = await createSubscription(env.DB, { kind: "blyg", origin: f.origin, feedUrl: `${f.origin}feed.xml`, title: "Fixture Blyg" });
+    await importedBlygRow(blyg.id, "shared-id");
+    cite = await composeStubCite(env.DB, ref, "https://us.example/", "Us", "2026-09-01T00:00:00Z");
+    expect(cite.source).toBe("Fixture Blyg");
+    const sources = (await loadProvenance(env.DB, [[ref]])).remoteSources;
+    expect([...sources.values()].map((v) => v.title)).toEqual(["Fixture Blyg"]);
+    // One resolvable row, the blyg's: the hopper's copy does not make it ambiguous.
+    const resolved = await resolveTarget(env.DB, "shared-id");
+    expect(resolved.ok).toBe(true);
   });
 });
 
 describe("§13.5a: polling a hopper subscription", () => {
   const listed = (f: ReturnType<typeof blygFixture>) => ({ [f.manifestUrl]: { body: manifestBody({ site: f.origin, hoppers: f.hoppers }) } });
   const entries = [
-    { guid: "hopper:picks:https://other.example/:one", link: "https://other.example/posts/one/", title: "One" },
+    { guid: "hopper:picks:https://other.example/:one", link: "https://other.example/posts/one/", title: "One", creator: "Entry Author" },
     { guid: "hopper:picks:https://other.example/:two", link: "https://other.example/items/two.json", title: "Two" },
   ];
 
@@ -147,10 +189,10 @@ describe("§13.5a: polling a hopper subscription", () => {
     expect((await pollSubscription(env.DB, sub, first.fetch)).outcome).toBe("polled");
     let rows = await listImportedItems(env.DB, sub.id);
     expect(rows).toHaveLength(2);
-    for (const row of rows) {
-      expect(row.l0).toBe(1);
-      expect(row.author_json).toBeNull();
-    }
+    for (const row of rows) expect(row.l0).toBe(1);
+    // §13.5a rule 5: each entry keeps its own author, never the hopper's owner.
+    const authors = rows.map((r) => (r.author_json ? JSON.parse(r.author_json).name : null)).sort();
+    expect(authors).toEqual(["Entry Author", null]);
     expect(rows.map((r) => r.content_md).join("\n")).toContain("https://other.example/posts/one/");
 
     const second = makeFixtureFetch({ ...listed(f), [f.feed]: { body: hopperFeedXml(entries.slice(1)) } });
@@ -187,7 +229,7 @@ describe("§13.5a: polling a hopper subscription", () => {
     expect((await pollSubscription(env.DB, (await getSubscription(env.DB, sub.id))!, unlisted.fetch)).outcome).toBe("skipped");
     expect(unlisted.calls).not.toContain(f.feed);
     const after = (await getSubscription(env.DB, sub.id))!;
-    expect(after).toMatchObject({ kind: "rss", status: "paused", origin: f.feed, feed_url: f.feed, hopper_feed: f.feed });
+    expect(after).toMatchObject({ kind: "rss", status: "paused", origin: f.origin, feed_url: f.feed, hopper_feed: f.feed });
     expect(JSON.parse(after.flags).map((x: { type: string }) => x.type)).toContain(HOPPER_UNLISTED_FLAG);
     expect(await listImportedItems(env.DB, sub.id)).toHaveLength(0);
     // Nothing subscribed to the whole blyg on the reader's behalf.

@@ -1205,7 +1205,7 @@ export async function transclusionProvenance(db: D1Database, transclusions: Tran
         .prepare(
           `SELECT ii.kind AS kind, ii.page AS page, s.title AS title
            FROM imported_items ii JOIN subscriptions s ON s.id = ii.subscription_id
-           WHERE ii.remote_id = ? AND s.origin = ?`,
+           WHERE ii.remote_id = ? AND s.origin = ? AND s.hopper_feed IS NULL`,
         )
         .bind(t.id, t.origin)
         .first<{ kind: string; page: string | null; title: string }>();

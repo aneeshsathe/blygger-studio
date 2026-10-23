@@ -110,7 +110,7 @@ async function quotedLink(db: D1Database, quoteOrigin: string, id: string, ourOr
     if (own) return blygItemUrl(ourOrigin, own.kind === "thread" ? "thread" : "fragment", id, null);
   }
   const row = await db
-    .prepare("SELECT ii.kind AS kind, ii.page AS page FROM imported_items ii JOIN subscriptions s ON s.id = ii.subscription_id WHERE ii.remote_id = ? AND s.origin = ?")
+    .prepare("SELECT ii.kind AS kind, ii.page AS page FROM imported_items ii JOIN subscriptions s ON s.id = ii.subscription_id WHERE ii.remote_id = ? AND s.origin = ? AND s.hopper_feed IS NULL")
     .bind(id, quoteOrigin)
     .first<{ kind: string; page: string | null }>();
   return row ? blygItemUrl(quoteOrigin, row.kind, id, row.page) : itemUrl(quoteOrigin, await storedSurface(db, quoteOrigin), id);

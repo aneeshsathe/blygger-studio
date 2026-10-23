@@ -66,7 +66,7 @@ importerApi.openapi(routes.createSubscription, async (c) => {
   // instead (`whole_blyg`). Its entries are L0 rows (§13.5a rule 5).
   if (result.kind === "blyg" && result.hopper && !body.whole_blyg) {
     const hopper = result.hopper;
-    const existingHopper = await findHopperSubscription(c.env.DB, hopper.feed);
+    const existingHopper = await findHopperSubscription(c.env.DB, result.origin, hopper.feed);
     if (existingHopper) return c.json({ error: `already subscribed to ${existingHopper.title || existingHopper.origin}` }, 409);
     const blygTitle = typeof result.manifest.title === "string" ? result.manifest.title : titleFromUrl(result.origin);
     const hopperTitle = `${hopper.title} — ${blygTitle}`;
@@ -74,13 +74,17 @@ importerApi.openapi(routes.createSubscription, async (c) => {
       return c.json({ needsConfirm: true, kind: "hopper", origin: result.origin, feedUrl: hopper.feed, title: hopperTitle, hopper, blygTitle, siteMismatch: result.siteMismatch });
     }
     const title = body.title?.trim() || undefined;
+    // §12.2: origin is the blyg's identity origin, hopper_feed the list at it.
+    // `surface` records where the manifest lives, as for a blyg, so the daily
+    // "still listed?" check reads the manifest from where it was found.
     const sub = await createSubscription(c.env.DB, {
       kind: "rss",
-      origin: hopper.feed,
+      origin: result.origin,
       feedUrl: hopper.feed,
       title: title ?? hopperTitle,
       titleAuto: title === undefined || title === hopperTitle,
-      hopper: { feed: hopper.feed, manifest: result.manifestUrl },
+      surface: surfaceFromManifest(result.origin, result.manifestUrl, result.manifest),
+      hopperFeed: hopper.feed,
     });
     if (body.backfill !== false) c.executionCtx.waitUntil(pollSubscription(c.env.DB, sub, platformFetchFor(c.env)).catch(() => {}));
     c.header("Location", `/api/subscriptions/${sub.id}`);

@@ -280,12 +280,12 @@ export interface SubscriptionRow {
   surface: string | null;
   /**
    * A hopper subscription (migration 0033; proposed, §12.1 step 7, §12.2,
-   * §13.5a): the hopper feed's URL, and the manifest that lists it. NULL for
-   * every other subscription. Such a row is `kind: "rss"` with origin and
-   * feed_url equal to the hopper feed, so its entries are L0 rows.
+   * §13.5a): the hopper feed's URL. NULL for every other subscription. Such a
+   * row is `kind: "rss"` (its entries are L0 rows), its `origin` is the blyg's
+   * identity origin and its `feed_url` the hopper feed: identity is the pair.
+   * Lookups that mean "the whole blyg at this origin" exclude it.
    */
   hopper_feed?: string | null;
-  hopper_manifest?: string | null;
 }
 
 export interface ImportedItemRow {

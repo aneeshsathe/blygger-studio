@@ -11,7 +11,6 @@ import { parseFeed } from "./feed.ts";
 import type { FetchLike, FetchResult } from "./http.ts";
 import { platformFetch } from "./http.ts";
 import { pollL0Subscription } from "./l0.ts";
-import { identityOf } from "./resolve.ts";
 import { appendFlag, applyEffect, dropImportedItemsExcept, getImportedItem, listHoppersForItem, recordIndexSync, recordPollFailure, recordPollSuccess, refreshSourceTitle, toLocalState, updateSurface } from "./store.ts";
 import { transition } from "./transition.ts";
 import { mapLimit } from "./util.ts";
@@ -191,19 +190,20 @@ export const HOPPER_UNLISTED_FLAG = "hopper-unlisted";
  * that cannot be read leaves everything as it was and the poll goes on.
  */
 async function hopperStillListed(db: D1Database, sub: SubscriptionRow, fetchFn: FetchLike): Promise<boolean> {
-  if (!sub.hopper_feed || !sub.hopper_manifest) return true;
+  if (!sub.hopper_feed) return true;
   const due = !sub.last_index_sync_at || Date.now() - Date.parse(sub.last_index_sync_at) >= INDEX_SYNC_PERIOD_MS;
   if (!due) return true;
   let manifest: Record<string, unknown>;
   try {
-    const res = await fetchFn(sub.hopper_manifest, { headers: { Accept: "application/json" } });
+    const res = await fetchFn(manifestUrl(sub.origin, parseSurface(sub.surface)), { headers: { Accept: "application/json" } });
     if (!res.ok) return true;
     manifest = JSON.parse(await res.text()) as Record<string, unknown>;
     if (!manifest || typeof manifest !== "object" || !("blyg" in manifest)) return true;
   } catch {
     return true;
   }
-  const origin = identityOf(sub.hopper_manifest);
+  // Keyed by (origin, hopper_feed): the feed named, resolved against the identity origin.
+  const origin = sub.origin;
   const listed = Array.isArray(manifest.hoppers) && (manifest.hoppers as unknown[]).some((h) => {
     const feed = h && typeof h === "object" ? (h as { feed?: unknown }).feed : undefined;
     if (typeof feed !== "string") return false;

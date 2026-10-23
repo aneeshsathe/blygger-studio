@@ -109,24 +109,66 @@ instead** (`whole_blyg: true` on `POST /api/subscriptions`).
 
 ### §12.2 identity
 
-Migration **0033** adds `subscriptions.hopper_feed` and `hopper_manifest`
-(NULL = not a hopper subscription), with a unique index on `hopper_feed`. A
-hopper subscription is stored as `kind: "rss"` with `origin = feed_url =
-hopper_feed`, so it coexists with a whole-blyg subscription to the same origin,
-and nothing that matches subscriptions by origin (stub citations, fork titles,
-provenance) mistakes it for that blyg. Its blyg is `hopper_manifest`; the
-identity origin is that URL minus its last segment. Its title is `{hopper} —
-{blyg}`, which the channel title keeps current.
+A hopper subscription is "a subscription to a list at an origin, not a second
+origin". Migration **0033** adds `subscriptions.hopper_feed` (NULL = not a
+hopper subscription). The row stores:
+
+- `origin`: the blyg's **identity origin**, the same value a whole-blyg
+  subscription to it has;
+- `hopper_feed` and `feed_url`: the hopper feed's URL as the manifest names it;
+- `surface`: where the manifest lives when it is not `{origin}blyg.json`, as for
+  a blyg, so the daily check can find it on a templated or unconventional mount
+  (no separate manifest column);
+- `kind: "rss"`, because its entries are L0 rows.
+
+The unique key is **(origin, hopper_feed)** for hopper rows (a partial unique
+index). The whole-blyg half, one subscription per origin with `hopper_feed`
+NULL, stays where it is today: the subscribe route's 409 (`findSubscription`).
+A unique index over it would abort the migration on a node that still holds a
+duplicate subscription from before 0.26.1, when the route started refusing
+them. So two hoppers of one blyg and the whole blyg can all be subscribed at
+once, and a second subscribe to the same hopper is refused with 409.
+
+The title is `{hopper} — {blyg}`, which the channel title keeps current.
+
+**Every lookup that means "the whole blyg at this origin" excludes hopper rows**
+(`hopper_feed IS NULL`), so a hopper subscription never supplies a title,
+provenance line, citation, link target or transclusion source:
+
+| Where | What it means |
+|---|---|
+| `src/importer/store.ts` `findSubscription` | the subscribe 409: a blyg or feed already followed |
+| `src/importer/store.ts` `listBlogrollSubscriptions` | `blogroll.opml` and the blogroll section: hopper subscriptions are never listed, not even under their blyg |
+| `src/public-feed.ts` `loadProvenance` | provenance title and page under a baked remote quote |
+| `src/pages.ts` `transclusionProvenance` (fallback query) | the same, uncached |
+| `src/stub.ts` `composeStubCite`, `citedUrl` | a stub's or transclusion's frozen `cited` (source, author, excerpt, url) |
+| `src/fork.ts` remote fork | the fork citation's source title |
+| `src/authoring.ts` `scopeSummariesWithSources` | "draws on {blyg}" in the TK panel |
+| `src/api.ts` quote-origin link | the link to a quoted remote item |
+| `src/read-api.ts` mention source | the holder and the subscription for an inbound mention's source |
+| `src/mentions/send.ts` `remoteTarget` | an outbound mention's target page |
+| `src/transclusion.ts` `resolveTarget` | `![[id]]`, `[[id]]` and TK sources |
+| `src/interactions.ts` `withLabels` | the label of a signalled or hoppered target |
+| `src/ui/opml.ts` `subscribedKeys` | OPML import's "already subscribed": a hopper's feed counts, its origin does not |
+
+Unchanged, because they already mean the blyg: `kind = 'blyg'` lookups
+(`src/surface.ts`, `src/mentions/send.ts`, `src/api.ts` quote refresh), and the
+picker and URL repair, which take `l0 = 0` rows only. The interaction log still
+records a hopper entry's origin, since grouping by origin is the point there.
 
 ### Polling (§13.5a rules 5–6)
 
-Entries import as L0 rows scoped to the subscription: excerpts and links, never
-a transclusion, link or TK source (`resolveTarget` refuses L0 rows), never a
-mention target. Each poll reconciles against the whole list: **an entry that
+Entries import as L0 rows scoped to the subscription (their synthetic ids are
+derived from the hopper feed, not the shared origin): excerpts and links, never
+a transclusion, link or TK source, never a mention target. Each entry keeps its
+own author, from its `dc:creator`, and is never attributed to the hopper's
+owner (rule 5). Each poll reconciles against the whole list: **an entry that
 has disappeared is dropped**, unlike a plain L0 feed, whose entries scroll out
 of a window and are kept.
 
-On the daily manifest sync, if the manifest no longer lists the hopper's feed,
+On the daily manifest sync (keyed by origin and hopper feed: the manifest's
+`feed` entries resolved against the subscription's origin), if the manifest no
+longer lists the hopper's feed,
 polling stops: the subscription is paused, flagged `hopper-unlisted`, and its
 entries are dropped as withdrawn. It is never turned into a subscription to the
 whole blyg. A manifest that cannot be read changes nothing.
