@@ -326,6 +326,19 @@ export async function applyEffect(
 }
 
 /** Insert-or-update an L0 (legacy RSS) synthetic item (§3.5) — always kind='fragment', state='current', l0=1. */
+/**
+ * Drop a subscription's imported rows whose ids are not in `keep`, returning
+ * how many went. Used for hopper subscriptions (§13.5a rule 6), whose feed is
+ * the whole list: absence is withdrawal. An empty `keep` drops everything.
+ */
+export async function dropImportedItemsExcept(db: D1Database, subscriptionId: string, keep: string[]): Promise<number> {
+  const res = await db
+    .prepare("DELETE FROM imported_items WHERE subscription_id = ? AND remote_id NOT IN (SELECT value FROM json_each(?))")
+    .bind(subscriptionId, JSON.stringify(keep))
+    .run();
+  return res.meta.changes ?? 0;
+}
+
 export async function upsertL0Item(
   db: D1Database,
   subscriptionId: string,

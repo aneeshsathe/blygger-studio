@@ -53,7 +53,7 @@ type Found = { origin: string; manifestUrl: string; manifest: BlygManifestLike }
  * final URL minus its last path segment. A manifest at `/blyg/blyg.json` gives
  * `/blyg/`; one at `/wp-json/blyg/v1/manifest` gives `/wp-json/blyg/v1/`.
  */
-function identityOf(manifestUrl: string): string {
+export function identityOf(manifestUrl: string): string {
   const u = new URL(manifestUrl);
   u.pathname = u.pathname.replace(/[^/]*$/, "");
   u.search = "";

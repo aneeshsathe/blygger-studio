@@ -1,10 +1,13 @@
 // Hopper subscriptions (PROPOSED, pending Fable): §12.1 step 7 (hopper match),
-// §12.2 (identity = origin + hopper feed). Module level with fixture fetches,
-// like subscribe-flow.test.ts: the HTTP route defaults to real network.
+// §12.2 (identity = origin + hopper feed), §13.5a rules 5-6 (L0 rows, dropped
+// when gone). Module level with fixture fetches, like subscribe-flow.test.ts:
+// the HTTP route defaults to real network.
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { HOPPER_UNLISTED_FLAG, pollSubscription } from "../../src/importer/poll.ts";
 import { matchHopper, resolve } from "../../src/importer/resolve.ts";
-import { createSubscription, findHopperSubscription, findSubscription } from "../../src/importer/store.ts";
+import { createSubscription, findHopperSubscription, findSubscription, getSubscription, listImportedItems } from "../../src/importer/store.ts";
+import { resolveTarget } from "../../src/transclusion.ts";
 import { makeFixtureFetch, manifestBody } from "./fixtures.ts";
 
 let n = 0;
@@ -127,5 +130,87 @@ describe("§12.2: a hopper subscription's identity", () => {
     expect(hopper).toMatchObject({ kind: "rss", hopper_feed: f.feed, hopper_manifest: f.manifestUrl });
     // One subscription per hopper feed.
     await expect(hopperSub(f)).rejects.toThrow();
+  });
+});
+
+describe("§13.5a: polling a hopper subscription", () => {
+  const listed = (f: ReturnType<typeof blygFixture>) => ({ [f.manifestUrl]: { body: manifestBody({ site: f.origin, hoppers: f.hoppers }) } });
+  const entries = [
+    { guid: "hopper:picks:https://other.example/:one", link: "https://other.example/posts/one/", title: "One" },
+    { guid: "hopper:picks:https://other.example/:two", link: "https://other.example/items/two.json", title: "Two" },
+  ];
+
+  it("imports entries as L0 rows and drops one that leaves the feed", async () => {
+    const f = blygFixture();
+    const sub = await hopperSub(f);
+    const first = makeFixtureFetch({ ...listed(f), [f.feed]: { body: hopperFeedXml(entries) } });
+    expect((await pollSubscription(env.DB, sub, first.fetch)).outcome).toBe("polled");
+    let rows = await listImportedItems(env.DB, sub.id);
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.l0).toBe(1);
+      expect(row.author_json).toBeNull();
+    }
+    expect(rows.map((r) => r.content_md).join("\n")).toContain("https://other.example/posts/one/");
+
+    const second = makeFixtureFetch({ ...listed(f), [f.feed]: { body: hopperFeedXml(entries.slice(1)) } });
+    await pollSubscription(env.DB, (await getSubscription(env.DB, sub.id))!, second.fetch);
+    rows = await listImportedItems(env.DB, sub.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].content_md).toContain("Two");
+
+    // An emptied hopper empties the subscription.
+    const third = makeFixtureFetch({ ...listed(f), [f.feed]: { body: hopperFeedXml([]) } });
+    await pollSubscription(env.DB, (await getSubscription(env.DB, sub.id))!, third.fetch);
+    expect(await listImportedItems(env.DB, sub.id)).toHaveLength(0);
+  });
+
+  it("keeps a plain L0 subscription's windowed entries (the drop is hopper-only)", async () => {
+    const f = blygFixture();
+    const plain = await createSubscription(env.DB, { kind: "rss", origin: `${f.host}/plain.xml`, feedUrl: `${f.host}/plain.xml`, title: "Plain" });
+    await pollSubscription(env.DB, plain, makeFixtureFetch({ [`${f.host}/plain.xml`]: { body: hopperFeedXml(entries) } }).fetch);
+    await pollSubscription(env.DB, (await getSubscription(env.DB, plain.id))!, makeFixtureFetch({ [`${f.host}/plain.xml`]: { body: hopperFeedXml([]) } }).fetch);
+    expect(await listImportedItems(env.DB, plain.id)).toHaveLength(2);
+  });
+
+  it("stops polling when the manifest no longer lists the hopper, and never becomes a whole-blyg subscription", async () => {
+    const f = blygFixture();
+    const sub = await hopperSub(f);
+    await pollSubscription(env.DB, sub, makeFixtureFetch({ ...listed(f), [f.feed]: { body: hopperFeedXml(entries) } }).fetch);
+    expect(await listImportedItems(env.DB, sub.id)).toHaveLength(2);
+    // The daily manifest sync comes round; the hopper has gone private.
+    await env.DB.prepare("UPDATE subscriptions SET last_index_sync_at = NULL WHERE id = ?").bind(sub.id).run();
+    const unlisted = makeFixtureFetch({
+      [f.manifestUrl]: { body: manifestBody({ site: f.origin, hoppers: f.hoppers.slice(1) }) },
+      [f.feed]: { body: hopperFeedXml(entries) },
+    });
+    expect((await pollSubscription(env.DB, (await getSubscription(env.DB, sub.id))!, unlisted.fetch)).outcome).toBe("skipped");
+    expect(unlisted.calls).not.toContain(f.feed);
+    const after = (await getSubscription(env.DB, sub.id))!;
+    expect(after).toMatchObject({ kind: "rss", status: "paused", origin: f.feed, feed_url: f.feed, hopper_feed: f.feed });
+    expect(JSON.parse(after.flags).map((x: { type: string }) => x.type)).toContain(HOPPER_UNLISTED_FLAG);
+    expect(await listImportedItems(env.DB, sub.id)).toHaveLength(0);
+    // Nothing subscribed to the whole blyg on the reader's behalf.
+    expect(await findSubscription(env.DB, f.origin, `${f.origin}feed.xml`)).toBeNull();
+  });
+
+  it("leaves the subscription alone when the manifest cannot be read", async () => {
+    const f = blygFixture();
+    const sub = await hopperSub(f);
+    const r = await pollSubscription(env.DB, sub, makeFixtureFetch({ [f.manifestUrl]: { status: 503 }, [f.feed]: { body: hopperFeedXml(entries) } }).fetch);
+    expect(r.outcome).toBe("polled");
+    expect((await getSubscription(env.DB, sub.id))!.status).toBe("active");
+  });
+
+  it("never resolves a hopper row as a [[id]], ![[id]] or TK source", async () => {
+    const f = blygFixture();
+    const sub = await hopperSub(f);
+    await pollSubscription(env.DB, sub, makeFixtureFetch({ ...listed(f), [f.feed]: { body: hopperFeedXml(entries) } }).fetch);
+    const rows = await listImportedItems(env.DB, sub.id);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      const r = await resolveTarget(env.DB, row.remote_id);
+      expect(r.ok).toBe(false);
+    }
   });
 });
