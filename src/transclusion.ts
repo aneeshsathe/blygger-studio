@@ -411,6 +411,13 @@ export async function previewTransclusions(db: D1Database, contentMd: string, se
   // Publish bakes the target's HTML verbatim (§5.2, §10.2), so the walk does
   // not sanitize. The preview is displayed in the owner's studio, and every
   // display sanitizes at render, as the public pages do with the baked thread.
+  // A lifted generated block's quotes (#105) are spliced in after this, so
+  // they are sanitized here too.
+  if (blocks) {
+    for (const [token, html] of blocks.blockReplacements) {
+      blocks.blockReplacements.set(token, await sanitizeHtml(html));
+    }
+  }
   return { ...result, html: await sanitizeHtml(result.html) };
 }
 

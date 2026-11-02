@@ -333,6 +333,20 @@ describe("an own-line directive in TK output (decision #60)", () => {
     expect(res.json.html).not.toContain("![[");
   });
 
+  it("the thread preview sanitizes a quote baked inside a generated block", async () => {
+    const cookie = await login();
+    const quoted = await createAndPublish(cookie, "small tools beat big tools");
+    // Bytes the preview must not display raw, as an imported target's could be.
+    await env.DB.prepare("UPDATE versions SET content_html = ? WHERE item_id = ?")
+      .bind('<p>small tools<img src="x" onerror="alert(1)"><script>alert(2)</script></p>', quoted)
+      .run();
+    const res = await apiJson(cookie, "POST", "/blyg/api/preview", { contentMd: outputWithQuote(quoted), kind: "thread" });
+    expect(res.status).toBe(200);
+    expect(res.json.html).toContain(`data-blyg-id="${quoted}"`);
+    expect(res.json.html).toContain("small tools");
+    expect(res.json.html).not.toMatch(/onerror|<script/i);
+  });
+
   it("fails publish when a provenanced block's own-line directive does not resolve", async () => {
     const md = `[TK]write it[=]Mine.\n\n![[zzzzzzzzzzzzzzzzzzzzzzzzzz]][/TK]`;
     const item = await createDraft(env.DB, md, "thread");
