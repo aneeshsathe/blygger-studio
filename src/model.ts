@@ -372,7 +372,7 @@ export async function publish(db: D1Database, item: ItemRow, note: string | null
   let contentHtml: string;
   let transclusionsJson: string | null = null;
   if (kind === "thread") {
-    const resolved = await resolveTransclusions(db, links.text, item.id);
+    const resolved = await resolveTransclusions(db, links.text, item.id, annotated);
     if (resolved.errors.length) throw new TransclusionResolveError(resolved.errors);
     contentHtml = spliceLinks(applyGeneratedWrappers(resolved.html, annotated));
     // §5.9 / decision #30: every **remote** entry carries its frozen human

@@ -236,6 +236,16 @@ export async function resolveTarget(
 }
 
 /**
+ * TK block spans lifted out of the body (`annotateGenerated`): each token
+ * stands alone on its line in the body, and its markdown and rendered
+ * replacement are kept beside it.
+ */
+export interface GeneratedBlocks {
+  blockReplacements: Map<string, string>;
+  blockSources: Map<string, string>;
+}
+
+/**
  * Shared line-walker for both publish-time resolution and studio preview.
  * `onError` decides what (if anything) renders in place of a directive that
  * fails to resolve — the strict resolver omits it (publish aborts anyway);
@@ -246,6 +256,7 @@ async function walk(
   contentMd: string,
   onError: (err: TransclusionRefError) => string | null,
   selfId?: string,
+  blocks?: GeneratedBlocks,
 ): Promise<ResolveResult> {
   const errors: TransclusionRefError[] = [];
   const transclusions: Transclusion[] = [];
@@ -274,6 +285,24 @@ async function walk(
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (inRanges(inert, starts[i])) {
+      prose.push(line);
+      continue;
+    }
+    // A generated block with provenance was lifted out of the body, so its
+    // lines are not here to walk (#105): an own-line `![[id]]` in it would stay
+    // literal text while publish warned it had been quoted (#60). Walk the
+    // block's own markdown, at its place in the body so transclusions[] keeps
+    // document order, and bake its quotes inside its `div.blyg-tk-gen` — the
+    // author's output put them there. The token line stays prose, so the body
+    // renders byte for byte as before and the wrapper splice still finds it.
+    const blockMd = blocks?.blockSources.get(line.trim());
+    if (blocks && blockMd !== undefined) {
+      const inner = await walk(db, blockMd, onError, selfId);
+      if (inner.transclusions.length || inner.errors.length) {
+        transclusions.push(...inner.transclusions);
+        errors.push(...inner.errors);
+        blocks.blockReplacements.set(line.trim(), `<div class="blyg-tk-gen">${inner.html}</div>`);
+      }
       prose.push(line);
       continue;
     }
@@ -361,8 +390,8 @@ async function walk(
  * anything — this runs only at publish time, called from model.publish().
  * `selfId` is the publishing thread's own id, for the local DAG check.
  */
-export async function resolveTransclusions(db: D1Database, contentMd: string, selfId?: string): Promise<ResolveResult> {
-  return walk(db, contentMd, () => null, selfId);
+export async function resolveTransclusions(db: D1Database, contentMd: string, selfId?: string, blocks?: GeneratedBlocks): Promise<ResolveResult> {
+  return walk(db, contentMd, () => null, selfId, blocks);
 }
 
 /**
@@ -371,12 +400,13 @@ export async function resolveTransclusions(db: D1Database, contentMd: string, se
  * publish will reject, before the author hits publish. Not used at publish
  * time (see resolveTransclusions above); not a protocol surface.
  */
-export async function previewTransclusions(db: D1Database, contentMd: string, selfId?: string): Promise<ResolveResult> {
+export async function previewTransclusions(db: D1Database, contentMd: string, selfId?: string, blocks?: GeneratedBlocks): Promise<ResolveResult> {
   const result = await walk(
     db,
     contentMd,
     (err) => `<blockquote class="blyg-transclusion unresolved"><p>⚠ unresolvable: ${escapeHtml(err.reason)}</p></blockquote>`,
     selfId,
+    blocks,
   );
   // Publish bakes the target's HTML verbatim (§5.2, §10.2), so the walk does
   // not sanitize. The preview is displayed in the owner's studio, and every
@@ -562,7 +592,7 @@ export function applyInternalLinks(html: string, doc: InternalLinkDocument): str
  * that markdown had already rendered and escaped, and escape it a second time.
  */
 export async function resolveBlockLinks(
-  blocks: { blockReplacements: Map<string, string>; blockSources: Map<string, string> },
+  blocks: GeneratedBlocks,
   resolve: (md: string) => Promise<InternalLinkDocument>,
 ): Promise<{ docs: InternalLinkDocument[]; errors: TransclusionRefError[] }> {
   const docs: InternalLinkDocument[] = [];
@@ -571,6 +601,10 @@ export async function resolveBlockLinks(
     const doc = await resolve(blockMd);
     if (doc.replacements.size || doc.errors.length) {
       blocks.blockReplacements.set(token, renderGeneratedBlock(doc.text));
+      // The block's markdown is now the link-substituted text, so a later
+      // directive walk over it (resolveTransclusions with these blocks, #105)
+      // keeps the link tokens that applyInternalLinks splices back.
+      blocks.blockSources.set(token, doc.text);
       errors.push(...doc.errors);
       docs.push(doc);
     }

@@ -381,7 +381,7 @@ async function threadPreview(context: OperationContext, input: OperationInput) {
   const origin = siteOrigin(await getSettings(context.env.DB), context.url, mount);
   const links = await previewInternalLinks(context.env.DB, tk.text, origin);
   const blocks = await resolveBlockLinks(tk, (md) => previewInternalLinks(context.env.DB, md, origin));
-  const resolved = await previewTransclusions(context.env.DB, links.text, body.itemId);
+  const resolved = await previewTransclusions(context.env.DB, links.text, body.itemId, tk);
   return success({
     html: [links, ...blocks.docs].reduce((acc, doc) => applyInternalLinks(acc, doc), tk.finish(resolved.html)),
     errors: [...resolved.errors, ...links.errors, ...blocks.errors],
