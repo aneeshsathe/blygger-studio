@@ -50,6 +50,7 @@ const fields = [
   "linksOpml",
   "linksBlyggerOrg",
   "linksBlyggerCom",
+  "hopperFeeds",
   "avatarMediaId",
   "aiModelTk",
   "aiModelChangelog",
@@ -179,7 +180,8 @@ function SettingsForm({ initial }: { initial: Settings }) {
       | "linksCollections"
       | "linksOpml"
       | "linksBlyggerOrg"
-      | "linksBlyggerCom",
+      | "linksBlyggerCom"
+      | "hopperFeeds",
     label: string,
     hint?: ReactNode,
   ) => (
@@ -760,6 +762,20 @@ function SettingsForm({ initial }: { initial: Settings }) {
             Unchecking this removes the public Webmention endpoint and its
             discovery links. Requests return 404. You still send mentions when
             you quote other people, and collected responses stay in your Studio.
+          </>,
+        )}
+      </section>
+      <section className="card" id="network-hopper-feeds">
+        <h3 className="card-h">collection feeds <span className="hint">· experimental, off by default</span></h3>
+        {toggle(
+          'hopperFeeds',
+          'Give each public collection its own RSS feed',
+          <>
+            Each public collection gets a feed at <code>h/&lt;slug&gt;/feed.xml</code>,
+            linked from its page, and blyg.json lists your public collections.
+            Entries are curation, not reposts: an excerpt, who wrote it, and a
+            link to where it lives. Off by default: the protocol has ruled the
+            shape (spec 0.4 §16.12), and it is still being exercised.
           </>,
         )}
       </section>

@@ -262,6 +262,8 @@ if (result.response?.status === 409) { /* already subscribed */ }
 if (result.response?.status === 429) { /* wait Retry-After seconds, then retry */ }
 ```
 
+While the `hopperFeeds` setting is on (off by default), a URL naming one of a blyg's public hoppers (its page or its feed, as the blyg's manifest lists them) resolves to that hopper: the proposal has `kind: "hopper"`, with `hopper` (`title`, and `page` and `feedUrl` as absolute URLs) and `blygTitle`, and confirming creates a hopper subscription whose `hopperFeedUrl` is set. `wholeBlyg: true` subscribes to the whole blyg instead. Spec 0.4 §16.12 (decision #86), a ruled shape awaiting its gate: see `docs/hopper-feeds.md`.
+
 The Studio's OPML import works this way. It reads the file in the browser, flattens folders and sends one request at a time, about one a second, which stays under the owner's write budget of 120 writes a minute (`API_WRITE_LIMIT`).
 Delegated clients have less room: 120 a minute per grant, and 60 a minute shared by every grant (`API_DELEGATED_WRITE_LIMIT`), so a token-bearing importer should go slower than one a second and honour `Retry-After` on 429.
 

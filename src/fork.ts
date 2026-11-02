@@ -117,7 +117,7 @@ async function resolveRemoteFork(db: D1Database, ref: ForkedFrom, fetchFn: Fetch
   if (typeof doc.content_md !== 'string' || doc.kind === 'withdrawn') return { ok: false, reason: "that version has no content to fork" };
   const contentMd = doc.content_md;
   const sub = await db
-    .prepare("SELECT title FROM subscriptions WHERE origin = ?")
+    .prepare("SELECT title FROM subscriptions WHERE origin = ? AND hopper_feed IS NULL")
     .bind(ref.origin)
     .first<{ title: string }>();
   const author = authorName(doc.author);

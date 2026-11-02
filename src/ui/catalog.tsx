@@ -61,14 +61,19 @@ export function AddFeedForm({ onSubscribed, initialUrl = '' }: { onSubscribed?: 
   const [url, setUrl] = useState(initialUrl);
   const [confirmation, setConfirmation] = useState<{
     title: string;
+    kind?: string;
+    blygTitle?: string;
     siteMismatch?: {
       asserted: string;
       actual: string;
     };
   }>();
-  const add = async (confirm = false) => {
+  const add = async (confirm = false, wholeBlyg = false) => {
     const result = await unwrap(
-      BlyggerApi.createSubscription({ client, body: { url, confirm } }),
+      BlyggerApi.createSubscription({
+        client,
+        body: { url, confirm, ...(wholeBlyg ? { wholeBlyg: true } : {}) },
+      }),
     );
     if ('needsConfirm' in result) setConfirmation(result);
     else {
@@ -120,6 +125,13 @@ export function AddFeedForm({ onSubscribed, initialUrl = '' }: { onSubscribed?: 
           <p>
             <strong>Subscribe to {confirmation.title}?</strong>
           </p>
+          {confirmation.kind === 'hopper' ? (
+            <p className="hint">
+              One public collection on {confirmation.blygTitle ?? 'this blyg'}:
+              its entries are excerpts and links, and leave when the curator
+              removes them.
+            </p>
+          ) : null}
           {confirmation.siteMismatch ? (
             <p className="mismatch">
               Site mismatch: {confirmation.siteMismatch.asserted} /{' '}
@@ -134,6 +146,15 @@ export function AddFeedForm({ onSubscribed, initialUrl = '' }: { onSubscribed?: 
             >
               {action.busy ? 'subscribing…' : 'confirm subscribe'}
             </Button>
+            {confirmation.kind === 'hopper' ? (
+              <Button
+                className="btn"
+                disabled={action.busy}
+                onClick={() => void action.run(() => add(true, true))}
+              >
+                subscribe to the whole blyg instead
+              </Button>
+            ) : null}
           </div>
         </div>
       ) : null}

@@ -18,6 +18,7 @@ import {
   addHopperItem,
   createHopper,
   createSubscription,
+  findHopperSubscription,
   findSubscription,
   deleteHopper,
   deleteSignal,
@@ -29,7 +30,7 @@ import {
   removeHopperItem,
   setSignal,
 } from "./store.ts";
-import { getItem } from "../model.ts";
+import { getItem, getSettings } from "../model.ts";
 
 
 function titleFromUrl(url: string): string {
@@ -49,12 +50,44 @@ function titleFromUrl(url: string): string {
  * the confirm button for many seconds on a large blyg.
  */
 const createSubscriptionOperation = async (context: OperationContext, input: OperationInput) => {
-  const body = (input.body as { url: string; confirm?: boolean; title?: string; backfill?: boolean });
+  const body = (input.body as { url: string; confirm?: boolean; title?: string; backfill?: boolean; wholeBlyg?: boolean });
   if (!body.url.trim()) return failure('invalid-input', { error: "url required" });
 
-  const result = await resolve(body.url.trim(), platformFetchFor(context.env));
+  // §12.1 step 7, hopper match (spec 0.4 §16.12 rule 4) runs only while the
+  // off-by-default hopper_feeds setting is on.
+  const settings = await getSettings(context.env.DB);
+  const result = await resolve(body.url.trim(), platformFetchFor(context.env), { hoppers: settings.hopper_feeds });
   if (result.kind === "failure") {
     return failure('unprocessable', { error: "could not resolve this URL to a blyg or a feed", tried: result.tried });
+  }
+
+  // A hopper subscription (§12.1 step 7, §12.2): a list at an origin, kept
+  // apart from a subscription to the whole blyg, which the owner may choose
+  // instead (`wholeBlyg`). Its entries are L0 rows (§16.12 rule 6).
+  if (result.kind === "blyg" && result.hopper && !body.wholeBlyg) {
+    const hopper = result.hopper;
+    const existingHopper = await findHopperSubscription(context.env.DB, result.origin, hopper.feed);
+    if (existingHopper) return failure('conflict', { error: `already subscribed to ${existingHopper.title || existingHopper.origin}` });
+    const blygTitle = typeof result.manifest.title === "string" ? result.manifest.title : titleFromUrl(result.origin);
+    const hopperTitle = `${hopper.title} — ${blygTitle}`;
+    if (!body.confirm) {
+      return success({ needsConfirm: true, kind: "hopper", origin: result.origin, feedUrl: hopper.feed, title: hopperTitle, hopper: { title: hopper.title, page: hopper.page, feedUrl: hopper.feed }, blygTitle, siteMismatch: result.siteMismatch });
+    }
+    const title = body.title?.trim() || undefined;
+    // §16.12 rule 5: origin is the blyg's identity origin, hopper_feed the
+    // list at it (resolved absolute). `surface` records where the manifest
+    // lives, as for a blyg, so the daily "still listed?" check reads it there.
+    const sub = await createSubscription(context.env.DB, {
+      kind: "rss",
+      origin: result.origin,
+      feedUrl: hopper.feed,
+      title: title ?? hopperTitle,
+      titleAuto: title === undefined || title === hopperTitle,
+      surface: surfaceFromManifest(result.origin, result.manifestUrl, result.manifest),
+      hopperFeed: hopper.feed,
+    });
+    if (body.backfill !== false) context.defer(pollSubscription(context.env.DB, sub, platformFetchFor(context.env)).catch(() => {}));
+    return created(subscriptionResource(sub), `${deploymentPaths(context.env.MOUNT).api}/subscriptions/${sub.id}`);
   }
 
   // One subscription per source: a second one imports every item twice, and

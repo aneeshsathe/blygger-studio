@@ -255,8 +255,8 @@ const getUpdateStateOperation = async (context: OperationContext, input: Operati
 const getMentionSourceOperation = async (context: OperationContext, input: OperationInput) => {
   const row = await getInbound(context.env.DB, input.path.id);
   if (!row) return failure('not-found', { error: "not found" });
-  const holder = await context.env.DB.prepare("SELECT s.id AS id FROM imported_items ii JOIN subscriptions s ON s.id = ii.subscription_id WHERE ii.remote_id = ? AND s.origin = ? LIMIT 1").bind(row.source_id, row.source_origin).first<{ id: string }>();
-  const subscription = (await listSubscriptions(context.env.DB)).find((s) => s.origin === row.source_origin) ?? null;
+  const holder = await context.env.DB.prepare("SELECT s.id AS id FROM imported_items ii JOIN subscriptions s ON s.id = ii.subscription_id WHERE ii.remote_id = ? AND s.origin = ? AND s.hopper_feed IS NULL LIMIT 1").bind(row.source_id, row.source_origin).first<{ id: string }>();
+  const subscription = (await listSubscriptions(context.env.DB)).find((s) => s.origin === row.source_origin && !s.hopper_feed) ?? null;
   return success({ holder: holder?.id ?? null, subscription: subscription ? subscriptionResource(subscription) : null });
 };
 const getForkOptionsOperation = async (context: OperationContext, input: OperationInput) => {

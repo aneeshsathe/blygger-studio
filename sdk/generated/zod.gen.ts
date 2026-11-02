@@ -214,6 +214,7 @@ export const zSettings = z.object({
     linksOpml: z.boolean(),
     linksBlyggerOrg: z.boolean(),
     linksBlyggerCom: z.boolean(),
+    hopperFeeds: z.boolean(),
     setup: z.enum([
         'pending',
         'notice',
@@ -251,7 +252,8 @@ export const zSubscription = z.object({
         detail: z.string().optional()
     })),
     created: z.string(),
-    titleFollowsSource: z.boolean()
+    titleFollowsSource: z.boolean(),
+    hopperFeedUrl: z.string().nullable()
 });
 
 export const zHopper = z.object({
@@ -1112,6 +1114,7 @@ export const zUpdateSettingsBody = z.object({
     linksOpml: z.boolean().optional(),
     linksBlyggerOrg: z.boolean().optional(),
     linksBlyggerCom: z.boolean().optional(),
+    hopperFeeds: z.boolean().optional(),
     setup: z.enum([
         'pending',
         'notice',
@@ -1147,20 +1150,31 @@ export const zCreateSubscriptionBody = z.object({
     url: z.string(),
     confirm: z.boolean().optional(),
     title: z.string().optional(),
-    backfill: z.boolean().optional()
+    backfill: z.boolean().optional(),
+    wholeBlyg: z.boolean().optional()
 }).strict();
 
 export const zCreateSubscriptionResponse = z.union([
     z.object({
         needsConfirm: z.literal(true),
-        kind: z.enum(['blyg', 'rss']),
+        kind: z.enum([
+            'blyg',
+            'rss',
+            'hopper'
+        ]),
         origin: z.string().optional(),
         feedUrl: z.string().optional(),
         title: z.string(),
         siteMismatch: z.object({
             asserted: z.string(),
             actual: z.string()
-        }).optional()
+        }).optional(),
+        hopper: z.object({
+            title: z.string(),
+            page: z.string(),
+            feedUrl: z.string()
+        }).optional(),
+        blygTitle: z.string().optional()
     }),
     zSubscription
 ]);

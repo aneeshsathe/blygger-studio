@@ -209,6 +209,10 @@ export type Settings = {
      */
     linksBlyggerCom: boolean;
     /**
+     * Off by default: an RSS feed per public collection at {mount}/h/{slug}/feed.xml, linked from the collection page, and a hoppers list in blyg.json (spec 0.4 §16.12, decision #86, a ruled shape awaiting its gate).
+     */
+    hopperFeeds: boolean;
+    /**
      * The setup wizard: pending on a fresh install, notice on a node that published before it existed, done once finished or dismissed.
      */
     setup: 'pending' | 'notice' | 'done';
@@ -264,6 +268,10 @@ export type Subscription = {
     }>;
     created: string;
     titleFollowsSource: boolean;
+    /**
+     * A hopper subscription (one public hopper at another blyg; spec 0.4 §16.12): the hopper feed's resolved absolute URL, which with origin (the blyg's identity origin) is the subscription's identity. Null for every other subscription.
+     */
+    hopperFeedUrl: string | null;
 };
 
 export type Hopper = {
@@ -2341,6 +2349,10 @@ export type UpdateSettingsData = {
          */
         linksBlyggerCom?: boolean;
         /**
+         * Off by default: an RSS feed per public collection at {mount}/h/{slug}/feed.xml, linked from the collection page, and a hoppers list in blyg.json (spec 0.4 §16.12, decision #86, a ruled shape awaiting its gate).
+         */
+        hopperFeeds?: boolean;
+        /**
          * The setup wizard: pending on a fresh install, notice on a node that published before it existed, done once finished or dismissed.
          */
         setup?: 'pending' | 'notice' | 'done';
@@ -2508,6 +2520,10 @@ export type CreateSubscriptionData = {
          * With confirm: start importing the archive at once (true, the default). false creates the subscription only; the next quarter-hour poll imports it, since a never-polled subscription is always due. For bulk imports such as OPML.
          */
         backfill?: boolean;
+        /**
+         * When the URL names one of a blyg's public hoppers (kind hopper), subscribe to the whole blyg instead (§16.12 rule 4: a reader SHOULD offer this).
+         */
+        wholeBlyg?: boolean;
     };
     path?: never;
     query?: never;
@@ -2573,7 +2589,7 @@ export type CreateSubscriptionResponses = {
      */
     200: {
         needsConfirm: true;
-        kind: 'blyg' | 'rss';
+        kind: 'blyg' | 'rss' | 'hopper';
         origin?: string;
         feedUrl?: string;
         title: string;
@@ -2581,6 +2597,18 @@ export type CreateSubscriptionResponses = {
             asserted: string;
             actual: string;
         };
+        /**
+         * kind hopper: the public hopper the URL matched in the blyg's manifest (spec 0.4 §16.12 rule 4, §12.1 step 7), page and feedUrl resolved to absolute URLs. Only while the hopperFeeds setting is on.
+         */
+        hopper?: {
+            title: string;
+            page: string;
+            feedUrl: string;
+        };
+        /**
+         * kind hopper: the whole blyg's title, for the subscribe-to-the-whole-blyg-instead choice.
+         */
+        blygTitle?: string;
     };
     /**
      * Subscribed

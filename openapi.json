@@ -759,6 +759,10 @@
             "type": "boolean",
             "description": "Link blygger.com, the directory of blygs, in the links section."
           },
+          "hopperFeeds": {
+            "type": "boolean",
+            "description": "Off by default: an RSS feed per public collection at {mount}/h/{slug}/feed.xml, linked from the collection page, and a hoppers list in blyg.json (spec 0.4 §16.12, decision #86, a ruled shape awaiting its gate)."
+          },
           "setup": {
             "type": "string",
             "enum": [
@@ -848,6 +852,7 @@
           "linksOpml",
           "linksBlyggerOrg",
           "linksBlyggerCom",
+          "hopperFeeds",
           "setup",
           "updateFeedUrl",
           "updateNoticeAck",
@@ -980,6 +985,13 @@
           },
           "titleFollowsSource": {
             "type": "boolean"
+          },
+          "hopperFeedUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A hopper subscription (one public hopper at another blyg; spec 0.4 §16.12): the hopper feed's resolved absolute URL, which with origin (the blyg's identity origin) is the subscription's identity. Null for every other subscription."
           }
         },
         "required": [
@@ -995,7 +1007,8 @@
           "inBlogroll",
           "flags",
           "created",
-          "titleFollowsSource"
+          "titleFollowsSource",
+          "hopperFeedUrl"
         ]
       },
       "Hopper": {
@@ -6998,6 +7011,10 @@
                     "type": "boolean",
                     "description": "Link blygger.com, the directory of blygs, in the links section."
                   },
+                  "hopperFeeds": {
+                    "type": "boolean",
+                    "description": "Off by default: an RSS feed per public collection at {mount}/h/{slug}/feed.xml, linked from the collection page, and a hoppers list in blyg.json (spec 0.4 §16.12, decision #86, a ruled shape awaiting its gate)."
+                  },
                   "setup": {
                     "type": "string",
                     "enum": [
@@ -7343,6 +7360,10 @@
                   "backfill": {
                     "type": "boolean",
                     "description": "With confirm: start importing the archive at once (true, the default). false creates the subscription only; the next quarter-hour poll imports it, since a never-polled subscription is always due. For bulk imports such as OPML."
+                  },
+                  "wholeBlyg": {
+                    "type": "boolean",
+                    "description": "When the URL names one of a blyg's public hoppers (kind hopper), subscribe to the whole blyg instead (§16.12 rule 4: a reader SHOULD offer this)."
                   }
                 },
                 "required": [
@@ -7371,7 +7392,8 @@
                       "type": "string",
                       "enum": [
                         "blyg",
-                        "rss"
+                        "rss",
+                        "hopper"
                       ]
                     },
                     "origin": {
@@ -7397,6 +7419,30 @@
                         "asserted",
                         "actual"
                       ]
+                    },
+                    "hopper": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string"
+                        },
+                        "page": {
+                          "type": "string"
+                        },
+                        "feedUrl": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "title",
+                        "page",
+                        "feedUrl"
+                      ],
+                      "description": "kind hopper: the public hopper the URL matched in the blyg's manifest (spec 0.4 §16.12 rule 4, §12.1 step 7), page and feedUrl resolved to absolute URLs. Only while the hopperFeeds setting is on."
+                    },
+                    "blygTitle": {
+                      "type": "string",
+                      "description": "kind hopper: the whole blyg's title, for the subscribe-to-the-whole-blyg-instead choice."
                     }
                   },
                   "required": [

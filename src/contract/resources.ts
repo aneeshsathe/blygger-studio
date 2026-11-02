@@ -77,6 +77,7 @@ export const SubscriptionSchema = z.object({
   flags: z.array(z.object({ type: z.string(), at: z.string(), detail: z.string().optional() })),
   created: z.string(),
   titleFollowsSource: z.boolean(),
+  hopperFeedUrl: z.string().nullable().describe("A hopper subscription (one public hopper at another blyg; spec 0.4 §16.12): the hopper feed's resolved absolute URL, which with origin (the blyg's identity origin) is the subscription's identity. Null for every other subscription."),
 }).openapi("Subscription");
 
 export const HopperSchema = z.object({
@@ -230,6 +231,7 @@ export const subscriptionResource = (row: SubscriptionRow) => SubscriptionSchema
   flags: stored(row.flags, SubscriptionSchema.shape.flags, []),
   created: row.created,
   titleFollowsSource: row.title_auto !== 0,
+  hopperFeedUrl: row.hopper_feed ?? null,
 });
 
 export const hopperResource = (row: HopperRow) => HopperSchema.parse({

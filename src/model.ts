@@ -166,6 +166,8 @@ export function settingsFromMap(map: Record<string, string>): Settings {
     links_opml: map.links_opml !== "off",
     links_blygger_org: map.links_blygger_org !== "off",
     links_blygger_com: map.links_blygger_com !== "off",
+    // Off by default: spec 0.4 §16.12 (decision #86) is a ruled shape awaiting its gate.
+    hopper_feeds: map.hopper_feeds === "on",
     update_check: map.update_check !== "off",
     update_feed_url: map.update_feed_url ?? "",
     /** Cleared until the operator has seen the "alerts are on" notice once. */

@@ -282,6 +282,14 @@ export interface SubscriptionRow {
   title_auto: number;
   /** JSON `Surface` (src/surface.ts): where a templated blyg's files live. NULL = default paths. */
   surface: string | null;
+  /**
+   * A hopper subscription (migration 0038; spec 0.4 §16.12, decision #86):
+   * the hopper feed's resolved absolute URL. NULL for every other subscription. Such a
+   * row is `kind: "rss"` (its entries are L0 rows), its `origin` is the blyg's
+   * identity origin and its `feed_url` the hopper feed: identity is the pair.
+   * Lookups that mean "the whole blyg at this origin" exclude it.
+   */
+  hopper_feed?: string | null;
 }
 
 export interface ImportedItemRow {
@@ -523,6 +531,12 @@ export interface Settings {
   links_blygger_org: boolean;
   /** A link to blygger.com (the directory) in the links section. On by default. */
   links_blygger_com: boolean;
+  /**
+   * Per-hopper RSS feeds at `{mount}/h/{slug}/feed.xml`, their page links and the
+   * manifest's `hoppers` key (src/hopper-feed.ts). Off by default: spec 0.4 §16.12
+   * (decision #86) is a ruled shape awaiting its two-node gate.
+   */
+  hopper_feeds: boolean;
   /** The setup wizard's state: `pending` (fresh install), `notice` (existing node, told once), `done`. */
   setup: "pending" | "notice" | "done";
   /** Where to ask. Configurable so a fork checks its own releases, not ours. */
