@@ -17,6 +17,11 @@ test('a quote directive becomes “…”: its passage when it has one, else the
   expect(plainText(`![[${B}]]\n\nMine.`, resolve)).toBe('Mine.');
 });
 
+test('a passage’s lazy continuation lines are part of it, as publish reads them (§10.1, #76)', () => {
+  expect(plainText(`![[${A}]]\n> a chosen\npassage\n\nAfter.`)).toBe('“a chosen passage”\n\nAfter.');
+  expect(plainText(`![[${A}]]\n> a chosen passage\n>\nMine.`)).toBe('“a chosen passage”\n\nMine.');
+});
+
 test('an ordinary blockquote is a quote too', () => {
   expect(plainText('> Someone said\n> this.\n\nI agree.')).toBe('“Someone said this.”\n\nI agree.');
 });

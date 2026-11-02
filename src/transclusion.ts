@@ -33,19 +33,15 @@ import { renderGeneratedBlock } from "./tk.ts";
  *
  * A blank line detaches, which is the whole reason the grammar is adjacency
  * rather than a new sigil: a whole transclusion followed by the author's own
- * block quotation has always been writable, and must stay writable. The run
- * ends at the first line that is not a quote line; a line that is empty after
- * its marker is a paragraph break *inside* the selection.
+ * block quotation has always been writable, and must stay writable. The
+ * blockquote's extent is CommonMark's, lazy continuation included (decision
+ * #76): an unprefixed line that continues the quote's paragraph is part of the
+ * selection, and a line that is empty after its marker is a paragraph break
+ * *inside* it. `attachedQuote` in `directives.ts` measures it, for every caller.
  */
-
 
 /** How much context either side of the match to record — §10.1–§10.3 says short. */
 const SELECTOR_CONTEXT = 32;
-
-/**
- * The run of `>` lines attached to the directive at `i`, and where the caller
- * should resume. `lines[i]` is the directive itself.
- */
 
 
 /**

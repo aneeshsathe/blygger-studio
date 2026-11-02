@@ -20,9 +20,16 @@ test('choosing again replaces the passage rather than adding a second one', () =
   expect(withStubQuote(partial, ID, 'new passage')).toBe(`Lead-in.\n\n![[${ID}]]\n> new passage\n\nAfter.`);
 });
 
-test('an unmarked line right under the quote is the author\'s, and stays', () => {
-  const md = `![[${ID}]]\n> old\nmy words`;
+test('an unmarked line after an empty `>` line is the author\'s, and stays', () => {
+  const md = `![[${ID}]]\n> old\n>\nmy words`;
   expect(withStubQuote(md, ID, null)).toBe(`![[${ID}]]\nmy words`);
+});
+
+test('a lazy continuation line is part of the quote, as publish reads it (§10.1, #76)', () => {
+  const md = `![[${ID}]]\n> old passage\nstill the passage\n\nMy reply.`;
+  expect(attachedQuote(md.split('\n'), 0)).toEqual({ quoteMd: 'old passage\nstill the passage', next: 3 });
+  expect(withStubQuote(md, ID, 'new')).toBe(`![[${ID}]]\n> new\n\nMy reply.`);
+  expect(withStubQuote(md, ID, null)).toBe(`![[${ID}]]\n\nMy reply.`);
 });
 
 test('the browser\'s selection is normalized so publish\'s check sees the same text', () => {

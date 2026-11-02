@@ -91,18 +91,104 @@ describe("the grammar: adjacency makes it partial", () => {
     expect(doc.content_html).not.toContain("Third.");
   });
 
-  it("the run ends at the first line that is not a quote line", async () => {
+});
+
+// The blockquote's extent is CommonMark's, lazy continuation included (§10.1
+// as revised under decision #76; blygger-studio#104, conformance fixture 056).
+// Until #104 the selection stopped at the first line without `>`, so the
+// fixture's quote baked only its first line and the rest became prose.
+describe("the extent: CommonMark's blockquote, lazy continuation included", () => {
+  async function publishThread(cookie: string, contentMd: string) {
+    const thread = await createThread(cookie, contentMd);
+    const res = await apiJson(cookie, "POST", `/blyg/api/items/${thread}/publish`, {});
+    return { res, doc: res.status === 200 ? await (await getPublic(`/blyg/items/${thread}.json`)).json<any>() : null };
+  }
+
+  it("an unprefixed line continuing the quote's paragraph belongs to the selection", async () => {
     const cookie = await login();
     const target = await createAndPublish(cookie, TARGET);
-    const thread = await createThread(
+    const { res, doc } = await publishThread(
+      cookie,
+      `![[${target}]]\n> Stigmergy is what a protocol\nlooks like from inside\n\nCommentary.`,
+    );
+    expect(res.status).toBe(200);
+    expect(doc.transclusions[0].selector.exact).toBe("Stigmergy is what a protocol looks like from inside");
+    expect(doc.content_html).toContain(
+      "<blockquote class=\"blyg-transclusion blyg-partial\"",
+    );
+    expect(doc.content_html).toContain("<p>Stigmergy is what a protocol looks like from inside</p>\n</blockquote>");
+    expect(doc.content_html).toContain("<p>Commentary.</p>");
+  });
+
+  it("lazy continuation runs over several lines, and resumes after `>` lines", async () => {
+    const cookie = await login();
+    const target = await createAndPublish(cookie, TARGET);
+    const { res, doc } = await publishThread(
+      cookie,
+      `![[${target}]]\n> Stigmergy is what\na protocol looks\nlike from inside, and\n> the reason it looks\nlike nothing at all\n\nAfter.`,
+    );
+    expect(res.status).toBe(200);
+    expect(doc.transclusions[0].selector.exact).toBe(
+      "Stigmergy is what a protocol looks like from inside, and the reason it looks like nothing at all",
+    );
+    expect(doc.content_html).toContain("<p>After.</p>");
+  });
+
+  it("an unprefixed line after an empty `>` line is not continuation", async () => {
+    const cookie = await login();
+    const target = await createAndPublish(cookie, TARGET);
+    const { res, doc } = await publishThread(
+      cookie,
+      `![[${target}]]\n> Stigmergy is what a protocol looks like from inside,\n>\nMy own words, not the quote's.`,
+    );
+    expect(res.status).toBe(200);
+    expect(doc.transclusions[0].selector.exact).toBe("Stigmergy is what a protocol looks like from inside,");
+    expect(doc.content_html).toContain("<p>My own words, not the quote's.</p>");
+  });
+
+  it("an unprefixed heading or list item opens its own block, so is not continuation", async () => {
+    const cookie = await login();
+    const target = await createAndPublish(cookie, TARGET);
+    const heading = await publishThread(
+      cookie,
+      `![[${target}]]\n> Stigmergy is what a protocol looks like from inside,\n# My heading`,
+    );
+    expect(heading.res.status).toBe(200);
+    expect(heading.doc.transclusions[0].selector.exact).toBe("Stigmergy is what a protocol looks like from inside,");
+    expect(heading.doc.content_html).toContain("<h1>My heading</h1>");
+
+    const list = await publishThread(
+      cookie,
+      `![[${target}]]\n> Stigmergy is what a protocol looks like from inside,\n- my first point`,
+    );
+    expect(list.res.status).toBe(200);
+    expect(list.doc.transclusions[0].selector.exact).toBe("Stigmergy is what a protocol looks like from inside,");
+    expect(list.doc.content_html).toContain("<li>my first point</li>");
+  });
+
+  it("an unprefixed directive line is a directive, never lazy text", async () => {
+    const cookie = await login();
+    const target = await createAndPublish(cookie, TARGET);
+    const { res, doc } = await publishThread(
+      cookie,
+      `![[${target}]]\n> Stigmergy is what a protocol looks like from inside,\n![[${target}]]\n> A second paragraph that is not quoted.`,
+    );
+    expect(res.status).toBe(200);
+    expect(doc.transclusions.map((t: any) => t.selector.exact)).toEqual([
+      "Stigmergy is what a protocol looks like from inside,",
+      "A second paragraph that is not quoted.",
+    ]);
+  });
+
+  it("a lazy line that is not in the target fails the check, rather than becoming prose", async () => {
+    const cookie = await login();
+    const target = await createAndPublish(cookie, TARGET);
+    const { res } = await publishThread(
       cookie,
       `![[${target}]]\n> Stigmergy is what a protocol looks like from inside,\nCommentary on the same line-run.`,
     );
-    expect((await apiJson(cookie, "POST", `/blyg/api/items/${thread}/publish`, {})).status).toBe(200);
-    const doc = await (await getPublic(`/blyg/items/${thread}.json`)).json<any>();
-    expect(doc.content_html).toContain("blyg-partial");
-    expect(doc.content_html).toContain("Commentary on the same line-run.");
-    expect(doc.transclusions[0].selector.exact).toBe("Stigmergy is what a protocol looks like from inside,");
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.json)).toContain("quoted passage not found");
   });
 });
 
@@ -311,6 +397,14 @@ describe("the editor preview matches what publish will do", () => {
     const target = await createAndPublish(cookie, TARGET);
     const out = await preview(cookie, `![[${target}]]\n> nothing like this is in there`);
     expect(JSON.stringify(out)).toContain("quoted passage not found in the target's version 1");
+  });
+
+  it("takes the same extent as publish: a lazy line is in the bake, not left as prose", async () => {
+    const cookie = await login();
+    const target = await createAndPublish(cookie, TARGET);
+    const out = JSON.stringify(await preview(cookie, `![[${target}]]\n> Stigmergy is what a protocol\nlooks like from inside`));
+    expect(out).toContain("<p>Stigmergy is what a protocol looks like from inside</p>");
+    expect(out).not.toContain("<p>looks like from inside</p>");
   });
 });
 

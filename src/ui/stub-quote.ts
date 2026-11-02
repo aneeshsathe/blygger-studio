@@ -5,8 +5,8 @@
  * out, so the two directions are testable without a browser.
  *
  * The quote is found the way publish finds it — the first own-line
- * `![[id]]` outside code, and the run of `>` lines directly under it
- * (`attachedQuote`) — so the chooser can never edit a different quote from
+ * `![[id]]` outside code, and the blockquote directly under it, lazy
+ * continuation lines included (`attachedQuote`) — so the chooser can never edit a different quote from
  * the one publish will check.
  */
 import { DIRECTIVE_LINE } from '../grammar.ts';
