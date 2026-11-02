@@ -86,8 +86,17 @@ export function addStubQuote(md: string, id: string, passage: string | null, at:
   const lines = md.split('\n');
   const starts = lineOffsets(lines);
   let line = at <= 0 ? lines.length - 1 : lines.findIndex((_, i) => i === lines.length - 1 || starts[i + 1] > at);
-  // Step past a quote the caret sits in (its `>` lines or its directive).
-  while (line + 1 < lines.length && (/^\s*>/.test(lines[line + 1]) || DIRECTIVE_LINE.test(lines[line]) && /^\s*>/.test(lines[line + 1]))) line++;
+  // Step past a quote the caret sits in: a directive's attached quote by the
+  // extent publish uses (`attachedQuote`, lazy continuation included), so the
+  // new block never lands mid-quote; any other blockquote by its `>` run.
+  const inert = codeRanges(md);
+  for (let i = 0; i <= line; i++) {
+    if (inRanges(inert, starts[i]) || !DIRECTIVE_LINE.test(lines[i])) continue;
+    const { next } = attachedQuote(lines, i);
+    if (line < next) { line = next - 1; break; }
+    i = next - 1;
+  }
+  while (line + 1 < lines.length && /^\s*>/.test(lines[line + 1])) line++;
   const before = lines.slice(0, line + 1).join('\n').replace(/\n+$/, '');
   const after = lines.slice(line + 1).join('\n').replace(/^\n+/, '');
   return `${before}\n\n${block}\n\n${after}`.replace(/\n+$/, '\n\n');

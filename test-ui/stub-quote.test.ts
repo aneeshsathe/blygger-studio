@@ -64,6 +64,17 @@ test('a second passage is added as its own quote, not over the first (a running 
   expect(addStubQuote(md, ID, 'x', 0)).toBe(`${md}\n\n![[${ID}]]\n> x\n\n`);
 });
 
+test('a caret inside a quote with lazy continuation lines steps past the whole quote (#106 review)', async () => {
+  const { addStubQuote, passageCount } = await import('../src/ui/stub-quote.ts');
+  const md = `![[${ID}]]\n> Stigmergy is what a protocol\nlooks like from inside\n\nMine.`;
+  const expected = `![[${ID}]]\n> Stigmergy is what a protocol\nlooks like from inside\n\n![[${ID}]]\n> hello\n\nMine.`;
+  // From the marked line, the lazy line, and the directive itself.
+  expect(addStubQuote(md, ID, 'hello', md.indexOf('Stigmergy'))).toBe(expected);
+  expect(addStubQuote(md, ID, 'hello', md.indexOf('looks like'))).toBe(expected);
+  expect(addStubQuote(md, ID, 'hello', 3)).toBe(expected);
+  expect(passageCount(expected, ID)).toBe(2);
+});
+
 test('a selection in the nth quote rewrites that quote only, and a whole quote can be added to select from', async () => {
   const { addStubQuote, quoteCount } = await import('../src/ui/stub-quote.ts');
   const md = `![[${ID}]]\n> first passage\n\nMy point.\n\n![[${ID}]]\n\nMy end.`;
