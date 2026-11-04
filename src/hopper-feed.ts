@@ -1,6 +1,6 @@
 // Per-hopper RSS 2.0 feed, `{mount}/h/{slug}/feed.xml`: curation, not reposting.
 //
-// Spec 0.4 §16.12 (decision #86), a ruled shape awaiting its gate; served
+// Spec 0.4 §13.5 (decision #86, promoted from §16.12); served
 // only while the `hopper_feeds` setting is on. Shapes live in hopper-feed-shape.ts.
 //
 // Every entry, the owner's own items included, takes one shape: an excerpt,

@@ -1,5 +1,5 @@
-// The manifest's `hoppers` key (spec 0.4 §16.12 rule 1, decision #86; a ruled
-// shape awaiting its gate): public, slugged hoppers only, origin-relative paths, present only
+// The manifest's `hoppers` key (spec 0.4 §6.1, decision #86;
+// §16.12 rule 1): public, slugged hoppers only, origin-relative paths, present only
 // while hopper_feeds is on and there is at least one.
 
 import { env } from "cloudflare:test";

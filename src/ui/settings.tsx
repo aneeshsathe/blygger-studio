@@ -765,7 +765,7 @@ function SettingsForm({ initial }: { initial: Settings }) {
         )}
       </section>
       <section className="card" id="network-hopper-feeds">
-        <h3 className="card-h">collection feeds <span className="hint">· experimental, off by default</span></h3>
+        <h3 className="card-h">collection feeds <span className="hint">· off by default</span></h3>
         {toggle(
           'hopperFeeds',
           'Give each public collection its own RSS feed',
@@ -773,8 +773,7 @@ function SettingsForm({ initial }: { initial: Settings }) {
             Each public collection gets a feed at <code>h/&lt;slug&gt;/feed.xml</code>,
             linked from its page, and blyg.json lists your public collections.
             Entries are curation, not reposts: an excerpt, who wrote it, and a
-            link to where it lives. Off by default: the protocol has ruled the
-            shape (spec 0.4 §16.12), and it is still being exercised. Subscribing to
+            link to where it lives. Off by default (spec 0.4 §13.5). Subscribing to
             someone else's collection works either way.
           </>,
         )}

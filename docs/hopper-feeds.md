@@ -1,12 +1,12 @@
 # Hopper feeds
 
-> **A ruled shape awaiting its gate.** Decision #86 (2026-11-01) accepted
-> blygger-spec#18; the text is blygger-spec `protocol-v0.4.md` **§16.12**, with
-> the reasoning in `docs/v0.4-plan.md` §16.1. It is promoted into §2, §4, §6.1,
-> §12.1, §12.2 and §13.5 once the gate has run: one node emits a hopper feed; a
-> second subscribes by pasting the hopper page URL; an entry leaves when its
-> member is removed; a whole-blyg subscription to the same origin is unaffected.
-> Rule numbers below are §16.12's.
+> **Promoted.** Decision #86 (2026-11-01) accepted blygger-spec#18, with the
+> reasoning in `docs/v0.4-plan.md` §16.1. The gate ran in session 57 on 0.50.0
+> (venkateshrao emits, protocol-institute subscribes by page URL, a removed
+> member drops, the whole-blyg subscription is unaffected), and the eighth
+> revision of blygger-spec `protocol-v0.4.md` promoted §16.12 into §2, §4,
+> §6.1, §12.1 step 7, §12.2, §13.5 and §13.6. §16.12 stays as a pointer with
+> the gate record. Rule numbers below are §16.12's.
 
 The publish side sits behind one setting, **`hopper_feeds`**, off by default
 (Settings, Network, *collection feeds*). With it off, a node publishes exactly as

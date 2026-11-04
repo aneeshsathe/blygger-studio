@@ -209,7 +209,7 @@ export type Settings = {
      */
     linksBlyggerCom: boolean;
     /**
-     * Off by default: an RSS feed per public collection at {mount}/h/{slug}/feed.xml, linked from the collection page, and a hoppers list in blyg.json (spec 0.4 §16.12, decision #86, a ruled shape awaiting its gate). Publish side only: subscribing to another blyg's hopper works with this off.
+     * Off by default: an RSS feed per public collection at {mount}/h/{slug}/feed.xml, linked from the collection page, and a hoppers list in blyg.json (spec 0.4 §13.5, decision #86). Publish side only: subscribing to another blyg's hopper works with this off.
      */
     hopperFeeds: boolean;
     /**
@@ -2370,7 +2370,7 @@ export type UpdateSettingsData = {
          */
         linksBlyggerCom?: boolean;
         /**
-         * Off by default: an RSS feed per public collection at {mount}/h/{slug}/feed.xml, linked from the collection page, and a hoppers list in blyg.json (spec 0.4 §16.12, decision #86, a ruled shape awaiting its gate). Publish side only: subscribing to another blyg's hopper works with this off.
+         * Off by default: an RSS feed per public collection at {mount}/h/{slug}/feed.xml, linked from the collection page, and a hoppers list in blyg.json (spec 0.4 §13.5, decision #86). Publish side only: subscribing to another blyg's hopper works with this off.
          */
         hopperFeeds?: boolean;
         /**

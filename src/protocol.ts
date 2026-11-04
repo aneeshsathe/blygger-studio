@@ -161,7 +161,7 @@ export async function buildManifest(db: D1Database, settings: Settings, origin: 
   const avatarRow = settings.avatar_media_id ? await getMedia(db, settings.avatar_media_id) : null;
   const avatar = avatarRow?.r2_key;
   const hasBlogroll = (await listBlogrollSubscriptions(db)).length > 0;
-  // `hoppers` (spec 0.4 §16.12 rule 1, decision #86; awaiting its gate): the
+  // `hoppers` (spec 0.4 §6.1, decision #86; §16.12 rule 1): the
   // public, slugged hoppers, only while the hopper_feeds setting is on and
   // only when there is one, so every other manifest stays byte-identical.
   const hoppers = settings.hopper_feeds

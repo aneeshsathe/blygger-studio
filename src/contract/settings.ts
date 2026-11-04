@@ -40,7 +40,7 @@ export const SettingsSchema = z.object({
   linksOpml: z.boolean().describe("Link the blogroll's OPML file in the links section, when the blogroll is not empty."),
   linksBlyggerOrg: z.boolean().describe("Link blygger.org in the links section."),
   linksBlyggerCom: z.boolean().describe("Link blygger.com, the directory of blygs, in the links section."),
-  hopperFeeds: z.boolean().describe("Off by default: an RSS feed per public collection at {mount}/h/{slug}/feed.xml, linked from the collection page, and a hoppers list in blyg.json (spec 0.4 §16.12, decision #86, a ruled shape awaiting its gate). Publish side only: subscribing to another blyg's hopper works with this off."),
+  hopperFeeds: z.boolean().describe("Off by default: an RSS feed per public collection at {mount}/h/{slug}/feed.xml, linked from the collection page, and a hoppers list in blyg.json (spec 0.4 §13.5, decision #86). Publish side only: subscribing to another blyg's hopper works with this off."),
   setup: z.enum(["pending", "notice", "done"]).describe("The setup wizard: pending on a fresh install, notice on a node that published before it existed, done once finished or dismissed."),
   defaults: z.record(z.string(), z.unknown()).optional().describe("Read-only: what each setting reads as with nothing stored, for \"reset to default\". siteTitle's default is the title derived from the address; store \"\" to keep it derived."),
   feedOrders: z.array(z.object({ id: z.string(), title: z.string(), description: z.string() })).optional().describe("Read-only: the home page orders this node can use now (core, plus enabled extensions')."),
