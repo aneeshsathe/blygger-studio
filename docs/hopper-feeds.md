@@ -8,10 +8,12 @@
 > member is removed; a whole-blyg subscription to the same origin is unaffected.
 > Rule numbers below are §16.12's.
 
-Everything here sits behind one setting, **`hopper_feeds`**, off by default
-(Settings, Network, *collection feeds*). With it off, a node behaves exactly as
+The publish side sits behind one setting, **`hopper_feeds`**, off by default
+(Settings, Network, *collection feeds*). With it off, a node publishes exactly as
 before: no hopper feed route, no new links on hopper pages, no `hoppers` key in
-`blyg.json`, and no hopper match when subscribing.
+`blyg.json`. The subscribe side is not gated (ROADMAP row 100, after Venkat on
+#84): a node can subscribe to another blyg's hopper without serving feeds of its
+own, and step 7 only ever matches a feed that blyg's manifest lists.
 
 Every URL shape, name and constant lives in `src/hopper-feed-shape.ts`.
 
@@ -109,13 +111,13 @@ at once, and a 404 is never cached.
 
 ### §12.1 step 7, hopper match (rule 4)
 
-`resolve(url, fetch, { hoppers })` in `src/importer/resolve.ts`. When steps 2–5
+`resolve(url, fetch)` in `src/importer/resolve.ts`. When steps 2–5
 resolve a manifest that has `hoppers`, the input URL (query and fragment
 stripped, before step 1's trailing slash) is compared with each entry's `feed`
 and `page`, resolved against the identity origin; a page matches with or without
 its slash. A match on an entry with a `feed` resolves to `{ origin, manifest,
 hopper_feed }`; a page-only entry, or no match, resolves as the whole blyg. No
-extra fetch. Skipped entirely while the setting is off.
+extra fetch. Always on, whatever this node's `hopper_feeds` says.
 
 The subscribe sheet then offers the hopper, with **subscribe to the whole blyg
 instead** (`wholeBlyg: true` on `POST {mount}/api/subscriptions`; rule 4's

@@ -109,13 +109,15 @@ describe("subscribing to a hopper by URL (§16.12 rules 4, 5)", () => {
     expect(list.json).toMatchObject({ origin: other, hopperFeedUrl: `${other}h/picks/feed.xml` });
   });
 
-  it("resolves a hopper URL to the whole blyg while hopper feeds are off", async () => {
+  it("subscribes to another blyg's hopper while this node's own hopper feeds are off (ROADMAP row 100)", async () => {
     await setHopperFeeds(false);
     const origin = `https://hs${n++}.example/blyg/`;
     network(origin, { current: "h/picks/feed.xml" });
-    const { status, json } = await subscribe({ url: `${origin}h/picks/` });
-    expect(status).toBe(200);
-    expect(json).toMatchObject({ needsConfirm: true, kind: "blyg", origin });
-    expect(json.hopper).toBeUndefined();
+    const proposal = await subscribe({ url: `${origin}h/picks/` });
+    expect(proposal.status).toBe(200);
+    expect(proposal.json).toMatchObject({ needsConfirm: true, kind: "hopper", origin, hopper: { feedUrl: `${origin}h/picks/feed.xml` } });
+    const made = await subscribe({ url: `${origin}h/picks/`, confirm: true });
+    expect(made.status).toBe(201);
+    expect(made.json).toMatchObject({ origin, hopperFeedUrl: `${origin}h/picks/feed.xml` });
   });
 });

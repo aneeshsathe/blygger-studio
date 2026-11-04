@@ -209,7 +209,7 @@ export type Settings = {
      */
     linksBlyggerCom: boolean;
     /**
-     * Off by default: an RSS feed per public collection at {mount}/h/{slug}/feed.xml, linked from the collection page, and a hoppers list in blyg.json (spec 0.4 §16.12, decision #86, a ruled shape awaiting its gate).
+     * Off by default: an RSS feed per public collection at {mount}/h/{slug}/feed.xml, linked from the collection page, and a hoppers list in blyg.json (spec 0.4 §16.12, decision #86, a ruled shape awaiting its gate). Publish side only: subscribing to another blyg's hopper works with this off.
      */
     hopperFeeds: boolean;
     /**
@@ -2370,7 +2370,7 @@ export type UpdateSettingsData = {
          */
         linksBlyggerCom?: boolean;
         /**
-         * Off by default: an RSS feed per public collection at {mount}/h/{slug}/feed.xml, linked from the collection page, and a hoppers list in blyg.json (spec 0.4 §16.12, decision #86, a ruled shape awaiting its gate).
+         * Off by default: an RSS feed per public collection at {mount}/h/{slug}/feed.xml, linked from the collection page, and a hoppers list in blyg.json (spec 0.4 §16.12, decision #86, a ruled shape awaiting its gate). Publish side only: subscribing to another blyg's hopper works with this off.
          */
         hopperFeeds?: boolean;
         /**
@@ -2619,7 +2619,7 @@ export type CreateSubscriptionResponses = {
             actual: string;
         };
         /**
-         * kind hopper: the public hopper the URL matched in the blyg's manifest (spec 0.4 §16.12 rule 4, §12.1 step 7), page and feedUrl resolved to absolute URLs. Only while the hopperFeeds setting is on.
+         * kind hopper: the public hopper the URL matched in the blyg's manifest (spec 0.4 §16.12 rule 4, §12.1 step 7), page and feedUrl resolved to absolute URLs.
          */
         hopper?: {
             title: string;

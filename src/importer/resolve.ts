@@ -193,13 +193,15 @@ export function matchHopper(inputUrl: string, origin: string, manifest: BlygMani
   return null;
 }
 
-export async function resolve(inputUrl: string, fetchFn: FetchLike = platformFetch, opts: { hoppers?: boolean } = {}): Promise<ResolveResult> {
+export async function resolve(inputUrl: string, fetchFn: FetchLike = platformFetch): Promise<ResolveResult> {
   const tried: string[] = [];
-  // Every manifest steps 2–5 resolve passes through here. With hopper feeds on
-  // (the `hopper_feeds` setting) step 7 runs on it; off, resolution is as before.
+  // Every manifest steps 2–5 resolve passes through here, and step 7 always
+  // runs on it (ROADMAP row 100): subscribing is a reader's act, and only a
+  // feed the manifest itself lists can match, so it needs no gate. The
+  // `hopper_feeds` setting governs publishing this node's own hopper feeds.
   const done = (found: Found): ResolveResult => {
     const result = finalizeBlyg(found);
-    if (!opts.hoppers || result.kind !== "blyg") return result;
+    if (result.kind !== "blyg") return result;
     const hopper = matchHopper(inputUrl, result.origin, result.manifest);
     return hopper ? { ...result, hopper } : result;
   };

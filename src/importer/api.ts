@@ -30,7 +30,7 @@ import {
   removeHopperItem,
   setSignal,
 } from "./store.ts";
-import { getItem, getSettings } from "../model.ts";
+import { getItem } from "../model.ts";
 
 
 function titleFromUrl(url: string): string {
@@ -53,10 +53,9 @@ const createSubscriptionOperation = async (context: OperationContext, input: Ope
   const body = (input.body as { url: string; confirm?: boolean; title?: string; backfill?: boolean; wholeBlyg?: boolean });
   if (!body.url.trim()) return failure('invalid-input', { error: "url required" });
 
-  // §12.1 step 7, hopper match (spec 0.4 §16.12 rule 4) runs only while the
-  // off-by-default hopper_feeds setting is on.
-  const settings = await getSettings(context.env.DB);
-  const result = await resolve(body.url.trim(), platformFetchFor(context.env), { hoppers: settings.hopper_feeds });
+  // §12.1 step 7, hopper match (spec 0.4 §16.12 rule 4), runs whatever this
+  // node's hopper_feeds setting says: that setting is the publish side only.
+  const result = await resolve(body.url.trim(), platformFetchFor(context.env));
   if (result.kind === "failure") {
     return failure('unprocessable', { error: "could not resolve this URL to a blyg or a feed", tried: result.tried });
   }

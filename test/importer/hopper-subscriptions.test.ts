@@ -55,7 +55,7 @@ describe("§12.1 step 7: hopper match", () => {
       [f.manifestUrl]: { body: manifestBody({ site: f.origin, title: "Fixture Blyg", hoppers: f.hoppers }) },
       [f.feed]: { body: hopperFeedXml([]) },
     });
-    const result = await resolve(f.feed, fetch, { hoppers: true });
+    const result = await resolve(f.feed, fetch);
     expect(result).toMatchObject({ kind: "blyg", origin: f.origin, manifestUrl: f.manifestUrl, hopper: { title: "Picks", page: f.page, feed: f.feed } });
   });
 
@@ -63,7 +63,7 @@ describe("§12.1 step 7: hopper match", () => {
     const f = blygFixture();
     const { fetch } = makeFixtureFetch({ [f.manifestUrl]: { body: manifestBody({ site: f.origin, hoppers: f.hoppers }) } });
     for (const input of [f.page, f.page.slice(0, -1), `${f.page}?utm=x#top`, `${f.page.slice(0, -1)}?a=1`]) {
-      const result = await resolve(input, fetch, { hoppers: true });
+      const result = await resolve(input, fetch);
       expect(result, input).toMatchObject({ kind: "blyg", origin: f.origin, hopper: { feed: f.feed } });
     }
   });
@@ -75,7 +75,7 @@ describe("§12.1 step 7: hopper match", () => {
       [`${origin}h/picks/`]: { body: `<!doctype html><html><head><link rel="blyg" href="${origin}blyg.json"></head><body></body></html>` },
       [`${origin}blyg.json`]: { body: manifestBody({ site: origin, hoppers: [{ title: "Picks", page: "h/picks/", feed: "h/picks/feed.xml" }] }) },
     });
-    const result = await resolve(`${origin}h/picks/`, fetch, { hoppers: true });
+    const result = await resolve(`${origin}h/picks/`, fetch);
     expect(result).toMatchObject({ kind: "blyg", origin, hopper: { feed: `${origin}h/picks/feed.xml` } });
   });
 
@@ -83,16 +83,16 @@ describe("§12.1 step 7: hopper match", () => {
     const f = blygFixture();
     const { fetch } = makeFixtureFetch({ [f.manifestUrl]: { body: manifestBody({ site: f.origin, hoppers: f.hoppers }) } });
     for (const input of [f.origin, `${f.origin}h/other/`, `${f.origin}h/page-only/`, `${f.origin}h/page-only`]) {
-      const result = await resolve(input, fetch, { hoppers: true });
+      const result = await resolve(input, fetch);
       expect(result, input).toMatchObject({ kind: "blyg", origin: f.origin });
       expect(result.kind === "blyg" && result.hopper, input).toBeFalsy();
     }
   });
 
-  it("is skipped when hopper feeds are off: the hopper URL resolves to the blyg, as before", async () => {
+  it("matches only what the manifest lists: a blyg without hoppers resolves as the blyg, as before", async () => {
     const f = blygFixture();
     const { fetch } = makeFixtureFetch({
-      [f.manifestUrl]: { body: manifestBody({ site: f.origin, hoppers: f.hoppers }) },
+      [f.manifestUrl]: { body: manifestBody({ site: f.origin }) },
       [f.feed]: { body: hopperFeedXml([]) },
     });
     for (const input of [f.feed, f.page]) {

@@ -774,7 +774,8 @@ function SettingsForm({ initial }: { initial: Settings }) {
             linked from its page, and blyg.json lists your public collections.
             Entries are curation, not reposts: an excerpt, who wrote it, and a
             link to where it lives. Off by default: the protocol has ruled the
-            shape (spec 0.4 §16.12), and it is still being exercised.
+            shape (spec 0.4 §16.12), and it is still being exercised. Subscribing to
+            someone else's collection works either way.
           </>,
         )}
       </section>
