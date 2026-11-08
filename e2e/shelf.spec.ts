@@ -14,7 +14,8 @@ test('items go on the shelf, reorder, and come off again', async ({ page }) => {
   await page.locator('[name="password"]').fill('test-password');
   await page.getByRole('button', { name: 'log in', exact: true }).click();
   await expect(page.locator('#composer-text')).toBeVisible();
-  expect((await api(page, 'PUT', '/api/shelf', { itemIds: [] })).status).toBe(200);
+  const { revision } = (await api(page, 'GET', '/api/shelf')).json as { revision: number };
+  expect((await api(page, 'PUT', '/api/shelf', { itemIds: [], expectedRevision: revision })).status).toBe(200);
   const tag = crypto.randomUUID().slice(0, 8);
   const a = (await api(page, 'POST', '/api/items', { contentMd: `Now page ${tag}` })).json.id as string;
   const b = (await api(page, 'POST', '/api/items', { contentMd: `Reading log ${tag}` })).json.id as string;

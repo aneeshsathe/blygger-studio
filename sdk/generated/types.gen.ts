@@ -277,7 +277,7 @@ export type Subscription = {
 
 export type Shelf = {
     /**
-     * The owner's own items, in the owner's order. Drafts may be shelved; withdrawn items are omitted, and a discarded draft leaves the shelf. Studio-private: never in an item document, feed, manifest or public page.
+     * The owner's own items, in the owner's order. Drafts may be shelved; withdrawn items are omitted, and a discarded draft leaves the shelf. Studio-private for good: never in an item document, feed, manifest or public page, and the shelf never gains a public mode.
      */
     itemIds: Array<string>;
     /**
@@ -3261,9 +3261,9 @@ export type PutShelfData = {
          */
         itemIds: Array<string>;
         /**
-         * Replace only if the shelf is still at this revision; otherwise 409 revision-conflict with the current { itemIds, revision } in details.current. Omitted: an unconditional replace.
+         * Required. Replace only if the shelf is still at this revision (read it with GET /shelf; a never-written shelf is at 0); otherwise 409 revision-conflict with the current { itemIds, revision } in details.current. There is no unconditional replace: several clients share the shelf, and one must not silently undo another's reorder.
          */
-        expectedRevision?: number;
+        expectedRevision: number;
     };
     path?: never;
     query?: never;

@@ -1328,7 +1328,7 @@ export const zGetShelfResponse = zShelf;
 
 export const zPutShelfBody = z.object({
     itemIds: z.array(z.string().min(1).max(128)).max(50),
-    expectedRevision: z.int().gte(0).optional()
+    expectedRevision: z.int().gte(0)
 }).strict();
 
 /**

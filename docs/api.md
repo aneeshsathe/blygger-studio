@@ -184,10 +184,12 @@ Publication, withdrawal, restoration, and generation remain explicit operations:
 The shelf is a short list of the owner's own items in the owner's order, such
 as living threads kept at the top of a writing list. Studio and other clients
 (Blygger Desktop) share it. It is studio-private: it never reaches an item
-document, a feed, the manifest, a public page or the static export.
+document, a feed, the manifest, a public page or the static export, and it
+never gains a public mode. A featured list on public pages, if one is ever
+wanted, would be a separate presentation setting, not a flag on the shelf.
 
 - `GET /shelf` (`owner:read`) returns `{ itemIds, revision }`, in order.
-- `PUT /shelf` (`owner:manage`) takes `{ itemIds, expectedRevision? }` and
+- `PUT /shelf` (`owner:manage`) takes `{ itemIds, expectedRevision }` and
   replaces the whole list. It returns the stored `{ itemIds, revision }`.
 
 Rules:
@@ -198,13 +200,15 @@ Rules:
   the response to see what was kept. A withdrawn item's place is kept until the
   next `PUT`, so republishing it before then puts it back where it was.
 - Discarding a draft takes it off the shelf.
-- At most 50 ids per `PUT`. A longer list, non-string ids, unknown fields or a
-  negative `expectedRevision` return 400 `invalid-input`.
+- At most 50 ids per `PUT`. A longer list, non-string ids, unknown fields, or a
+  missing or negative `expectedRevision` return 400 `invalid-input`.
 - Every successful `PUT` bumps `revision`, even when the list is unchanged.
-  Send `expectedRevision` to replace only if nobody else has since. A stale one
-  returns 409 `revision-conflict` with the current list in
-  `details.current: { itemIds, revision }`: merge and retry. Without
-  `expectedRevision` the replace is unconditional.
+  `expectedRevision` is required: read the shelf first (a never-written shelf
+  is at revision 0), and the replace applies only if nobody else has written
+  since. A stale one returns 409 `revision-conflict` with the current list in
+  `details.current: { itemIds, revision }`: merge and retry. There is no
+  unconditional replace, because one client's `PUT` would silently undo
+  another's reorder.
 - The `shelf` change domain in `GET /changes` moves on every `PUT`, when a
   shelved item is withdrawn or republished, and when a shelved draft is
   discarded.

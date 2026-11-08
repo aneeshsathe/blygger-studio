@@ -12,8 +12,11 @@
  * - PUT replaces the whole list. Ids that name no own item, or a withdrawn one,
  *   are dropped quietly, and a repeated id keeps its first position; the
  *   response is the stored list, so a client sees what was kept.
- * - The list has a revision. A PUT with expectedRevision applies only when it
- *   matches; every successful PUT bumps it.
+ * - The list has a revision. A PUT must send expectedRevision and applies only
+ *   when it matches; every successful PUT bumps it. There is no unconditional
+ *   replace: the shelf exists for several clients, where one would undo another.
+ * - Private for good: the shelf never gains a public mode. A featured list on
+ *   public pages would be its own presentation setting, not a flag here.
  */
 
 export const SHELF_MAX = 50;
@@ -38,11 +41,10 @@ export async function readShelf(db: D1Database): Promise<Shelf> {
 }
 
 /** Replace the list in one transaction. Null when expectedRevision is stale. */
-export async function replaceShelf(db: D1Database, itemIds: readonly string[], expectedRevision?: number): Promise<Shelf | null> {
+export async function replaceShelf(db: D1Database, itemIds: readonly string[], expectedRevision: number): Promise<Shelf | null> {
   const ids = [...new Set(itemIds)];
-  const conditional = expectedRevision !== undefined;
-  const guard = conditional ? ` AND ${REVISION} = ?` : '';
-  const guardBinds = conditional ? [expectedRevision] : [];
+  const guard = ` AND ${REVISION} = ?`;
+  const guardBinds = [expectedRevision];
   const statements = [
     db.prepare(`DELETE FROM shelf WHERE 1${guard}`).bind(...guardBinds),
     ...ids.map((id, position) => db.prepare(`INSERT INTO shelf(item_id, position)

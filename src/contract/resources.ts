@@ -101,7 +101,7 @@ export const ContactSchema = z.object({
 }).openapi("Contact");
 
 export const ShelfSchema = z.object({
-  itemIds: z.array(z.string()).describe("The owner's own items, in the owner's order. Drafts may be shelved; withdrawn items are omitted, and a discarded draft leaves the shelf. Studio-private: never in an item document, feed, manifest or public page."),
+  itemIds: z.array(z.string()).describe("The owner's own items, in the owner's order. Drafts may be shelved; withdrawn items are omitted, and a discarded draft leaves the shelf. Studio-private for good: never in an item document, feed, manifest or public page, and the shelf never gains a public mode."),
   revision: z.number().int().nonnegative().describe("The shelf's revision. Send it back as expectedRevision for a conditional replace; every successful PUT bumps it."),
 }).openapi("Shelf");
 

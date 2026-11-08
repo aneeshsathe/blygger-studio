@@ -20,7 +20,10 @@ async function draft(contentMd = "a draft") {
   return created.json.id as string;
 }
 const get = () => apiJson(cookie, "GET", SHELF);
-const put = (body: unknown) => apiJson(cookie, "PUT", SHELF, body);
+const raw = (body: unknown) => apiJson(cookie, "PUT", SHELF, body);
+// Every client reads before it writes (expectedRevision is required); so do these tests.
+const put = async (body: { itemIds: unknown; expectedRevision?: number; [key: string]: unknown }) =>
+  raw("expectedRevision" in body ? body : { ...body, expectedRevision: (await get()).json.revision });
 const changes = async () => (await apiJson(cookie, "GET", "/blyg/api/changes")).json.domains as Record<string, number>;
 
 describe("GET/PUT /shelf", () => {
@@ -73,8 +76,8 @@ describe("GET/PUT /shelf", () => {
 
   it("rejects malformed input and lists over the cap", async () => {
     const a = await draft();
-    for (const body of [{}, { itemIds: "x" }, { itemIds: [1] }, { itemIds: [""] }, { itemIds: [a], extra: true }, { itemIds: [a], expectedRevision: -1 }]) {
-      const res = await put(body);
+    for (const body of [{}, { itemIds: "x" }, { itemIds: [1] }, { itemIds: [""] }, { itemIds: [a], extra: true }, { itemIds: [a], expectedRevision: -1 }, { itemIds: [a] }]) {
+      const res = await raw(body);
       expect(res.status, JSON.stringify(body)).toBe(400);
       expect(res.json.code).toBe("invalid-input");
     }
@@ -97,9 +100,9 @@ describe("GET/PUT /shelf", () => {
     expect(stale.json.details.current).toEqual({ itemIds: [a], revision: revision + 1 });
     expect((await get()).json.itemIds).toEqual([a]);
 
-    // Without expectedRevision the replace is unconditional, and still bumps.
-    const forced = await put({ itemIds: [b] });
-    expect(forced.json).toEqual({ itemIds: [b], revision: revision + 2 });
+    // There is no unconditional replace (#137): omitting the revision is a 400.
+    expect((await raw({ itemIds: [b] })).status).toBe(400);
+    expect((await get()).json).toEqual({ itemIds: [a], revision: revision + 1 });
   });
 
   it("moves the shelf domain, and only the shelf domain, on PUT", async () => {

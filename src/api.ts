@@ -708,7 +708,7 @@ const deleteContactOperation = async (context: OperationContext, input: Operatio
 // The shelf (#135): see src/shelf.ts for the rules both operations share.
 const getShelfOperation = async (context: OperationContext) => success(await readShelf(context.env.DB));
 const putShelfOperation = async (context: OperationContext, input: OperationInput) => {
-  const body = input.body as { itemIds: string[]; expectedRevision?: number };
+  const body = input.body as { itemIds: string[]; expectedRevision: number };
   const stored = await replaceShelf(context.env.DB, body.itemIds, body.expectedRevision);
   if (stored) return success(stored);
   // The current list rides in the error so a client can merge and retry.
