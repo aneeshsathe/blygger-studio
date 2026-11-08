@@ -1,3 +1,4 @@
+import { authoredVersionKind } from '../version-state.ts';
 // Inbound Webmention + structural verification — v0.3-plan §2.3.5,
 // decision #28. The endpoint accepts a *claim*; verification decides whether
 // the claim is true, by reading the source's own item document rather than
@@ -47,31 +48,72 @@ function absoluteWebUrl(raw: string | undefined): URL | null {
 }
 
 /**
- * Which of our items a target URL names — by the `page` shape we publish
- * (`f/{id}/`, `t/{id}/`) or by the item document itself (`items/{id}.json`).
- * Returns null when the URL is ours but names nothing published; the caller
- * answers 400, not 404: the endpoint exists, the claim is bad.
+ * Which of our items a target URL names (§15.3 step 1) — an address this
+ * studio itself serves for the item: its `page` (`f/{id}/`, `t/{id}/`), its
+ * item document (`items/{id}.json`), or a pinned version's document
+ * (`items/{id}/v{n}.json`) or page (`f/{id}/v{n}/`, `t/{id}/v{n}/`). Every
+ * shape resolves to the item id: a mention is recorded against the item,
+ * never a version. A version address counts only while that version is
+ * pinned — an unpinned version's URL is not one this receiver serves (§4).
+ * Returns null when the URL names nothing published; the caller answers 400,
+ * not 404: the endpoint exists, the claim is bad. Withdrawn items still
+ * resolve (people may respond to a withdrawal).
  */
 export async function targetItemId(db: D1Database, target: URL, ourOrigin: string): Promise<string | null> {
   const origin = new URL(ourOrigin);
   if (target.origin !== origin.origin) return null;
   const base = origin.pathname.replace(/\/$/, "");
   let path = target.pathname;
-  // §15.3 step 1 (revision of 2026-10-06, decision #61): the target lies
-  // within our full origin, path included. On a path-mounted blyg, a URL on
-  // the same host but outside the mount names something else.
+  // §15.3 step 1 (revision of 2026-10-20, decision #84, blygger-spec#17)
+  // makes the target test membership — does the URL resolve, by our own
+  // published data, to one of our items — and says location is not the test.
+  // This prefix check is our membership test only because this studio never
+  // relocates its surface (no `item` or `pin` template) and never emits an
+  // absolute `page`: every address it serves for an item lies under the
+  // mount, so a URL outside it (same host, another mount) names nothing of
+  // ours. A client that does either must resolve the target against its own
+  // `page`, `item` and `pin` values instead, or it will reject targets it
+  // itself names.
   if (base) {
     if (!path.startsWith(`${base}/`)) return null;
     path = path.slice(base.length);
   }
-  const m = /^\/(?:([ft])\/([^/]+)\/?|items\/([^/]+)\.json)$/.exec(path);
-  const id = m?.[2] ?? m?.[3];
-  if (!id) return null;
+  const m = /^\/(?:([ft])\/([^/]+)(?:\/(?:v(\d+)\/?)?)?|items\/([^/]+)\/v(\d+)\.json|items\/([^/]+)\.json)$/.exec(path);
+  if (!m) return null;
+  const id = m[2] ?? m[4] ?? m[6];
+  const version = m[3] ?? m[5];
+  // One read gives the item and its authored kind, the way the live page
+  // routes decide it (model.ts authoredKind): the row's own kind, or for a
+  // withdrawn item the kind of the version before its endcap.
   const row = await db
-    .prepare("SELECT id FROM items WHERE id = ? AND status IN ('public','withdrawn')")
+    .prepare(
+      `SELECT i.id, i.kind, v.kind AS previous_kind, v.transclusions FROM items i
+       LEFT JOIN versions v ON v.item_id = i.id AND v.version = i.version - 1
+       WHERE i.id = ? AND i.status IN ('public','withdrawn')`,
+    )
     .bind(id)
-    .first<{ id: string }>();
-  return row?.id ?? null;
+    .first<{ id: string; kind: string; previous_kind: 'fragment' | 'thread' | 'withdrawn' | null; transclusions: string | null }>();
+  if (!row) return null;
+  const seg = m[1];
+  if (version === undefined) {
+    // A live page is served only under its authored kind (index.ts /f/:id,
+    // /t/:id): a fragment at t/{id}/ is a 404, so not ours to name. The item
+    // document is served for both kinds and stays kind-agnostic.
+    if (seg) {
+      const isThread = row.kind === "thread" || (row.kind !== "fragment" && authoredVersionKind({ kind: row.previous_kind, transclusions: row.transclusions }) === "thread");
+      if ((seg === "t") !== isThread) return null;
+    }
+    return row.id;
+  }
+  const pin = await db
+    .prepare("SELECT kind, transclusions FROM versions WHERE item_id = ? AND version = ? AND pinned = 1")
+    .bind(row.id, Number(version))
+    .first<{ kind: "fragment" | "thread" | "withdrawn" | null; transclusions: string | null }>();
+  if (!pin) return null;
+  // A pinned page is served only under its authored kind (index.ts
+  // pinnedPage): a thread's pin at f/{id}/v{n}/ is a 404, so not ours to name.
+  if (seg && (seg === "t") !== (authoredVersionKind(pin) === "thread")) return null;
+  return row.id;
 }
 
 /**

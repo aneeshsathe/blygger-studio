@@ -8,13 +8,21 @@ export type CachedResponse<T> = {
   generation: Generation;
 };
 
+/** A response that joins several domains is labelled with their sum. Counters
+ * only increase within an epoch, so the sum moves exactly when one of them does
+ * (a mention's source card reads the mention and the Reading tables). */
+export function domainRevision(changes: ChangeState, domain: ChangeDomain | readonly ChangeDomain[]): number {
+  if (typeof domain === 'string') return changes.domains[domain];
+  return domain.reduce((sum, d) => sum + changes.domains[d], 0);
+}
+
 /** Cache the response and its pre-fetch revision together in TanStack Query.
  * Query Collection owns materialization, cancellation and optimistic overlays.
  * Each invocation checks revisions afresh, including mutation refetches.
  */
 export async function readIfChanged<T>(
   context: QueryFunctionContext,
-  domain: ChangeDomain,
+  domain: ChangeDomain | readonly ChangeDomain[],
   readChanges: QueryFunction<ChangeState>,
   load: (context: QueryFunctionContext, generation: Generation) => T | Promise<T>,
 ): Promise<CachedResponse<T>> {
@@ -22,7 +30,7 @@ export async function readIfChanged<T>(
   signal.throwIfAborted();
   const changes = await readChanges(context);
   signal.throwIfAborted();
-  const generation = { epoch: changes.epoch, revision: changes.domains[domain] };
+  const generation = { epoch: changes.epoch, revision: domainRevision(changes, domain) };
   const cached = context.client.getQueryData<CachedResponse<T>>(context.queryKey);
   if (cached?.generation.epoch === generation.epoch &&
       cached.generation.revision === generation.revision) {

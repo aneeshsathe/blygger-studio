@@ -2,6 +2,7 @@ import { excerptFromHtml, plainTextFromHtml, renderMarkdown } from "./markdown.t
 import { clampText } from "./preview.ts";
 import { annotateGenerated, applyGeneratedWrappers, parseScopes, previewStrip, type TkScope } from "./tk.ts";
 import { resolveTarget } from "./transclusion.ts";
+import { previewComments } from "./comments.ts";
 
 /** One `![[id]]` in a scope's instruction, as generate would resolve it: named for the editor, or why it would fail. */
 export interface ScopeSourceSummary {
@@ -24,7 +25,7 @@ export async function scopeSummariesWithSources(db: D1Database, scopes: TkScope[
   const titles = new Map<string, string>();
   const title = async (origin: string) => {
     if (!titles.has(origin)) {
-      const row = await db.prepare("SELECT title FROM subscriptions WHERE origin = ? LIMIT 1").bind(origin).first<{ title: string }>();
+      const row = await db.prepare("SELECT title FROM subscriptions WHERE origin = ? AND hopper_feed IS NULL LIMIT 1").bind(origin).first<{ title: string }>();
       titles.set(origin, row?.title || new URL(origin).host);
     }
     return titles.get(origin)!;
@@ -71,9 +72,22 @@ export function scopeSummaries(scopes: TkScope[]): { index: number; instruction:
  * and lets the caller render the remaining markdown (plain, or via
  * previewTransclusions for threads).
  */
-export function annotateTkPreview(contentMd: string): { scopes: TkScope[]; text: string; blocks: Map<string, string>; finish: (renderedHtml: string) => string } {
-  const { scopes } = parseScopes(contentMd);
-  const { text, spans } = previewStrip(contentMd, scopes);
+export function annotateTkPreview(contentMd: string): {
+  scopes: TkScope[];
+  text: string;
+  blockReplacements: Map<string, string>;
+  blockSources: Map<string, string>;
+  finish: (renderedHtml: string) => string;
+} {
+  const visible = previewComments(contentMd);
+  const { scopes } = parseScopes(visible);
+  const { text, spans } = previewStrip(visible, scopes);
   const annotated = annotateGenerated(text, spans, spans.map(() => true));
-  return { scopes, text: annotated.text, blocks: annotated.blockReplacements, finish: (renderedHtml) => applyGeneratedWrappers(renderedHtml, annotated) };
+  return {
+    scopes,
+    text: annotated.text,
+    blockReplacements: annotated.blockReplacements,
+    blockSources: annotated.blockSources,
+    finish: (renderedHtml) => applyGeneratedWrappers(renderedHtml, annotated),
+  };
 }

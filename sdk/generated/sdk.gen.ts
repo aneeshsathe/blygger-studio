@@ -2,7 +2,7 @@
 
 import { client } from './client.gen.js';
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type TDataShape } from './client/index.js';
-import type { AddHopperItemData, AddHopperItemErrors, AddHopperItemResponses, CreateAuthorizationData, CreateAuthorizationErrors, CreateAuthorizationResponses, CreateHopperData, CreateHopperErrors, CreateHopperResponses, CreateItemData, CreateItemErrors, CreateItemResponses, CreateSubscriptionData, CreateSubscriptionErrors, CreateSubscriptionResponses, DeleteHopperData, DeleteHopperErrors, DeleteHopperResponses, DeleteItemData, DeleteItemErrors, DeleteItemResponses, DeleteMediaData, DeleteMediaErrors, DeleteMediaResponses, DeleteSignalData, DeleteSignalErrors, DeleteSignalResponses, DeleteSubscriptionData, DeleteSubscriptionErrors, DeleteSubscriptionResponses, DraftNoteData, DraftNoteErrors, DraftNoteResponses, ExtLineageGlyphGetLineageData, ExtLineageGlyphGetLineageErrors, ExtLineageGlyphGetLineageResponses, ExtLineageGlyphListSummariesData, ExtLineageGlyphListSummariesErrors, ExtLineageGlyphListSummariesResponses, GenerateItemData, GenerateItemErrors, GenerateItemResponses, GetAiModelsData, GetAiModelsErrors, GetAiModelsResponses, GetChangesData, GetChangesErrors, GetChangesResponses, GetForkOptionsData, GetForkOptionsErrors, GetForkOptionsResponses, GetHopperData, GetHopperErrors, GetHopperResponses, GetImportedHistoryData, GetImportedHistoryErrors, GetImportedHistoryResponses, GetImportedItemData, GetImportedItemErrors, GetImportedItemResponses, GetImportedVersionData, GetImportedVersionErrors, GetImportedVersionResponses, GetItemData, GetItemErrors, GetItemFreshnessData, GetItemFreshnessErrors, GetItemFreshnessResponses, GetItemResponses, GetMentionSourceData, GetMentionSourceErrors, GetMentionSourceResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetSubscriptionData, GetSubscriptionErrors, GetSubscriptionResponses, GetUpdateStateData, GetUpdateStateErrors, GetUpdateStateResponses, GetVersionData, GetVersionErrors, GetVersionResponses, ListAuthorizationsData, ListAuthorizationsErrors, ListAuthorizationsResponses, ListHoppersData, ListHoppersErrors, ListHoppersResponses, ListImportedReadingData, ListImportedReadingErrors, ListImportedReadingResponses, ListInteractionsData, ListInteractionsErrors, ListInteractionsResponses, ListItemsData, ListItemsErrors, ListItemsResponses, ListMentionsData, ListMentionsErrors, ListMentionsResponses, ListReadingData, ListReadingErrors, ListReadingResponses, ListSignalsData, ListSignalsErrors, ListSignalsResponses, ListStaleThreadsData, ListStaleThreadsErrors, ListStaleThreadsResponses, ListSubscriptionsData, ListSubscriptionsErrors, ListSubscriptionsResponses, ListThumbsData, ListThumbsErrors, ListThumbsResponses, MarkReadBatchData, MarkReadBatchErrors, MarkReadBatchResponses, MarkReadData, MarkReadErrors, MarkReadResponses, MarkUnreadBatchData, MarkUnreadBatchErrors, MarkUnreadBatchResponses, MarkUnreadData, MarkUnreadErrors, MarkUnreadResponses, PinItemData, PinItemErrors, PinItemResponses, PollAllSubscriptionsData, PollAllSubscriptionsErrors, PollAllSubscriptionsResponses, PreviewData, PreviewErrors, PreviewResponses, PublishItemData, PublishItemErrors, PublishItemResponses, RefreshItemData, RefreshItemErrors, RefreshItemResponses, RemoveHopperItemData, RemoveHopperItemErrors, RemoveHopperItemResponses, RestoreItemData, RestoreItemErrors, RestoreItemResponses, ResyncSubscriptionData, ResyncSubscriptionErrors, ResyncSubscriptionResponses, RevokeAllAuthorizationsData, RevokeAllAuthorizationsErrors, RevokeAllAuthorizationsResponses, RevokeAuthorizationData, RevokeAuthorizationErrors, RevokeAuthorizationResponses, SearchData, SearchErrors, SearchResponses, SetSignalData, SetSignalErrors, SetSignalResponses, UpdateHopperData, UpdateHopperErrors, UpdateHopperResponses, UpdateItemData, UpdateItemErrors, UpdateItemResponses, UpdateMentionData, UpdateMentionErrors, UpdateMentionResponses, UpdateSettingsData, UpdateSettingsErrors, UpdateSettingsResponses, UpdateSubscriptionData, UpdateSubscriptionErrors, UpdateSubscriptionResponses, UploadMediaData, UploadMediaErrors, UploadMediaResponses, WithdrawItemData, WithdrawItemErrors, WithdrawItemResponses } from './types.gen.js';
+import type { AddHopperItemData, AddHopperItemErrors, AddHopperItemResponses, BatchReadData, BatchReadErrors, BatchReadResponses, ClassifyChangeData, ClassifyChangeErrors, ClassifyChangeResponses, ClassifyLinksData, ClassifyLinksErrors, ClassifyLinksResponses, ClearBrowseData, ClearBrowseErrors, ClearBrowseResponses, CreateAuthorizationData, CreateAuthorizationErrors, CreateAuthorizationResponses, CreateContactData, CreateContactErrors, CreateContactResponses, CreateHopperData, CreateHopperErrors, CreateHopperResponses, CreateItemData, CreateItemErrors, CreateItemResponses, CreateSubscriptionData, CreateSubscriptionErrors, CreateSubscriptionResponses, DeleteContactData, DeleteContactErrors, DeleteContactResponses, DeleteHopperData, DeleteHopperErrors, DeleteHopperResponses, DeleteItemData, DeleteItemErrors, DeleteItemResponses, DeleteMediaData, DeleteMediaErrors, DeleteMediaResponses, DeleteSignalData, DeleteSignalErrors, DeleteSignalResponses, DeleteSubscriptionData, DeleteSubscriptionErrors, DeleteSubscriptionResponses, DraftNoteData, DraftNoteErrors, DraftNoteResponses, ExtLineageGlyphGetLineageData, ExtLineageGlyphGetLineageErrors, ExtLineageGlyphGetLineageResponses, ExtLineageGlyphListSummariesData, ExtLineageGlyphListSummariesErrors, ExtLineageGlyphListSummariesResponses, ExtWordCountListCountsData, ExtWordCountListCountsErrors, ExtWordCountListCountsResponses, GenerateItemData, GenerateItemErrors, GenerateItemResponses, GetAiModelsData, GetAiModelsErrors, GetAiModelsResponses, GetCapabilitiesData, GetCapabilitiesErrors, GetCapabilitiesResponses, GetChangesData, GetChangesErrors, GetChangesResponses, GetForkOptionsData, GetForkOptionsErrors, GetForkOptionsResponses, GetHopperData, GetHopperErrors, GetHopperResponses, GetImportedHistoryData, GetImportedHistoryErrors, GetImportedHistoryResponses, GetImportedItemData, GetImportedItemErrors, GetImportedItemResponses, GetImportedVersionData, GetImportedVersionErrors, GetImportedVersionResponses, GetItemData, GetItemErrors, GetItemFreshnessData, GetItemFreshnessErrors, GetItemFreshnessResponses, GetItemResponses, GetItemSummaryData, GetItemSummaryErrors, GetItemSummaryResponses, GetMentionSourceData, GetMentionSourceErrors, GetMentionSourceResponses, GetMentionSummaryData, GetMentionSummaryErrors, GetMentionSummaryResponses, GetReadingSummaryData, GetReadingSummaryErrors, GetReadingSummaryResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetSignalSummaryData, GetSignalSummaryErrors, GetSignalSummaryResponses, GetSubscriptionData, GetSubscriptionErrors, GetSubscriptionResponses, GetUpdateStateData, GetUpdateStateErrors, GetUpdateStateResponses, GetVersionData, GetVersionErrors, GetVersionResponses, ListAuthorizationsData, ListAuthorizationsErrors, ListAuthorizationsResponses, ListBrowseData, ListBrowseErrors, ListBrowseResponses, ListContactsData, ListContactsErrors, ListContactsResponses, ListHopperMembershipsData, ListHopperMembershipsErrors, ListHopperMembershipsResponses, ListHoppersData, ListHoppersErrors, ListHoppersResponses, ListImportedReadingData, ListImportedReadingErrors, ListImportedReadingResponses, ListInteractionsData, ListInteractionsErrors, ListInteractionsResponses, ListItemsData, ListItemsErrors, ListItemsResponses, ListItemVersionsData, ListItemVersionsErrors, ListItemVersionsResponses, ListMentionGroupsData, ListMentionGroupsErrors, ListMentionGroupsResponses, ListMentionsData, ListMentionsErrors, ListMentionsResponses, ListReadingData, ListReadingErrors, ListReadingResponses, ListSignalsData, ListSignalsErrors, ListSignalsResponses, ListStaleThreadsData, ListStaleThreadsErrors, ListStaleThreadsResponses, ListSubscriptionsData, ListSubscriptionsErrors, ListSubscriptionsResponses, ListThumbsData, ListThumbsErrors, ListThumbsResponses, LogBrowseData, LogBrowseErrors, LogBrowseResponses, MarkReadBatchData, MarkReadBatchErrors, MarkReadBatchResponses, MarkReadData, MarkReadErrors, MarkReadResponses, MarkUnreadBatchData, MarkUnreadBatchErrors, MarkUnreadBatchResponses, MarkUnreadData, MarkUnreadErrors, MarkUnreadResponses, PeekItemData, PeekItemErrors, PeekItemResponses, PinItemData, PinItemErrors, PinItemResponses, PollAllSubscriptionsData, PollAllSubscriptionsErrors, PollAllSubscriptionsResponses, PreviewData, PreviewErrors, PreviewResponses, PublishItemData, PublishItemErrors, PublishItemResponses, RefreshItemData, RefreshItemErrors, RefreshItemResponses, RemoveHopperItemData, RemoveHopperItemErrors, RemoveHopperItemResponses, ResolveContactData, ResolveContactErrors, ResolveContactResponses, RestoreItemData, RestoreItemErrors, RestoreItemResponses, ResyncSubscriptionData, ResyncSubscriptionErrors, ResyncSubscriptionResponses, RevokeAllAuthorizationsData, RevokeAllAuthorizationsErrors, RevokeAllAuthorizationsResponses, RevokeAuthorizationData, RevokeAuthorizationErrors, RevokeAuthorizationResponses, SearchData, SearchErrors, SearchResponses, SetSignalData, SetSignalErrors, SetSignalResponses, UpdateContactData, UpdateContactErrors, UpdateContactResponses, UpdateHopperData, UpdateHopperErrors, UpdateHopperResponses, UpdateItemData, UpdateItemErrors, UpdateItemResponses, UpdateMentionData, UpdateMentionErrors, UpdateMentionResponses, UpdateSettingsData, UpdateSettingsErrors, UpdateSettingsResponses, UpdateSubscriptionData, UpdateSubscriptionErrors, UpdateSubscriptionResponses, UploadMediaData, UploadMediaErrors, UploadMediaResponses, WithdrawItemData, WithdrawItemErrors, WithdrawItemResponses } from './types.gen.js';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -24,7 +24,7 @@ export const revokeAllAuthorizations = <ThrowOnError extends boolean = false>(op
             name: 'blyg_session',
             type: 'apiKey'
         }],
-    url: '/api/authorizations',
+    url: '/authorizations',
     ...options
 });
 
@@ -34,7 +34,7 @@ export const listAuthorizations = <ThrowOnError extends boolean = false>(options
             name: 'blyg_session',
             type: 'apiKey'
         }],
-    url: '/api/authorizations',
+    url: '/authorizations',
     ...options
 });
 
@@ -44,7 +44,7 @@ export const createAuthorization = <ThrowOnError extends boolean = false>(option
             name: 'blyg_session',
             type: 'apiKey'
         }],
-    url: '/api/authorizations',
+    url: '/authorizations',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -58,7 +58,31 @@ export const revokeAuthorization = <ThrowOnError extends boolean = false>(option
             name: 'blyg_session',
             type: 'apiKey'
         }],
-    url: '/api/authorizations/{id}',
+    url: '/authorizations/{id}',
+    ...options
+});
+
+export const batchRead = <ThrowOnError extends boolean = false>(options: Options<BatchReadData, ThrowOnError>): RequestResult<BatchReadResponses, BatchReadErrors, ThrowOnError> => (options.client ?? client).post<BatchReadResponses, BatchReadErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/read-batch',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+export const getCapabilities = <ThrowOnError extends boolean = false>(options?: Options<GetCapabilitiesData, ThrowOnError>): RequestResult<GetCapabilitiesResponses, GetCapabilitiesErrors, ThrowOnError> => (options?.client ?? client).get<GetCapabilitiesResponses, GetCapabilitiesErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/capabilities',
     ...options
 });
 
@@ -68,7 +92,7 @@ export const getChanges = <ThrowOnError extends boolean = false>(options?: Optio
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/changes',
+    url: '/changes',
     ...options
 });
 
@@ -78,7 +102,7 @@ export const listItems = <ThrowOnError extends boolean = false>(options?: Option
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/items',
+    url: '/items',
     ...options
 });
 
@@ -88,7 +112,7 @@ export const createItem = <ThrowOnError extends boolean = false>(options?: Optio
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/items',
+    url: '/items',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -102,8 +126,12 @@ export const deleteItem = <ThrowOnError extends boolean = false>(options: Option
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/items/{id}',
-    ...options
+    url: '/items/{id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 export const getItem = <ThrowOnError extends boolean = false>(options: Options<GetItemData, ThrowOnError>): RequestResult<GetItemResponses, GetItemErrors, ThrowOnError> => (options.client ?? client).get<GetItemResponses, GetItemErrors, ThrowOnError>({
@@ -112,17 +140,20 @@ export const getItem = <ThrowOnError extends boolean = false>(options: Options<G
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/items/{id}',
+    url: '/items/{id}',
     ...options
 });
 
+/**
+ * Changing responses or highlight also requires owner:publish because it changes public presentation immediately.
+ */
 export const updateItem = <ThrowOnError extends boolean = false>(options: Options<UpdateItemData, ThrowOnError>): RequestResult<UpdateItemResponses, UpdateItemErrors, ThrowOnError> => (options.client ?? client).patch<UpdateItemResponses, UpdateItemErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/items/{id}',
+    url: '/items/{id}',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -136,7 +167,21 @@ export const publishItem = <ThrowOnError extends boolean = false>(options: Optio
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/items/{id}/publish',
+    url: '/items/{id}/publish',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+export const classifyChange = <ThrowOnError extends boolean = false>(options: Options<ClassifyChangeData, ThrowOnError>): RequestResult<ClassifyChangeResponses, ClassifyChangeErrors, ThrowOnError> => (options.client ?? client).post<ClassifyChangeResponses, ClassifyChangeErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/items/{id}/classify',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -150,8 +195,12 @@ export const draftNote = <ThrowOnError extends boolean = false>(options: Options
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/items/{id}/note-draft',
-    ...options
+    url: '/items/{id}/note-draft',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 export const generateItem = <ThrowOnError extends boolean = false>(options: Options<GenerateItemData, ThrowOnError>): RequestResult<GenerateItemResponses, GenerateItemErrors, ThrowOnError> => (options.client ?? client).post<GenerateItemResponses, GenerateItemErrors, ThrowOnError>({
@@ -160,7 +209,7 @@ export const generateItem = <ThrowOnError extends boolean = false>(options: Opti
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/items/{id}/generate',
+    url: '/items/{id}/generate',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -174,7 +223,7 @@ export const withdrawItem = <ThrowOnError extends boolean = false>(options: Opti
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/items/{id}/withdraw',
+    url: '/items/{id}/withdraw',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -188,8 +237,12 @@ export const pinItem = <ThrowOnError extends boolean = false>(options: Options<P
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/items/{id}/versions/{version}/pin',
-    ...options
+    url: '/items/{id}/versions/{version}/pin',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 export const restoreItem = <ThrowOnError extends boolean = false>(options: Options<RestoreItemData, ThrowOnError>): RequestResult<RestoreItemResponses, RestoreItemErrors, ThrowOnError> => (options.client ?? client).post<RestoreItemResponses, RestoreItemErrors, ThrowOnError>({
@@ -198,7 +251,7 @@ export const restoreItem = <ThrowOnError extends boolean = false>(options: Optio
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/items/{id}/restore',
+    url: '/items/{id}/restore',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -206,6 +259,9 @@ export const restoreItem = <ThrowOnError extends boolean = false>(options: Optio
     }
 });
 
+/**
+ * Attaching new media to a published item also requires owner:publish. Returning an existing duplicate does not.
+ */
 export const uploadMedia = <ThrowOnError extends boolean = false>(options: Options<UploadMediaData, ThrowOnError>): RequestResult<UploadMediaResponses, UploadMediaErrors, ThrowOnError> => (options.client ?? client).post<UploadMediaResponses, UploadMediaErrors, ThrowOnError>({
     ...formDataBodySerializer,
     security: [{
@@ -213,7 +269,7 @@ export const uploadMedia = <ThrowOnError extends boolean = false>(options: Optio
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/media',
+    url: '/media',
     ...options,
     headers: {
         'Content-Type': null,
@@ -227,8 +283,12 @@ export const deleteMedia = <ThrowOnError extends boolean = false>(options: Optio
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/media/{id}',
-    ...options
+    url: '/media/{id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 export const getSettings = <ThrowOnError extends boolean = false>(options?: Options<GetSettingsData, ThrowOnError>): RequestResult<GetSettingsResponses, GetSettingsErrors, ThrowOnError> => (options?.client ?? client).get<GetSettingsResponses, GetSettingsErrors, ThrowOnError>({
@@ -237,17 +297,20 @@ export const getSettings = <ThrowOnError extends boolean = false>(options?: Opti
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/settings',
+    url: '/settings',
     ...options
 });
 
+/**
+ * Choosing avatarMediaId also requires owner:publish because the avatar publishes those bytes.
+ */
 export const updateSettings = <ThrowOnError extends boolean = false>(options: Options<UpdateSettingsData, ThrowOnError>): RequestResult<UpdateSettingsResponses, UpdateSettingsErrors, ThrowOnError> => (options.client ?? client).patch<UpdateSettingsResponses, UpdateSettingsErrors, ThrowOnError>({
     security: [{
             in: 'cookie',
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/settings',
+    url: '/settings',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -261,7 +324,7 @@ export const listSubscriptions = <ThrowOnError extends boolean = false>(options?
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/subscriptions',
+    url: '/subscriptions',
     ...options
 });
 
@@ -271,7 +334,7 @@ export const createSubscription = <ThrowOnError extends boolean = false>(options
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/subscriptions',
+    url: '/subscriptions',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -285,7 +348,7 @@ export const deleteSubscription = <ThrowOnError extends boolean = false>(options
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/subscriptions/{id}',
+    url: '/subscriptions/{id}',
     ...options
 });
 
@@ -295,7 +358,7 @@ export const getSubscription = <ThrowOnError extends boolean = false>(options: O
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/subscriptions/{id}',
+    url: '/subscriptions/{id}',
     ...options
 });
 
@@ -305,7 +368,7 @@ export const updateSubscription = <ThrowOnError extends boolean = false>(options
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/subscriptions/{id}',
+    url: '/subscriptions/{id}',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -319,7 +382,7 @@ export const pollAllSubscriptions = <ThrowOnError extends boolean = false>(optio
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/subscriptions/poll',
+    url: '/subscriptions/poll',
     ...options
 });
 
@@ -329,7 +392,65 @@ export const resyncSubscription = <ThrowOnError extends boolean = false>(options
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/subscriptions/{id}/resync',
+    url: '/subscriptions/{id}/resync',
+    ...options
+});
+
+export const listContacts = <ThrowOnError extends boolean = false>(options?: Options<ListContactsData, ThrowOnError>): RequestResult<ListContactsResponses, ListContactsErrors, ThrowOnError> => (options?.client ?? client).get<ListContactsResponses, ListContactsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/contacts',
+    ...options
+});
+
+export const createContact = <ThrowOnError extends boolean = false>(options: Options<CreateContactData, ThrowOnError>): RequestResult<CreateContactResponses, CreateContactErrors, ThrowOnError> => (options.client ?? client).post<CreateContactResponses, CreateContactErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/contacts',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+export const deleteContact = <ThrowOnError extends boolean = false>(options: Options<DeleteContactData, ThrowOnError>): RequestResult<DeleteContactResponses, DeleteContactErrors, ThrowOnError> => (options.client ?? client).delete<DeleteContactResponses, DeleteContactErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/contacts/{id}',
+    ...options
+});
+
+export const updateContact = <ThrowOnError extends boolean = false>(options: Options<UpdateContactData, ThrowOnError>): RequestResult<UpdateContactResponses, UpdateContactErrors, ThrowOnError> => (options.client ?? client).patch<UpdateContactResponses, UpdateContactErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/contacts/{id}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+export const resolveContact = <ThrowOnError extends boolean = false>(options: Options<ResolveContactData, ThrowOnError>): RequestResult<ResolveContactResponses, ResolveContactErrors, ThrowOnError> => (options.client ?? client).post<ResolveContactResponses, ResolveContactErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/contacts/{id}/resolve',
     ...options
 });
 
@@ -339,7 +460,7 @@ export const listHoppers = <ThrowOnError extends boolean = false>(options?: Opti
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/hoppers',
+    url: '/hoppers',
     ...options
 });
 
@@ -349,7 +470,7 @@ export const createHopper = <ThrowOnError extends boolean = false>(options: Opti
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/hoppers',
+    url: '/hoppers',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -363,7 +484,7 @@ export const deleteHopper = <ThrowOnError extends boolean = false>(options: Opti
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/hoppers/{id}',
+    url: '/hoppers/{id}',
     ...options
 });
 
@@ -373,7 +494,7 @@ export const getHopper = <ThrowOnError extends boolean = false>(options: Options
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/hoppers/{id}',
+    url: '/hoppers/{id}',
     ...options
 });
 
@@ -383,7 +504,7 @@ export const updateHopper = <ThrowOnError extends boolean = false>(options: Opti
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/hoppers/{id}',
+    url: '/hoppers/{id}',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -397,7 +518,7 @@ export const removeHopperItem = <ThrowOnError extends boolean = false>(options: 
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/hoppers/{id}/items/{sub}/{remoteId}',
+    url: '/hoppers/{id}/items/{sub}/{remoteId}',
     ...options
 });
 
@@ -407,7 +528,7 @@ export const addHopperItem = <ThrowOnError extends boolean = false>(options: Opt
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/hoppers/{id}/items/{sub}/{remoteId}',
+    url: '/hoppers/{id}/items/{sub}/{remoteId}',
     ...options
 });
 
@@ -417,7 +538,7 @@ export const deleteSignal = <ThrowOnError extends boolean = false>(options: Opti
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/signals/{sub}/{remoteId}',
+    url: '/signals/{sub}/{remoteId}',
     ...options
 });
 
@@ -427,7 +548,7 @@ export const setSignal = <ThrowOnError extends boolean = false>(options: Options
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/signals/{sub}/{remoteId}',
+    url: '/signals/{sub}/{remoteId}',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -441,7 +562,7 @@ export const markUnread = <ThrowOnError extends boolean = false>(options: Option
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/reading/{sub}/{remoteId}/read',
+    url: '/reading/{sub}/{remoteId}/read',
     ...options
 });
 
@@ -451,7 +572,7 @@ export const markRead = <ThrowOnError extends boolean = false>(options: Options<
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/reading/{sub}/{remoteId}/read',
+    url: '/reading/{sub}/{remoteId}/read',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -465,7 +586,7 @@ export const markReadBatch = <ThrowOnError extends boolean = false>(options: Opt
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/reading/read',
+    url: '/reading/read',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -479,7 +600,7 @@ export const markUnreadBatch = <ThrowOnError extends boolean = false>(options: O
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/reading/unread',
+    url: '/reading/unread',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -493,12 +614,42 @@ export const updateMention = <ThrowOnError extends boolean = false>(options: Opt
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/mentions/{id}',
+    url: '/mentions/{id}',
     ...options,
     headers: {
         'Content-Type': 'application/json',
         ...options.headers
     }
+});
+
+export const getItemSummary = <ThrowOnError extends boolean = false>(options?: Options<GetItemSummaryData, ThrowOnError>): RequestResult<GetItemSummaryResponses, GetItemSummaryErrors, ThrowOnError> => (options?.client ?? client).get<GetItemSummaryResponses, GetItemSummaryErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/items/summary',
+    ...options
+});
+
+export const listItemVersions = <ThrowOnError extends boolean = false>(options: Options<ListItemVersionsData, ThrowOnError>): RequestResult<ListItemVersionsResponses, ListItemVersionsErrors, ThrowOnError> => (options.client ?? client).get<ListItemVersionsResponses, ListItemVersionsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/items/{id}/versions',
+    ...options
+});
+
+export const listHopperMemberships = <ThrowOnError extends boolean = false>(options: Options<ListHopperMembershipsData, ThrowOnError>): RequestResult<ListHopperMembershipsResponses, ListHopperMembershipsErrors, ThrowOnError> => (options.client ?? client).get<ListHopperMembershipsResponses, ListHopperMembershipsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/hoppers/{id}/memberships',
+    ...options
 });
 
 export const listSignals = <ThrowOnError extends boolean = false>(options?: Options<ListSignalsData, ThrowOnError>): RequestResult<ListSignalsResponses, ListSignalsErrors, ThrowOnError> => (options?.client ?? client).get<ListSignalsResponses, ListSignalsErrors, ThrowOnError>({
@@ -507,7 +658,7 @@ export const listSignals = <ThrowOnError extends boolean = false>(options?: Opti
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/signals',
+    url: '/signals',
     ...options
 });
 
@@ -517,7 +668,7 @@ export const listInteractions = <ThrowOnError extends boolean = false>(options?:
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/interactions',
+    url: '/interactions',
     ...options
 });
 
@@ -527,7 +678,17 @@ export const listThumbs = <ThrowOnError extends boolean = false>(options?: Optio
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/thumbs',
+    url: '/thumbs',
+    ...options
+});
+
+export const getSignalSummary = <ThrowOnError extends boolean = false>(options?: Options<GetSignalSummaryData, ThrowOnError>): RequestResult<GetSignalSummaryResponses, GetSignalSummaryErrors, ThrowOnError> => (options?.client ?? client).get<GetSignalSummaryResponses, GetSignalSummaryErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/signals/summary',
     ...options
 });
 
@@ -537,7 +698,7 @@ export const getAiModels = <ThrowOnError extends boolean = false>(options?: Opti
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/ai/models',
+    url: '/ai/models',
     ...options
 });
 
@@ -547,7 +708,27 @@ export const listMentions = <ThrowOnError extends boolean = false>(options?: Opt
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/mentions',
+    url: '/mentions',
+    ...options
+});
+
+export const listMentionGroups = <ThrowOnError extends boolean = false>(options?: Options<ListMentionGroupsData, ThrowOnError>): RequestResult<ListMentionGroupsResponses, ListMentionGroupsErrors, ThrowOnError> => (options?.client ?? client).get<ListMentionGroupsResponses, ListMentionGroupsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/mention-groups',
+    ...options
+});
+
+export const getMentionSummary = <ThrowOnError extends boolean = false>(options?: Options<GetMentionSummaryData, ThrowOnError>): RequestResult<GetMentionSummaryResponses, GetMentionSummaryErrors, ThrowOnError> => (options?.client ?? client).get<GetMentionSummaryResponses, GetMentionSummaryErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/mentions/summary',
     ...options
 });
 
@@ -557,7 +738,7 @@ export const preview = <ThrowOnError extends boolean = false>(options: Options<P
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/preview',
+    url: '/preview',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -571,7 +752,7 @@ export const search = <ThrowOnError extends boolean = false>(options?: Options<S
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/search',
+    url: '/search',
     ...options
 });
 
@@ -581,7 +762,17 @@ export const getVersion = <ThrowOnError extends boolean = false>(options: Option
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/items/{id}/versions/{v}',
+    url: '/items/{id}/versions/{v}',
+    ...options
+});
+
+export const getReadingSummary = <ThrowOnError extends boolean = false>(options?: Options<GetReadingSummaryData, ThrowOnError>): RequestResult<GetReadingSummaryResponses, GetReadingSummaryErrors, ThrowOnError> => (options?.client ?? client).get<GetReadingSummaryResponses, GetReadingSummaryErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/reading/summary',
     ...options
 });
 
@@ -591,7 +782,7 @@ export const listReading = <ThrowOnError extends boolean = false>(options?: Opti
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/reading',
+    url: '/reading',
     ...options
 });
 
@@ -601,7 +792,7 @@ export const listImportedReading = <ThrowOnError extends boolean = false>(option
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/reading/imported',
+    url: '/reading/imported',
     ...options
 });
 
@@ -611,7 +802,7 @@ export const getImportedItem = <ThrowOnError extends boolean = false>(options: O
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/imports/{sub}/{id}',
+    url: '/imports/{sub}/{id}',
     ...options
 });
 
@@ -621,7 +812,7 @@ export const getImportedHistory = <ThrowOnError extends boolean = false>(options
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/imports/{sub}/{id}/history',
+    url: '/imports/{sub}/{id}/history',
     ...options
 });
 
@@ -631,8 +822,66 @@ export const getImportedVersion = <ThrowOnError extends boolean = false>(options
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/imports/{sub}/{id}/versions/{v}',
+    url: '/imports/{sub}/{id}/versions/{v}',
     ...options
+});
+
+export const peekItem = <ThrowOnError extends boolean = false>(options: Options<PeekItemData, ThrowOnError>): RequestResult<PeekItemResponses, PeekItemErrors, ThrowOnError> => (options.client ?? client).get<PeekItemResponses, PeekItemErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/peek',
+    ...options
+});
+
+export const classifyLinks = <ThrowOnError extends boolean = false>(options: Options<ClassifyLinksData, ThrowOnError>): RequestResult<ClassifyLinksResponses, ClassifyLinksErrors, ThrowOnError> => (options.client ?? client).post<ClassifyLinksResponses, ClassifyLinksErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/peek/links',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+export const clearBrowse = <ThrowOnError extends boolean = false>(options?: Options<ClearBrowseData, ThrowOnError>): RequestResult<ClearBrowseResponses, ClearBrowseErrors, ThrowOnError> => (options?.client ?? client).delete<ClearBrowseResponses, ClearBrowseErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/browse',
+    ...options
+});
+
+export const listBrowse = <ThrowOnError extends boolean = false>(options?: Options<ListBrowseData, ThrowOnError>): RequestResult<ListBrowseResponses, ListBrowseErrors, ThrowOnError> => (options?.client ?? client).get<ListBrowseResponses, ListBrowseErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/browse',
+    ...options
+});
+
+export const logBrowse = <ThrowOnError extends boolean = false>(options: Options<LogBrowseData, ThrowOnError>): RequestResult<LogBrowseResponses, LogBrowseErrors, ThrowOnError> => (options.client ?? client).post<LogBrowseResponses, LogBrowseErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/browse',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 export const getUpdateState = <ThrowOnError extends boolean = false>(options?: Options<GetUpdateStateData, ThrowOnError>): RequestResult<GetUpdateStateResponses, GetUpdateStateErrors, ThrowOnError> => (options?.client ?? client).get<GetUpdateStateResponses, GetUpdateStateErrors, ThrowOnError>({
@@ -641,7 +890,7 @@ export const getUpdateState = <ThrowOnError extends boolean = false>(options?: O
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/update-state',
+    url: '/update-state',
     ...options
 });
 
@@ -651,7 +900,7 @@ export const getMentionSource = <ThrowOnError extends boolean = false>(options: 
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/mentions/{id}/source',
+    url: '/mentions/{id}/source',
     ...options
 });
 
@@ -661,7 +910,7 @@ export const listStaleThreads = <ThrowOnError extends boolean = false>(options?:
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/freshness',
+    url: '/freshness',
     ...options
 });
 
@@ -671,7 +920,7 @@ export const getItemFreshness = <ThrowOnError extends boolean = false>(options: 
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/items/{id}/freshness',
+    url: '/items/{id}/freshness',
     ...options
 });
 
@@ -681,7 +930,7 @@ export const refreshItem = <ThrowOnError extends boolean = false>(options: Optio
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/items/{id}/refresh',
+    url: '/items/{id}/refresh',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -695,7 +944,7 @@ export const getForkOptions = <ThrowOnError extends boolean = false>(options: Op
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/fork-options',
+    url: '/fork-options',
     ...options
 });
 
@@ -708,7 +957,7 @@ export const extLineageGlyphGetLineage = <ThrowOnError extends boolean = false>(
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/ext/lineage-glyph/lineage',
+    url: '/ext/lineage-glyph/lineage',
     ...options
 });
 
@@ -721,6 +970,19 @@ export const extLineageGlyphListSummaries = <ThrowOnError extends boolean = fals
             name: 'blyg_session',
             type: 'apiKey'
         }, { scheme: 'bearer', type: 'http' }],
-    url: '/api/ext/lineage-glyph/summaries',
+    url: '/ext/lineage-glyph/summaries',
+    ...options
+});
+
+/**
+ * Extension "word-count". Answers only on a node that compiles the extension in and has enabled it in Settings; otherwise 404.
+ */
+export const extWordCountListCounts = <ThrowOnError extends boolean = false>(options: Options<ExtWordCountListCountsData, ThrowOnError>): RequestResult<ExtWordCountListCountsResponses, ExtWordCountListCountsErrors, ThrowOnError> => (options.client ?? client).get<ExtWordCountListCountsResponses, ExtWordCountListCountsErrors, ThrowOnError>({
+    security: [{
+            in: 'cookie',
+            name: 'blyg_session',
+            type: 'apiKey'
+        }, { scheme: 'bearer', type: 'http' }],
+    url: '/ext/word-count/counts',
     ...options
 });

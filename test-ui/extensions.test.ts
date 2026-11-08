@@ -11,8 +11,8 @@ import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
 import { createElement, type ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { EntryBylineSlot, EntrySheetSlot, ExtensionBoundary, entryActionRows, enabledExtensions } from '../src/ui/extensions.tsx';
-import type { EntryContext, StudioExtension } from '../src/ui/extension-api.ts';
+import { DraftCounterSlot, EntryBylineSlot, EntrySheetSlot, ExtensionBoundary, entryActionRows, enabledExtensions, mainMenuPage } from '../src/ui/extensions.tsx';
+import type { DraftCounterContext, EntryContext, StudioExtension } from '../src/ui/extension-api.ts';
 import { extension as example } from '../extensions/example/ui/index.tsx';
 
 afterEach(() => vi.restoreAllMocks());
@@ -30,6 +30,15 @@ const context = (): EntryContext => ({
 });
 const html = (element: ReactElement) => renderToStaticMarkup(element);
 const byline = (extensions: readonly StudioExtension[]) => html(createElement(EntryBylineSlot, { extensions, context }));
+const counterContext: DraftCounterContext = {
+  client: {} as DraftCounterContext['client'],
+  openDraft: async () => {},
+  navigate: async () => {},
+  run: async () => {},
+  text: 'x',
+  item: { id: 'x', kind: 'thread', status: 'draft', version: 0, revision: 1 },
+};
+const draftCounter = (extensions: readonly StudioExtension[]) => html(createElement(DraftCounterSlot, { extensions, context: counterContext }));
 const broken: StudioExtension = {
   name: 'broken',
   label: 'Broken',
@@ -41,6 +50,17 @@ const broken: StudioExtension = {
     throw new Error('actions exploded');
   },
 };
+
+test('the main menu holds one extension page: the first that asks, and none when none is on', () => {
+  const page = { title: 'page', component: () => null };
+  const asks = (name: string): StudioExtension => ({ name, label: name, description: name, page: { ...page, mainMenu: { icon: '◇' } } });
+  const plain: StudioExtension = { name: 'plain', label: 'plain', description: 'plain', page };
+  expect(mainMenuPage([])).toBeUndefined();
+  expect(mainMenuPage([plain, example])).toBeUndefined();
+  expect(mainMenuPage([plain, asks('a'), asks('b')])?.name).toBe('a');
+  expect(mainMenuPage(enabledExtensions([asks('a'), asks('b')], ['b']))?.name).toBe('b');
+  expect(mainMenuPage(enabledExtensions([asks('a')], []))).toBeUndefined();
+});
 
 test('extensions start off: nothing enabled means nothing selected, compiled or not', () => {
   expect(enabledExtensions([], undefined)).toEqual([]);
@@ -54,6 +74,7 @@ test('with none enabled, every slot renders nothing and the ⋯ sheet gains no r
   for (const compiled of [[], [example]]) {
     const extensions = enabledExtensions(compiled, []);
     expect(byline(extensions)).toBe('');
+    expect(draftCounter(extensions)).toBe('');
     expect(entryActionRows(extensions, context)).toEqual([]);
   }
   expect(html(createElement(EntrySheetSlot, { sheet: null, close: () => {} }))).toBe('');
@@ -61,6 +82,7 @@ test('with none enabled, every slot renders nothing and the ⋯ sheet gains no r
 
 test('an enabled extension fills its slots', () => {
   expect(byline([example])).toContain('data-extension="example"');
+  expect(draftCounter([example])).toContain('thread');
   const rows = entryActionRows([example], context);
   expect(rows.map((row) => row.label)).toEqual(['example']);
   const opened: string[] = [];

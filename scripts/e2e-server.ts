@@ -1,10 +1,11 @@
 import { build } from "esbuild";
-import { Miniflare } from "miniflare";
-import { readD1Migrations } from "@cloudflare/vitest-pool-workers";
+import { Miniflare, convertV4MiniflareOptions } from "miniflare";
+import { readD1Migrations } from "@cloudflare/vitest-plugin";
 import { createServer } from "node:http";
 import { importedHtmlAttacks } from "../test/fixtures/imported-html-attacks.ts";
+import { newId } from '../src/util.ts';
 const output = await build({ entryPoints: ["src/index.ts"], bundle: true, platform: "neutral", conditions: ["workerd"], external: ["cloudflare:*", "node:*"], mainFields: ["module", "main"], format: "esm", target: "es2022", loader: { ".txt": "text" }, write: false });
-const mf = new Miniflare({ modules: [{ type: "ESModule", path: "worker.mjs", contents: output.outputFiles[0].text }], compatibilityDate: "2026-07-01", compatibilityFlags: ["nodejs_compat"], host: "127.0.0.1", port: 8787, bindings: { OWNER_PASSWORD: "test-password", COOKIE_SECRET: "browser-test-cookie-secret", MOUNT: "", API_READ_LIMIT: "10000", API_WRITE_LIMIT: "10000" }, d1Databases: ["DB"], r2Buckets: ["MEDIA"], outboundService: () => new Response(null, { status: 503 }) });
+const mf = new Miniflare(convertV4MiniflareOptions({ modules: [{ type: "ESModule", path: "worker.mjs", contents: output.outputFiles[0].text }], compatibilityDate: "2026-07-01", compatibilityFlags: ["nodejs_compat"], host: "127.0.0.1", port: 8787, bindings: { OWNER_PASSWORD: "test-password", COOKIE_SECRET: "browser-test-cookie-secret", MOUNT: "", API_READ_LIMIT: "10000", API_WRITE_LIMIT: "10000" }, d1Databases: ["DB"], r2Buckets: ["MEDIA"], outboundService: () => new Response(null, { status: 503 }) }));
 const db = await mf.getD1Database("DB");
 for (const migration of await readD1Migrations("./migrations")) {
   await db.batch(migration.queries.map((sql) => db.prepare(sql)));
@@ -14,6 +15,8 @@ await db.prepare("INSERT INTO subscriptions (id, kind, origin, feed_url, title, 
 for (const [sub, id, state, pin, l0, md, html, page] of [
   ['parity-native', '00000000000000000000000001', 'current', null, 0, '# Native title\n\nFrozen source text.', '<h1>Native title</h1><p>Frozen source text.</p><blockquote class="blyg-transclusion">Frozen quote from a prior version.</blockquote>', 'native'],
   ['parity-native', '00000000000000000000000002', 'tombstone', 1, 0, 'Pinned retained text.', '<p>Pinned retained text.</p>', 'retained'],
+  // A second live entry: withdrawn posts are background, so the feed needs another row to hold two.
+  ['parity-native', '00000000000000000000000004', 'current', null, 0, 'Second live text.', '<p>Second live text.</p>', 'second'],
   ['parity-rss', 'l0-parity', 'current', null, 1, '[Legacy title](https://legacy.example/post)', '<p><a href="https://legacy.example/post">Legacy title</a></p><p>Legacy body.</p>', 'https://legacy.example/post'],
 ] as const) await db.prepare('INSERT INTO imported_items (subscription_id, remote_id, kind, state, version, observed_at, content_md, content_html, pinned_version_retained, l0, page) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)').bind(sub, id, 'fragment', state, '2026-10-01T00:00:00Z', md, html, pin, l0, page).run();
 // Lineage (the lineage-glyph extension): the native item quotes its sibling and stubs a plain URL.
@@ -24,16 +27,16 @@ await mf.ready;
 // Verified pointers for the mentions view; source prose remains imported-only.
 const fixtureLogin = await mf.dispatchFetch('http://localhost/studio/login', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'password=test-password', redirect: 'manual' });
 const fixtureCookie = fixtureLogin.headers.get('set-cookie')!.split(';')[0];
-const targetResponse = await mf.dispatchFetch('http://localhost/api/items', { method: 'POST', headers: { cookie: fixtureCookie, 'content-type': 'application/json' }, body: JSON.stringify({ content_md: 'Mention target fixture', kind: 'thread' }) });
-const target = await targetResponse.json() as { id: string };
-await mf.dispatchFetch(`http://localhost/api/items/${target.id}/publish`, { method: 'POST', headers: { cookie: fixtureCookie } });
+const targetResponse = await mf.dispatchFetch('http://localhost/api/items', { method: 'POST', headers: { cookie: fixtureCookie, 'content-type': 'application/json' }, body: JSON.stringify({ contentMd: 'Mention target fixture', kind: 'thread' }) });
+const target = await targetResponse.json() as { id: string; revision: number };
+await mf.dispatchFetch(`http://localhost/api/items/${target.id}/publish`, { method: 'POST', headers: { cookie: fixtureCookie, 'content-type': 'application/json' }, body: JSON.stringify({ expectedRevision: target.revision }) });
 for (const [id, origin, remoteId, hidden] of [['parity-held', 'https://source.example/', '00000000000000000000000001', 0], ['parity-stranger', 'https://stranger.example/', '00000000000000000000000003', 1]] as const) {
   await db.prepare("INSERT INTO mentions_in (id, source, target, target_item_id, status, relation, source_origin, source_id, source_kind, source_version, source_author_json, source_page, first_seen, last_seen, verified_at, hidden) VALUES (?, ?, ?, ?, 'verified', 'stub', ?, ?, 'fragment', 1, ?, ?, '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z', ?)").bind(id, origin + remoteId, `http://localhost/t/${target.id}/`, target.id, origin, remoteId, JSON.stringify({ name: 'Source author' }), origin + 'post', hidden).run();
 }
 await db.prepare("INSERT INTO mentions_out (id, item_id, version, target, status, attempts, next_attempt_at, created) VALUES ('parity-outbound', ?, 1, 'https://recipient.example/post', 'pending', 1, '2026-10-02T00:00:00Z', '2026-10-01T00:00:00Z')").bind(target.id).run();
 // Hostile raw imports belong to a separate disposable receiving database.
 // Functional UI counts and pagination fixtures must not absorb the attack corpus.
-const security = new Miniflare({ modules: [{ type: "ESModule", path: "worker.mjs", contents: output.outputFiles[0].text }], compatibilityDate: "2026-07-01", compatibilityFlags: ["nodejs_compat"], host: "127.0.0.1", port: 8791, bindings: { OWNER_PASSWORD: "test-password", COOKIE_SECRET: "security-browser-test-cookie-secret", MOUNT: "" }, d1Databases: ["DB"], r2Buckets: ["MEDIA"], outboundService: () => new Response(null, { status: 503 }) });
+const security = new Miniflare(convertV4MiniflareOptions({ modules: [{ type: "ESModule", path: "worker.mjs", contents: output.outputFiles[0].text }], compatibilityDate: "2026-07-01", compatibilityFlags: ["nodejs_compat"], host: "127.0.0.1", port: 8791, bindings: { OWNER_PASSWORD: "test-password", COOKIE_SECRET: "security-browser-test-cookie-secret", MOUNT: "" }, d1Databases: ["DB"], r2Buckets: ["MEDIA"], outboundService: () => new Response(null, { status: 503 }) }));
 const securityDb = await security.getD1Database("DB");
 for (const migration of await readD1Migrations("./migrations")) await securityDb.batch(migration.queries.map(sql => securityDb.prepare(sql)));
 await securityDb.prepare("INSERT INTO subscriptions(id,kind,origin,feed_url,title,created) VALUES ('security-html','rss','https://security-publisher.example/','https://security-publisher.example/feed','Security HTML','2020-01-01')").run();
@@ -57,7 +60,7 @@ await security.ready;
 // A separate mounted instance behind the documented forwarding ranges. The
 // proxy rejects host-root assets rather than letting a permissive fixture hide
 // a deployment dependency. Its database and cookies belong to this host only.
-const mounted = new Miniflare({ modules: [{ type: "ESModule", path: "worker.mjs", contents: output.outputFiles[0].text }], compatibilityDate: "2026-07-01", compatibilityFlags: ["nodejs_compat"], bindings: { OWNER_PASSWORD: "test-password", COOKIE_SECRET: "mounted-browser-test-cookie-secret", MOUNT: "/notes/b" }, d1Databases: ["DB"], r2Buckets: ["MEDIA"], outboundService: () => new Response(null, { status: 503 }) });
+const mounted = new Miniflare(convertV4MiniflareOptions({ modules: [{ type: "ESModule", path: "worker.mjs", contents: output.outputFiles[0].text }], compatibilityDate: "2026-07-01", compatibilityFlags: ["nodejs_compat"], bindings: { OWNER_PASSWORD: "test-password", COOKIE_SECRET: "mounted-browser-test-cookie-secret", MOUNT: "/notes/b" }, d1Databases: ["DB"], r2Buckets: ["MEDIA"], outboundService: () => new Response(null, { status: 503 }) }));
 const mountedDb = await mounted.getD1Database("DB");
 for (const migration of await readD1Migrations("./migrations")) await mountedDb.batch(migration.queries.map(sql => mountedDb.prepare(sql)));
 await mountedDb.prepare("INSERT INTO subscriptions (id, kind, origin, feed_url, title, created) VALUES ('browser-source', 'rss', 'https://source.example/', 'https://source.example/feed', 'Browser source', '2026-10-01T00:00:00Z')").run();
@@ -76,7 +79,29 @@ const proxy = createServer(async (request, response) => {
       response.end('<iframe src="' + escaped + '"></iframe>');
       return;
     }
-    if (!path.startsWith("/notes/b/") && !path.startsWith("/api/")) { response.writeHead(404); response.end("outside forwarding ranges"); return; }
+    if (path === '/__fixture/polling-items' && request.method === 'POST') {
+      // Only this disposable database: force cursor continuations without
+      // placing filler in the current-second cohort beside the live markers.
+      await db.batch(Array.from({ length: 30 }, (_, index) => db.prepare("INSERT INTO items(id,kind,status,created,updated,version,content_md,dirty) VALUES (?,'fragment','draft','2020-01-01T00:00:00Z','2020-01-01T00:00:00Z',0,?,1)")
+        .bind(newId(), `Buffered pagination fixture ${index}`)));
+      response.writeHead(204); response.end();
+      return;
+    }
+    // Disposable stand-in for a sender whose claim this blyg has just verified:
+    // writes one verified inbound mention straight into the 8787 fixture
+    // database, as verifyMention's UPDATE would. Fixture-only; the Worker ships
+    // no such route (e2e/polling-cache.spec.ts, live mentions).
+    if (path === "/__fixture/verified-mention" && request.method === "POST") {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      const { id, item, origin } = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { id: string; item: string; origin: string };
+      const now = new Date().toISOString(), source = `${origin}t/${id}/`;
+      await db.prepare("INSERT INTO mentions_in (id, source, target, target_item_id, status, relation, source_origin, source_id, source_kind, source_version, source_author_json, source_page, first_seen, last_seen, verified_at, hidden) VALUES (?, ?, ?, ?, 'verified', 'stub', ?, ?, 'thread', 1, ?, ?, ?, ?, ?, 0)")
+        .bind(id, source, `http://127.0.0.1:8787/t/${item}/`, item, origin, id, JSON.stringify({ name: "Live responder" }), source, now, now, now).run();
+      response.writeHead(204); response.end();
+      return;
+    }
+    if (!path.startsWith("/notes/b/")) { response.writeHead(404); response.end("outside forwarding ranges"); return; }
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const headers = new Headers();

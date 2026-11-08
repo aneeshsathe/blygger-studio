@@ -1,7 +1,9 @@
+import { authoredVersionKind } from './version-state.ts';
 // Protocol surface builders: item JSON, manifest, archive index, feed.xml
 // — v0.1-plan §2.3–2.6. These shapes are protocol; do not change casually.
 
-import { listBlogrollSubscriptions } from "./importer/store.ts";
+import { manifestHopperEntry } from "./hopper-feed-shape.ts";
+import { listBlogrollSubscriptions, listPublicHoppers } from "./importer/store.ts";
 import { excerpt, excerptFromHtml } from "./markdown.ts";
 import { loadProvenance } from "./public-feed.ts";
 import { authorOwnHtml, forkLineage, injectProvenance, respondsToLabel, stubCitation, transclusionProvenance } from "./pages.ts";
@@ -11,7 +13,7 @@ import {
   feedEvents,
   getMedia,
   lastUpdated,
-  listMediaForItem,
+  listVersionMedia,
   listPublic,
   listVersions,
   publishedVersion,
@@ -49,6 +51,11 @@ function withCited<T extends object>(ref: T | null, citeJson: string | null): T 
   return cite ? { ...ref, cited: cite } : ref;
 }
 
+/** This client's `page` for its own items (§2.3.2): what item JSON declares, and where a hopper feed links one. */
+export function ownPagePath(isThread: boolean, id: string): string {
+  return `${isThread ? "t" : "f"}/${id}/`;
+}
+
 function author(settings: Settings, origin: string) {
   return { name: settings.author_name, url: settings.author_url || origin };
 }
@@ -59,7 +66,7 @@ export async function buildItemJson(db: D1Database, settings: Settings, item: It
   const latest = await publishedVersion(db, item);
   const contentMd = isWithdrawn ? "" : (latest?.content_md ?? "");
   const contentHtml = isWithdrawn ? "" : (latest?.content_html ?? "");
-  const media = isWithdrawn ? [] : await listMediaForItem(db, item.id);
+  const media = isWithdrawn ? [] : await listVersionMedia(db, item.id, item.version);
   const changelog = (await listVersions(db, item.id)).map((v) => ({
     version: v.version,
     at: v.published_at,
@@ -102,7 +109,7 @@ export async function buildItemJson(db: D1Database, settings: Settings, item: It
     // has to *infer* it from the f/·t/ convention this client happens to use.
     // Emitted for withdrawn items too — an endcap's page is 200 forever, and a
     // mention may legitimately target it.
-    page: `${isThread ? "t" : "f"}/${item.id}/`,
+    page: ownPagePath(isThread, item.id),
     author: author(settings, origin),
     created: item.created,
     updated: item.updated,
@@ -121,7 +128,7 @@ export async function buildItemJson(db: D1Database, settings: Settings, item: It
 
 /** §2.8 pinned version file — permanent, survives edits and withdrawal. */
 export function buildPinnedVersionJson(settings: Settings, item: ItemRow, row: VersionRow, origin: string) {
-  const isThread = row.transclusions !== null;
+  const isThread = authoredVersionKind(row) === "thread";
   return {
     blyg: PROTOCOL_VERSION,
     id: item.id,
@@ -149,12 +156,17 @@ export function buildPinnedVersionJson(settings: Settings, item: ItemRow, row: V
 
 /** §2.4 manifest. */
 export async function buildManifest(db: D1Database, settings: Settings, origin: string, opts: { webmention?: boolean } = {}) {
-  // Relative media path, resolved to the row's `r2_key` (`media/{id}.{ext}`).
-  // Emitting the bare id produced a manifest `avatar` that always 404s, since
-  // `/media/:file` matches the full key including the extension (session 19).
+  // Use the complete stored key, including any digest and extension.
+  // An id alone is not a media URL.
   const avatarRow = settings.avatar_media_id ? await getMedia(db, settings.avatar_media_id) : null;
   const avatar = avatarRow?.r2_key;
   const hasBlogroll = (await listBlogrollSubscriptions(db)).length > 0;
+  // `hoppers` (spec 0.4 §6.1, decision #86; §16.12 rule 1): the
+  // public, slugged hoppers, only while the hopper_feeds setting is on and
+  // only when there is one, so every other manifest stays byte-identical.
+  const hoppers = settings.hopper_feeds
+    ? (await listPublicHoppers(db)).filter((h): h is typeof h & { slug: string } => !!h.slug).map(manifestHopperEntry)
+    : [];
   return {
     blyg: PROTOCOL_VERSION,
     level: PROTOCOL_LEVEL,
@@ -184,6 +196,7 @@ export async function buildManifest(db: D1Database, settings: Settings, origin: 
     // is the caller's override (a static tree accepts none); the setting is the
     // operator's, and either one is enough to withhold the key.
     ...(opts.webmention === false || !settings.accept_mentions ? {} : { webmention: WEBMENTION_PATH }),
+    ...(hoppers.length ? { hoppers } : {}),
   };
 }
 
@@ -226,13 +239,15 @@ export async function buildFeedXml(db: D1Database, settings: Settings, origin: s
   // friends reported "invalid feed"). Same bytes out, fixed query count.
   const liveItems = events.filter(({ item }) => item.kind !== "withdrawn");
   const livePairs = JSON.stringify([...new Map(liveItems.map(({ item }) => [item.id, { id: item.id, version: item.version }])).values()]);
-  const allIds = JSON.stringify([...new Set(events.map(({ item }) => item.id))]);
   const withdrawnIds = JSON.stringify([...new Map(events.filter(({ item }) => item.kind === "withdrawn").map(({ item }) => [item.id, { id: item.id, version: item.version }])).values()]);
   const [latestRes, mediaRes, prevRes] = await db.batch([
     db.prepare(`SELECT v.item_id, v.content_md, v.content_html, v.transclusions, v.stub_of, v.stub_cite FROM json_each(?) s JOIN versions v
       ON v.item_id = json_extract(s.value, '$.id') AND v.version = json_extract(s.value, '$.version')`).bind(livePairs),
-    db.prepare(`SELECT m.* FROM json_each(?) s JOIN media m ON m.item_id = s.value ORDER BY m.created ASC`).bind(allIds),
-    db.prepare(`SELECT v.item_id, v.transclusions FROM json_each(?) s JOIN versions v
+    // Each live item's latest version's own attachments (migration 0031).
+    db.prepare(`SELECT vm.item_id, m.r2_key, m.alt, m.inline FROM json_each(?) s JOIN version_media vm
+      ON vm.item_id = json_extract(s.value, '$.id') AND vm.version = json_extract(s.value, '$.version')
+      JOIN media m ON m.id = vm.media_id ORDER BY m.created ASC, m.rowid ASC`).bind(livePairs),
+    db.prepare(`SELECT v.item_id, v.kind, v.transclusions FROM json_each(?) s JOIN versions v
       ON v.item_id = json_extract(s.value, '$.id') AND v.version = json_extract(s.value, '$.version') - 1`).bind(withdrawnIds),
   ]);
   const latestById = new Map<string, { content_md: string; content_html: string; transclusions: string | null; stub_of: string | null; stub_cite: string | null }>();
@@ -240,14 +255,14 @@ export async function buildFeedXml(db: D1Database, settings: Settings, origin: s
     latestById.set(v.item_id, v);
   }
   const mediaById = new Map<string, Array<{ r2_key: string; alt: string | null; inline?: number }>>();
-  for (const m of mediaRes.results as unknown as Array<{ item_id: string; r2_key: string; alt: string | null }>) {
+  for (const m of mediaRes.results as unknown as Array<{ item_id: string; r2_key: string; alt: string | null; inline: number }>) {
     const list = mediaById.get(m.item_id) ?? [];
     list.push(m);
     mediaById.set(m.item_id, list);
   }
   const withdrawnKind = new Map<string, boolean>();
-  for (const r of prevRes.results as unknown as Array<{ item_id: string; transclusions: string | null }>) {
-    withdrawnKind.set(r.item_id, Boolean(r.transclusions));
+  for (const r of prevRes.results as unknown as Array<{ item_id: string; kind: VersionRow["kind"]; transclusions: string | null }>) {
+    withdrawnKind.set(r.item_id, authoredVersionKind(r, Boolean(r.transclusions)) === "thread");
   }
   // Same loader as the public pages: the feed and the HTML page can never
   // disagree about whose quote this is.

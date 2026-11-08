@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page } from './fixture';
 
 // Highlight generated portions (0.27.0): the blyg-wide default in settings
 // and an item's own override in the editor's TK card. Public rendering is
@@ -10,6 +10,12 @@ async function login(page: Page) {
 }
 const settings = (page: Page) => page.evaluate(async () => (await fetch('/api/settings')).json());
 
+// Leave the shared fixture as found, even when a test fails half-way: a retry that
+// starts with the default already on fails at the first assertion instead.
+test.afterEach(async ({ page }) => {
+  await page.evaluate(async () => fetch('/api/settings', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ highlightGeneratedDefault: false }) })).catch(() => {});
+});
+
 test('the default is a settings checkbox, and an item overrides it from its TK card', async ({ page }) => {
   await login(page);
   await page.goto('/studio/settings');
@@ -17,9 +23,9 @@ test('the default is a settings checkbox, and an item overrides it from its TK c
   await expect(box).not.toBeChecked();
   await box.check();
   await page.getByRole('button', { name: 'save settings', exact: true }).click();
-  await expect.poll(async () => (await settings(page)).highlight_generated_default).toBe(true);
+  await expect.poll(async () => (await settings(page)).highlightGeneratedDefault).toBe(true);
 
-  const id = await page.evaluate(async () => (await (await fetch('/api/items', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content_md: 'mine [TK]impyrt=generated[/TK]' }) })).json()).id);
+  const id = await page.evaluate(async () => (await (await fetch('/api/items', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contentMd: 'mine [TK]impyrt=generated[/TK]' }) })).json()).id);
   await page.goto(`/studio/edit/${id}`);
   const card = page.locator('details#tk');
   if (!(await card.getAttribute('open'))) await card.locator('summary').click();
@@ -29,9 +35,6 @@ test('the default is a settings checkbox, and an item overrides it from its TK c
   await group.getByRole('button', { name: 'off', exact: true }).click();
   await expect(group.locator('[aria-pressed=true]')).toHaveText('off');
   expect(await page.evaluate(async (id) => (await (await fetch(`/api/items/${id}`)).json()).highlight, id)).toBe('hide');
-
-  // Leave the shared fixture as found.
-  await page.evaluate(async () => fetch('/api/settings', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ highlight_generated_default: false }) }));
 });
 
 test('the robot opens what the author disclosed: hover peeks, a click keeps it, Escape closes', async ({ page }) => {
@@ -39,9 +42,9 @@ test('the robot opens what the author disclosed: hover peeks, a click keeps it, 
   const md = 'Mine, then [TK]impyrt gpt-5=an inline generated clause[/TK].\n\n[TK]impyrt claude-sonnet-5-5=A generated paragraph.[/TK]\n\nMine again.';
   const id = await page.evaluate(async (md) => {
     const json = { 'content-type': 'application/json' };
-    const item = await (await fetch('/api/items', { method: 'POST', headers: json, body: JSON.stringify({ content_md: md }) })).json();
-    await fetch(`/api/items/${item.id}/publish`, { method: 'POST' });
-    await fetch(`/api/items/${item.id}`, { method: 'PATCH', headers: json, body: JSON.stringify({ highlight: 'show' }) });
+    const item = await (await fetch('/api/items', { method: 'POST', headers: json, body: JSON.stringify({ contentMd: md }) })).json();
+    const published = await (await fetch(`/api/items/${item.id}/publish`, { method: 'POST', headers: json, body: JSON.stringify({ expectedRevision: item.revision }) })).json();
+    await fetch(`/api/items/${item.id}`, { method: 'PATCH', headers: json, body: JSON.stringify({ highlight: 'show', expectedRevision: published.revision }) });
     return item.id as string;
   }, md);
   await page.goto(`/f/${id}/`);
@@ -73,11 +76,11 @@ test('the robot opens what the author disclosed: hover peeks, a click keeps it, 
 test('generating a TK scope in the editor keeps the text around it', async ({ page }) => {
   await login(page);
   const md = 'Before the scope.\n\n[TK]write one line[/TK]\n\nAfter the scope.';
-  const id = await page.evaluate(async (md) => (await (await fetch('/api/items', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content_md: md }) })).json()).id as string, md);
+  const id = await page.evaluate(async (md) => (await (await fetch('/api/items', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contentMd: md }) })).json()).id as string, md);
   // The fixture has no provider; answer as the server does: the scope's output
   // alone in `text`, the whole working copy with it spliced in as `content_md`.
   const spliced = 'Before the scope.\n\n[TK]write one line[=]A generated line.[/TK]\n\nAfter the scope.';
-  await page.route(`**/api/items/${id}/generate`, route => route.fulfill({ json: { text: 'A generated line.', model: 'test-model', content_md: spliced } }));
+  await page.route(`**/api/items/${id}/generate`, route => route.fulfill({ json: { text: 'A generated line.', model: 'test-model', contentMd: spliced } }));
   await page.goto(`/studio/edit/${id}`);
   const card = page.locator('details#tk');
   await expect(card.getByRole('button', { name: 'generate', exact: true })).toBeVisible();

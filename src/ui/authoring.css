@@ -3,26 +3,54 @@
  * Builds on the vocabulary in studio.css (.card .seg .badge .dot .banner
  * .btn …); only what these two screens add lives here. Sans throughout. */
 
-/* ---------- COMPOSER ---------- */
-.composer .segmented { margin-bottom: 8px; }
+/* ---------- COMPOSER ----------
+   After Substack's composer: a compact kind switch, a borderless text area
+   with room to breathe, and one baseline below it — small line-icon tools on
+   the left, the counter and two compact buttons on the right. On a phone the
+   tools and the actions take a row each. Controls are .act / .btn-compact /
+   .segmented.compact from studio.css. */
+.composer { padding: var(--s4) var(--s4) var(--s2); }
+.composer .segmented.compact { margin-bottom: var(--s2); }
 .ta-wrap { position: relative; }
-.composer textarea { width: 100%; min-height: 128px; background: var(--card); border: none; padding: 4px 2px; box-shadow: none; resize: vertical; font-size: 1rem; }
+.composer textarea { display: block; width: 100%; min-height: 140px; background: transparent; border: none; border-radius: var(--radius-sm); padding: var(--s2) var(--s2) var(--s3); box-shadow: none; resize: none; font-size: 1.05rem; line-height: 1.6; }
 .composer textarea:focus { box-shadow: none; }
-.composer-tools, .ed-tools { display: flex; gap: 6px; align-items: center; }
-.composer-tools { flex-wrap: wrap; border-top: 1px dashed var(--rule); padding-top: 10px; margin-top: 6px; }
-.ed-tools { overflow-x: auto; margin: 0 0 8px; padding-bottom: 2px; scrollbar-width: none; }
-.ed-tools::-webkit-scrollbar { display: none; }
-.ed-tools .tool { flex: 0 0 auto; }
-.tool { font: inherit; font-family: var(--mono); font-size: .8rem; line-height: 1.2; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--rule); background: var(--card); color: var(--ink-soft); cursor: pointer; white-space: nowrap; }
-.tool.sans { font-family: var(--sans); }
-.tool:hover { color: var(--ink); border-color: var(--rule-strong); }
-.tool:disabled { opacity: .5; cursor: not-allowed; }
-.counter { font-size: .78rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; margin-left: auto; }
-.counter.over { color: var(--alert); font-weight: 700; }
+/* Fragment or thread at a glance: the box itself is tinted, in every editor. */
+.composer textarea.is-fragment, .composer textarea.is-fragment:focus,
+.editor-pane textarea.md.is-fragment, .editor-pane textarea.md.is-fragment:focus,
+.quick-edit textarea.is-fragment, .quick-edit textarea.is-fragment:focus { background: var(--fragment-bg); }
+.composer textarea.is-over, .editor-pane textarea.md.is-over, .quick-edit textarea.is-over { color: var(--alert); }
+.composer textarea::placeholder, .editor-pane textarea.md::placeholder { color: var(--muted); opacity: .8; }
+.composer-foot { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--s2); border-top: 1px solid var(--rule); margin: 0 calc(-1 * var(--s2)); padding: 2px 0 0; }
+.composer-tools, .ed-tools { display: flex; align-items: center; gap: 0; flex-wrap: wrap; min-width: 0; }
+.composer-tools .full-editor { font-size: .78rem; }
+.ed-tools { margin: 0 0 var(--s1) calc(-1 * var(--s2)); }
+.tool .ico { width: 19px; height: 19px; }
+.counter { font-size: .82rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; margin-left: auto; }
+.counter.over, .ed-foot .counter.over { color: var(--alert); }
 .over-hint { color: var(--alert); }
 .over-hint button.link { color: inherit; font-weight: 600; }
 .save-state { font-size: .78rem; color: var(--ok); font-weight: 600; }
-.composer-actions { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+.composer-actions { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; margin-left: auto; padding: var(--s1) var(--s2); }
+.composer-actions .counter { margin-left: 0; }
+/* An extension's addition beside the count (extensions.tsx), lighter than the
+   count. On a phone the counts take a row and the buttons the next, so a long
+   count never splits the buttons. Without an extension nothing here applies. */
+.counter-slot { font-weight: 400; }
+@media (max-width: 480px) {
+  .composer-actions:has(.counter-slot) { width: 100%; margin-left: 0; justify-content: flex-end; }
+  .composer-actions .counter-slot { flex: 1 1 auto; min-width: 0; }
+  .composer-actions .counter-slot + .spacer { flex: 0 0 100%; margin-top: calc(-1 * var(--s2)); }
+}
+/* The resize grip helps with a mouse; on touch it is a stray target. */
+@media (hover: hover) and (pointer: fine) { .composer textarea { resize: vertical; } }
+/* "syntax help": the long syntax paragraph, folded (open state per device). */
+.syntax-help { margin: 0 2px var(--s3); }
+.syntax-help > summary { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; cursor: pointer; font-size: .8rem; color: var(--page-ink-soft); list-style: none; }
+.syntax-help > summary::-webkit-details-marker { display: none; }
+.syntax-help > summary::before { content: "▸"; font-size: .7rem; transition: transform .15s; }
+.syntax-help[open] > summary::before { transform: rotate(90deg); }
+.syntax-help > summary:hover { color: var(--page-ink); }
+.syntax-help > p { margin: var(--s1) 0 0; font-size: .82rem; }
 .publish-warning { font-size: .85rem; color: var(--warn); margin: 10px 0 0; }
 .filters { margin-top: 20px; }
 
@@ -78,8 +106,6 @@
 .stub-quote { margin: -4px 2px 10px; }
 .stub-hint { margin: 0; }
 .link-btn { background: none; border: none; padding: 0; font: inherit; color: var(--page-ink); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
-.stub-chooser { margin-top: 8px; }
-.stub-post { max-height: 50vh; overflow: auto; border: 1px solid var(--rule); border-radius: 10px; padding: 4px 12px; background: var(--card); }
 .stub-help .stub-grid { border-collapse: collapse; margin: 8px 0 12px; font-size: .88rem; }
 .stub-help .stub-grid th, .stub-help .stub-grid td { border: 1px solid var(--rule); padding: 6px 10px; text-align: left; }
 .stub-help .stub-grid thead th, .stub-help .stub-grid tbody th { color: var(--ink-soft); font-weight: 600; }
@@ -90,15 +116,18 @@
 .quote-pills { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 40;
   display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; width: max-content; max-width: calc(100vw - 32px); animation: up .2s ease-out; }
 .quote-pill { background: var(--ink); color: var(--card); border: none; border-radius: 999px; padding: 10px 18px; font: inherit; font-weight: 600; font-size: .9rem; box-shadow: 0 8px 24px rgba(0,0,0,.25); cursor: pointer; white-space: nowrap; }
-.quote-pill-alt { background: var(--card); color: var(--ink); border: 1px solid var(--rule); }
 @media (min-width: 900px) {
   .quote-pills { bottom: 24px; }
   body.has-tabs .quote-pills { margin-left: calc(var(--rail) / 2); }
 }
 .editor-grid { display: block; }
 .editor-pane, .preview-pane { min-width: 0; }
-.editor-pane textarea.md { width: 100%; min-height: 46vh; font-family: var(--mono); font-size: .9rem; background: var(--card); border: 1px solid var(--rule); }
-.ed-foot { margin-top: 6px; font-size: .8rem; color: var(--page-ink-soft); }
+.editor-pane textarea.md { display: block; width: 100%; min-height: 46vh; font-family: var(--mono); font-size: 1rem; line-height: 1.6; background: var(--card); border: 1px solid transparent; border-radius: var(--radius); padding: var(--s4); box-shadow: var(--shadow); }
+.editor-pane textarea.md:focus { border-color: var(--rule-strong); box-shadow: var(--shadow); }
+@media (hover: none) { .editor-pane textarea.md { resize: none; } }
+.editor .pane-toggle { margin: 0 0 var(--s3); }
+.ed-foot { margin-top: var(--s2); font-size: .78rem; color: var(--page-ink-soft); }
+.editor-pane .syntax-help { margin-top: var(--s1); }
 .ed-foot .counter { margin-left: 0; color: inherit; }
 .ed-foot a { color: var(--page-ink); }
 .editor-pane .hint { color: var(--page-ink-soft); }
@@ -106,9 +135,21 @@
 .preview-pane h1 { font-size: 1.35rem; margin: 0 0 10px; }
 .preview-pane p { margin: 0 0 12px; }
 .preview img { max-width: 100%; border-radius: 8px; }
-.preview blockquote.blyg-transclusion { margin: 1rem 0; padding: 8px 12px; border-left: 3px solid var(--pencil); background: var(--sunk); border-radius: 0 8px 8px 0; font-size: .95em; }
-.preview blockquote.blyg-transclusion p { margin: 0 0 .25rem; }
-.preview .provenance { font-size: .75rem; color: var(--ink-soft); }
+/* Wide content scrolls inside its box, never widens the page (iOS lays a wider
+   page out zoomed out, which reads as a random zoom). */
+.preview :is(img, video, iframe, embed, object, svg, canvas), #h-viewer-body :is(video, iframe, embed, object, svg, canvas) { max-width: 100%; height: auto; }
+.preview :is(pre, table), #h-viewer-body :is(pre, table) { display: block; max-width: 100%; overflow-x: auto; }
+/* Quotes as the public page shows them (pages.ts STYLE_CSS). */
+.preview blockquote.blyg-transclusion { margin: 1.5rem 0; padding: .25rem 0 .25rem 1.1rem; border-left: 2px solid var(--pencil); background: none; }
+.preview blockquote.blyg-transclusion > :first-child { margin-top: 0; }
+.preview blockquote.blyg-transclusion p:last-of-type { margin-bottom: .25rem; }
+.preview blockquote.blyg-transclusion :is(h1, h2) { font-size: 1.125rem; }
+.preview blockquote.blyg-transclusion h3 { font-size: 1rem; }
+.preview blockquote.blyg-transclusion :is(h1, h2, h3) { margin: 1.2em 0 .4em; }
+/* Not selectable: choosing a passage to quote must not pick up this line. */
+.preview .provenance { margin: .5rem 0 0; font-size: .75rem; color: var(--ink-soft); user-select: none; }
+.preview .provenance a { color: var(--pencil); text-decoration: none; }
+.preview .provenance a:hover { text-decoration: underline; }
 .preview .unresolved { border-left-color: var(--alert); background: var(--alert-bg); color: var(--alert); font-style: italic; }
 /* Studio-only visibility for the wire's disclosure class. */
 .preview .blyg-tk-gen { background: var(--tk-bg); border-radius: 3px; box-shadow: 0 0 0 2px var(--tk-bg); }
@@ -117,15 +158,56 @@
 /* Phones: one pane at a time, chosen by the draft | preview toggle. */
 @media (max-width: 899px) {
   .editor-grid[data-pane=draft] .preview-pane,
-  .editor-grid[data-pane=preview] .editor-pane { display: none; }
+  .editor-grid[data-pane=preview] .editor-pane,
+  .editor-grid[data-pane=preview] .ed-tools { display: none; }
 }
 @media (min-width: 900px) {
   .editor .pane-toggle { display: none; }
-  .editor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  .editor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; align-items: start; }
+  .editor-grid > .ed-tools { grid-column: 1 / -1; }
 }
+.ed-head .focus-enter { margin-left: auto; }
+/* Focus view: the editor fills the screen with the same textarea and nothing else
+   of the studio. Failures still show (#error-banner-slot); sheets, toasts and the
+   picker sit above it. The textarea stays full width, its padding making the
+   measure, so the scrollbar is at the window's edge and the margins scroll too.
+   The space below the text lets its last line reach the middle of the window.
+   The root gives up its scrollbar and the gutter kept for it, or a stripe of page
+   would show down the side wherever scrollbars take up room. */
+html.focus-view { overflow: hidden; scrollbar-gutter: auto; }
+.focus-view .topbar, .focus-view .views > :not(.screen) { display: none; }
+.editor.is-focus { --focus-foot: calc(26px + env(safe-area-inset-bottom)); position: fixed; inset: 0 0 var(--focus-keyboard, 0px); z-index: 40; display: flex; flex-direction: column; background: var(--card); color: var(--ink); }
+.editor.is-focus > :not(.editor-grid, #error-banner-slot, .focus-bar, .focus-hot), .editor.is-focus .editor-grid > .ed-tools, .editor.is-focus .editor-pane > :not(.ta-wrap, .ed-foot) { display: none; }
+.editor.is-focus #error-banner-slot:not(:empty) { padding: 60px var(--s4) var(--s2); padding-top: calc(60px + env(safe-area-inset-top)); }
+.editor.is-focus .editor-grid { position: relative; }
+.editor.is-focus .editor-grid, .editor.is-focus .editor-grid .editor-pane, .editor.is-focus .ta-wrap { display: flex; flex-direction: column; align-items: stretch; flex: 1; min-height: 0; }
+.editor.is-focus textarea.md { flex: 1; min-height: 0; resize: none; background: transparent; border: none; border-radius: 0; box-shadow: none; font-family: var(--sans); font-size: 1.15rem; line-height: 1.7;
+  padding: max(48px, env(safe-area-inset-top)) max(var(--s4), calc((100% - 68ch) / 2)) calc((100vh - var(--focus-keyboard, 0px)) * .55); }
+.editor.is-focus textarea.md:focus { outline: none; box-shadow: none; }
+/* The preview tab lies over the text, which stays laid out: hiding it with display
+   would lose its scroll position and, in some browsers, its undo history. */
+.editor.is-focus .editor-grid[data-pane=preview] .editor-pane { visibility: hidden; }
+.editor.is-focus .editor-grid[data-pane=draft] .preview-pane { display: none; }
+.editor.is-focus .editor-grid[data-pane=preview] .preview-pane { display: block; position: absolute; inset: 0 0 var(--focus-foot); min-height: 0; overflow-y: auto; border: none; border-radius: 0; background: transparent; font-size: 1.15rem; line-height: 1.7; outline: none;
+  padding: 72px max(var(--s4), calc((100% - 68ch) / 2)) 25vh; }
+/* The counts stay, faintly, in a strip of their own under either tab, so the text
+   never runs beneath them. Whatever an extension sets beside them is a .counter too. */
+.editor.is-focus .ed-foot { visibility: visible; flex: 0 0 var(--focus-foot); box-sizing: border-box; margin: 0; padding: 0 var(--s3) env(safe-area-inset-bottom); justify-content: flex-end; gap: var(--s3); }
+.editor.is-focus .ed-foot > a, .editor.is-focus .ed-foot > .spacer { display: none; }
+.editor.is-focus .ed-foot .counter { margin-left: 0; font-size: .72rem; font-weight: 400; }
+.editor.is-focus .ed-foot .counter:not(.over) { color: var(--ink-soft); opacity: .6; }
+/* The controls fade rather than leave, so the keyboard can still reach them. */
+.focus-bar { position: absolute; top: 0; left: 0; right: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: var(--s3); padding: var(--s2) var(--s3); padding-top: max(var(--s2), env(safe-area-inset-top));
+  background: var(--card); border-bottom: 1px solid var(--rule); opacity: 0; pointer-events: none; transition: opacity .3s .2s; }
+.focus-bar .segmented { margin: 0; }
+.focus-bar[data-shown=true], .focus-bar:focus-within { opacity: 1; pointer-events: auto; transition: opacity .12s; }
+.focus-hot { display: none; }
+@media (any-pointer: coarse) { .focus-hot { display: block; position: absolute; top: 0; left: 0; right: 0; height: calc(56px + env(safe-area-inset-top)); z-index: 1; } }
+@media (prefers-reduced-motion: reduce) { .focus-bar, .focus-bar[data-shown=true], .focus-bar:focus-within { transition: none; } }
 .ed-cards { margin-top: 16px; }
 .ed-cards .card .row > input { flex: 1; min-width: 0; }
 .kv, .ed-cards .h-row { display: flex; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid var(--rule); border-bottom: none; font-size: .84rem; flex-wrap: wrap; margin: 0; }
+.attachment > a, #attachments .hint { min-width: 0; overflow-wrap: anywhere; }
 .ed-cards .h-list { list-style: none; margin: 0; padding: 0; }
 .ed-cards .h-list > :first-child, .media > .kv:first-child { border-top: none; }
 .vnum { font-family: var(--mono); font-weight: 700; font-size: .8rem; }
@@ -149,7 +231,7 @@
 #snapshots .q-passage-missing .q-state, #snapshots .q-unresolvable .q-state { color: var(--alert); }
 #snapshots .banner { margin: 10px 0 0; }
 .refresh-row { margin-top: 12px; }
-.editor .actionbar .more-btn { font-size: 1.2rem; }
+.editor .actionbar { padding-top: 6px; padding-bottom: max(6px, env(safe-area-inset-bottom)); }
 
 /* ---------- PALETTE (the [[ / ![[ picker) ---------- */
 
@@ -157,6 +239,11 @@
 .note-confirm label { display: block; font-size: .8rem; font-weight: 600; color: var(--ink-soft); margin-bottom: .25rem; }
 .note-confirm textarea { width: 100%; min-height: 5rem; margin-bottom: 8px; }
 .note-confirm .h-hint { font-size: .82rem; }
+/* The change classifier's chip row (session 49): one choice, or none. */
+.change-category { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+.change-category-label { font-size: .8rem; font-weight: 600; color: var(--ink-soft); margin-right: 2px; }
+.change-category .chip { min-height: 32px; padding: 4px 12px; border: 1px solid var(--rule-strong); border-radius: 999px; background: var(--card); color: var(--ink); font: inherit; font-size: .85rem; cursor: pointer; }
+.change-category .chip-on { background: var(--ink); color: var(--card); border-color: var(--ink); }
 #h-viewer-body { font-size: .95rem; overflow-wrap: anywhere; }
 #h-viewer-body img { max-width: 100%; }
 #h-viewer-body blockquote.blyg-transclusion { margin: 1rem 0; padding: 8px 12px; border-left: 3px solid var(--pencil); background: var(--sunk); border-radius: 0 8px 8px 0; font-size: .92rem; }
@@ -164,7 +251,7 @@
 @media (max-width: 640px) {
   .tk-scope-row { flex-wrap: wrap; }
   .tk-instruction { white-space: normal; overflow: visible; flex-basis: 100%; }
-  .editor .actionbar .btn { padding: 10px 12px; }
+
 }
 .stub-help p[tabindex] { outline: none; }
 .stub-help pre code { padding: 0; background: none; border: none; font-size: inherit; }

@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import type { SearchResponses } from '../../sdk/dist/browser.js';
-import { BlyggerApi, unwrap } from '../../sdk/dist/browser.js';
-import { client } from './data.ts';
+import { listViews, preloadView } from './data.ts';
 import { Button, Failure, useSettings } from './components.tsx';
 import { paletteTrigger, paletteInsert } from '../palette.ts';
 import { setTextAt } from './caret.ts';
 import './picker.css';
+import { ago, store, stored, useSearch, type Hit } from './search.tsx';
 
 /**
  * The `[[` / `![[` picker (0.29). Typing either bracket form opens a panel at
@@ -22,39 +21,12 @@ import './picker.css';
  * to type in the editor meanwhile, and a half-height dock under the keyboard
  * was the awkward part. Both modes share every other part.
  */
-type Hit = SearchResponses[200]['items'][number];
 type Source = 'all' | 'mine' | 'imported';
 type Sort = 'newest' | 'oldest';
 type Focus = 'editor' | 'panel';
 // Touch without hover, the same test as the reading list's swipe hint (#36).
 const touch = () => matchMedia('(hover: none) and (pointer: coarse)').matches;
 const narrow = () => matchMedia('(max-width: 640px)').matches;
-const PAGE = 20;
-
-function stored<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
-  try {
-    const value = localStorage.getItem(key);
-    return allowed.includes(value as T) ? (value as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-function store(key: string, value: string) {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    /* private window or blocked storage: the choice lasts this page only */
-  }
-}
-
-function ago(iso: string): string {
-  const days = Math.floor((Date.now() - Date.parse(iso)) / 86_400_000);
-  if (!Number.isFinite(days)) return '';
-  if (days < 1) return 'today';
-  if (days < 30) return `${days}d ago`;
-  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
-  return `${Math.floor(days / 365)}y ago`;
-}
 
 export function BracketPicker({
   input,
@@ -67,20 +39,15 @@ export function BracketPicker({
   change: (text: string) => void;
   allowTransclude?: boolean;
 }) {
-  const [hits, setHits] = useState<Hit[]>([]);
   const [selected, setSelected] = useState(0);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<unknown>();
   const [source, setSource] = useState<Source>(() => stored('blyg.picker.source', ['all', 'mine', 'imported'] as const, 'all'));
   const [sort, setSort] = useState<Sort>(() => stored('blyg.picker.sort', ['newest', 'oldest'] as const, 'newest'));
-  const setting = useSettings()?.picker_typing ?? 'auto';
+  const setting = useSettings()?.pickerTyping ?? 'auto';
   const focusMode: Focus = setting === 'auto' ? (touch() ? 'panel' : 'editor') : setting;
   const [sub, setSub] = useState('');
   const [subs, setSubs] = useState<{ id: string; title: string }[]>([]);
   const [panelQuery, setPanelQuery] = useState('');
   const [dismissed, setDismissed] = useState<string>();
-  const request = useRef<AbortController | undefined>(undefined);
   const search = useRef<HTMLInputElement>(null);
   const [caret, setCaret] = useState(text.length);
   useEffect(() => {
@@ -115,52 +82,15 @@ export function BracketPicker({
   }, [open, triggerKey, focusMode]);
   useEffect(() => {
     if (!open || subs.length) return;
-    unwrap(BlyggerApi.listSubscriptions({ client, query: { limit: 100 } }))
-      .then((r) => setSubs(r.items.filter((s) => s.kind === 'blyg').map((s) => ({ id: s.id, title: s.title || new URL(s.origin).host }))))
+    preloadView(listViews.subscriptions)
+      .then(() => setSubs(listViews.subscriptions.toArray.filter((s) => s.kind === 'blyg').map((s) => ({ id: s.id, title: s.title || new URL(s.origin).host }))))
       .catch(() => {});
   }, [open, subs.length]);
 
-  const loadPage = async (offset: number, controller: AbortController, query: string) => {
-    if (controller.signal.aborted) return;
-    setLoading(true);
-    setError(undefined);
-    try {
-      const result = await unwrap(
-        BlyggerApi.search({
-          client,
-          query: { q: query, offset, limit: PAGE, source, sort, ...(source === 'imported' && sub ? { sub } : {}) },
-          signal: controller.signal,
-        }),
-      );
-      if (controller.signal.aborted || request.current !== controller) return;
-      setHits((current) => (offset === 0 ? result.items : [...current, ...result.items.filter((item) => !current.some((hit) => hit.id === item.id))]));
-      setTotal(result.total);
-    } catch (failure) {
-      if (!controller.signal.aborted && request.current === controller) setError(failure);
-    } finally {
-      if (request.current === controller) setLoading(false);
-    }
-  };
-  useEffect(() => {
-    setSelected(0);
-    setHits([]);
-    setTotal(0);
-    setError(undefined);
-    setLoading(false);
-    if (query === undefined) return;
-    const controller = new AbortController();
-    request.current = controller;
-    const timer = setTimeout(() => void loadPage(0, controller, query), 150);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-      if (request.current === controller) request.current = undefined;
-    };
-  }, [query, source, sort, sub]);
-  const loadMore = () => {
-    const controller = request.current;
-    if (controller && query !== undefined) void loadPage(hits.length, controller, query);
-  };
+  const { hits, hasMore, loading, error, loadMore, cancel } = useSearch(
+    query === undefined ? undefined : { q: query, source, sort, ...(source === 'imported' && sub ? { sub } : {}) },
+  );
+  useEffect(() => setSelected(0), [query, source, sort, sub]);
   const backToEditor = (at: number) =>
     requestAnimationFrame(() => {
       input.current?.focus();
@@ -169,16 +99,13 @@ export function BracketPicker({
   const pick = (hit: Hit) => {
     if (!trigger) return;
     const next = paletteInsert(text, caret, trigger, hit.id, hit.label);
-    request.current?.abort();
-    setHits([]);
+    cancel();
     // Caret placed now, not on the next frame: see setTextAt.
     if (input.current) setTextAt(input.current, change, next.text, next.caret);
     else change(next.text);
   };
   const dismiss = () => {
-    request.current?.abort();
-    setHits([]);
-    setError(undefined);
+    cancel();
     setDismissed(triggerKey);
     backToEditor(caret);
   };
@@ -307,7 +234,7 @@ export function BracketPicker({
       </div>
       <Failure error={error} />
       <div className="picker-count" aria-live="polite">
-        {loading && !hits.length ? 'searching…' : `${total.toLocaleString()} item${total === 1 ? '' : 's'}`}
+        {loading && !hits.length ? 'searching…' : `${hits.length.toLocaleString()}${hasMore ? '+' : ''} item${hits.length === 1 && !hasMore ? '' : 's'}`}
       </div>
       <ul role="listbox" aria-label="items" className="picker-list">
         {hits.map((hit, i) => (
@@ -315,7 +242,7 @@ export function BracketPicker({
             role="option"
             aria-selected={i === selected}
             className={i === selected ? 'sel' : ''}
-            key={hit.id}
+            key={JSON.stringify([hit.source, hit.subscriptionId, hit.id])}
             onMouseEnter={() => setSelected(i)}
             onMouseDown={(event) => {
               event.preventDefault();
@@ -324,7 +251,7 @@ export function BracketPicker({
           >
             <span className="picker-excerpt">{hit.excerpt}</span>
             <span className="picker-meta">
-              {hit.source === 'mine' ? <span className="picker-mine">mine</span> : <span>{hit.source_title}</span>} · {hit.kind} · {ago(hit.updated)} · v{hit.version}
+              {hit.source === 'mine' ? <span className="picker-mine">mine</span> : <span>{hit.sourceTitle}</span>} · {hit.kind} · {ago(hit.updated)} · v{hit.version}
             </span>
           </li>
         ))}
@@ -334,9 +261,9 @@ export function BracketPicker({
           retry search
         </Button>
       ) : null}
-      {hits.length < total ? (
+      {hasMore ? (
         <Button className="btn btn-ghost btn-mini" disabled={loading} onMouseDown={(event) => event.preventDefault()} onClick={loadMore}>
-          load more ({hits.length} of {total})
+          load more
         </Button>
       ) : null}
       <footer className="picker-foot">

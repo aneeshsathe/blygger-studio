@@ -292,6 +292,12 @@ export interface AnnotatedDocument {
   text: string;
   /** Unique per-span token -> its independently-rendered `<div class="blyg-tk-gen">` replacement. */
   blockReplacements: Map<string, string>;
+  /**
+   * The same tokens -> each block's markdown, so `[[id]]` inside a block can be
+   * resolved over the text the author wrote rather than over its HTML, where
+   * markdown has already been applied to a label (`*em*` is `<em>` by then).
+   */
+  blockSources: Map<string, string>;
   hasInline: boolean;
 }
 
@@ -305,6 +311,7 @@ export function annotateGenerated(strippedMd: string, spans: GeneratedSpan[], ha
   let out = "";
   let last = 0;
   const blockReplacements = new Map<string, string>();
+  const blockSources = new Map<string, string>();
   let hasInline = false;
   spans.forEach((span, i) => {
     out += strippedMd.slice(last, span.start);
@@ -313,7 +320,8 @@ export function annotateGenerated(strippedMd: string, spans: GeneratedSpan[], ha
       out += text;
     } else if (span.block) {
       const token = `${BLOCK_SENTINEL}${i}${BLOCK_SENTINEL}`;
-      blockReplacements.set(token, `<div class="blyg-tk-gen">${renderMarkdown(text)}</div>`);
+      blockReplacements.set(token, renderGeneratedBlock(text));
+      blockSources.set(token, text);
       out += token;
     } else {
       hasInline = true;
@@ -322,7 +330,12 @@ export function annotateGenerated(strippedMd: string, spans: GeneratedSpan[], ha
     last = span.end;
   });
   out += strippedMd.slice(last);
-  return { text: out, blockReplacements, hasInline };
+  return { text: out, blockReplacements, blockSources, hasInline };
+}
+
+/** One generated block span rendered on its own, in its disclosure wrapper. */
+export function renderGeneratedBlock(md: string): string {
+  return `<div class="blyg-tk-gen">${renderMarkdown(md)}</div>`;
 }
 
 /** Splice annotateGenerated()'s placeholders/sentinels into already-rendered HTML. */

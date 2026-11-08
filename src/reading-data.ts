@@ -1,49 +1,74 @@
-import { listSubscriptions } from "./importer/store.ts";
-import { buildReadingFeed, clampDisplayAt, type OwnEntryInput, type ImportedEntryInput } from "./importer/reading.ts";
+import { authoredItemKindSql, authoredVersionKind } from './version-state.ts';
+import { cursorPage, type CursorQuery } from "./cursor-page.ts";
+import { buildReadingFeed, type OwnEntryInput, type ImportedEntryInput } from "./importer/reading.ts";
 import { sourceTitleAndUrl } from "./importer/util.ts";
 import { sanitizeHtml } from "./importer/sanitize.ts";
 import type { ImportedItemRow } from "./types.ts";
 
-/** Sort small identity/date rows first; load and sanitize bodies only for the selected page. */
-/**
- * `kind` is the reading lens (0.25.0): "thread" or "fragment" narrows every
- * source, and the counts with it, so the sources list and a timeline agree
- * under the same lens. A withdrawn own item counts as the kind it was authored.
- */
-export async function readingData(db: D1Database, requestedOffset: number, limit: number, source: string | undefined, kind?: "thread" | "fragment") {
-  const [ownAll, importedAll, subs] = await Promise.all([
-    db.prepare(`SELECT i.id, i.updated, CASE WHEN i.kind = 'withdrawn' THEN
-        CASE WHEN COALESCE(p.transclusions, '') != '' THEN 'thread' ELSE 'fragment' END ELSE i.kind END AS kind
-      FROM items i LEFT JOIN versions p ON i.kind = 'withdrawn' AND p.item_id = i.id AND p.version = i.version - 1
-      WHERE i.status IN ('public','withdrawn') ORDER BY i.updated DESC, i.rowid DESC`).all<{ id: string; updated: string; kind: string }>(),
-    db.prepare("SELECT subscription_id, remote_id, updated, observed_at, kind FROM imported_items ORDER BY observed_at DESC").all<{ subscription_id: string; remote_id: string; updated: string | null; observed_at: string; kind: string }>(),
-    listSubscriptions(db),
+type Identity = { source: 'own' | 'imported'; id: string; sub: string; at: number | string | null };
+/** Foreign dates are normalized before storage. Prefixes extend UTC lexical
+ * ordering across JS's signed six-digit years, which SQLite cannot parse. */
+function dateOrderSql(column: string) {
+  return `CASE WHEN length(${column}) = 23 AND substr(${column}, 1, 1) = '-'
+    THEN '0' || printf('%06d', 999999 + CAST(substr(${column}, 1, 7) AS INTEGER)) || substr(${column}, 8)
+    WHEN length(${column}) = 23 AND substr(${column}, 1, 1) = '+' THEN '2' || substr(${column}, 2)
+    ELSE '1' || strftime('%Y-%m-%dT%H:%M:%SZ', ${column}) END`;
+}
+function identitySql(kind: 'thread' | 'fragment' | undefined, background: boolean, hopper?: string, mentioning?: string[]) {
+  const binds = [...(kind ? [kind] : []), ...(hopper ? [hopper] : []), ...(kind ? [kind] : []), ...(mentioning ? [JSON.stringify(mentioning)] : [])];
+  const updated = dateOrderSql('ii.updated'), observed = dateOrderSql('ii.observed_at');
+  const sql = `SELECT 'own' AS source, i.id, '' AS sub, ${dateOrderSql('i.updated')} AS at
+    FROM items i LEFT JOIN versions p ON i.kind = 'withdrawn' AND p.item_id = i.id AND p.version = i.version - 1
+    WHERE i.status IN ('public','withdrawn') AND (i.kind = 'withdrawn') = ${background ? 1 : 0}${hopper || mentioning ? ' AND 0' : ''}${kind ? ` AND ${authoredItemKindSql('p')} = ?` : ''}
+    UNION ALL SELECT 'imported', ii.remote_id, ii.subscription_id,
+      ${hopper ? 'hi.added_at' : `CASE WHEN ${updated} < ${observed} THEN ${updated} ELSE ${observed} END`}
+    FROM imported_items ii ${hopper ? 'JOIN hopper_items hi ON hi.subscription_id = ii.subscription_id AND hi.remote_id = ii.remote_id AND hi.hopper_id = ?' : ''}
+    WHERE (ii.state = 'tombstone') = ${background ? 1 : 0}${kind ? ' AND ii.kind = ?' : ''}${mentioning ? ` AND EXISTS (SELECT 1 FROM imported_mentions m
+      WHERE m.subscription_id = ii.subscription_id AND m.remote_id = ii.remote_id AND m.target IN (SELECT value FROM json_each(?)))` : ''}`;
+  return { sql, binds };
+}
+/** Counts are a named summary. Page construction never materializes the full identity set. */
+export async function readingSummary(db: D1Database, source: string | undefined, kind?: 'thread' | 'fragment', background = false, hopper?: string, mentioning?: string[]) {
+  const { sql, binds } = identitySql(kind, background, hopper, mentioning);
+  const [counts, subs] = await Promise.all([
+    db.prepare(`SELECT source, sub, COUNT(*) AS total FROM (${sql}) GROUP BY source, sub`).bind(...binds).all<{ source: string; sub: string; total: number }>(),
+    db.prepare('SELECT id FROM subscriptions').all<{ id: string }>(),
   ]);
-  const own = { results: kind ? ownAll.results.filter((r) => r.kind === kind) : ownAll.results };
-  const imported = { results: kind ? importedAll.results.filter((r) => r.kind === kind) : importedAll.results };
-  const selected = source === "own" || subs.some((s) => s.id === source) ? source! : "all";
-  const counts = { all: own.results.length + imported.results.length, own: own.results.length, subscriptions: Object.fromEntries(subs.map((s) => [s.id, 0])) };
-  for (const row of imported.results) counts.subscriptions[row.subscription_id] = (counts.subscriptions[row.subscription_id] ?? 0) + 1;
-  const identities = [
-    ...own.results.map((r) => ({ source: "own" as const, id: r.id, sub: "", at: r.updated })),
-    ...imported.results.map((r) => ({ source: "imported" as const, id: r.remote_id, sub: r.subscription_id, at: clampDisplayAt(r.updated, r.observed_at) })),
-  ].filter((r) => selected === "all" || (selected === "own" ? r.source === "own" : r.sub === selected));
-  identities.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
-  const total = identities.length, offset = requestedOffset;
-  const selectedRows = identities.slice(offset, offset + limit);
+  const result = { all: 0, own: 0, subscriptions: Object.fromEntries(subs.results.map(row => [row.id, 0])) };
+  for (const row of counts.results) {
+    result.all += row.total;
+    if (row.source === 'own') result.own += row.total;
+    else result.subscriptions[row.sub] = row.total;
+  }
+  const selected = source === 'own' || subs.results.some(row => row.id === source) ? source! : 'all';
+  return { counts: result, selected };
+}
+/** Select one bounded keyset of identities before loading or sanitizing bodies. */
+export async function readingData(db: D1Database, query: CursorQuery, source: string | undefined, kind?: 'thread' | 'fragment', background = false, hopper?: string, mentioning?: string[]) {
+  const selected = source ?? 'all';
+  const identities = identitySql(kind, background, hopper, mentioning);
+  return cursorPage(db, { ...query, limit: query.limit ?? 25 }, {
+    name: 'reading', filters: [selected, kind ?? null, background, hopper ?? null, mentioning?.join(' ') ?? null], domains: hopper ? ['reading', 'subscriptions', 'hoppers'] : ['reading', 'subscriptions'],
+    sql: `SELECT * FROM (${identities.sql})${selected === 'all' ? '' : selected === 'own' ? " WHERE source = 'own'" : ' WHERE sub = ? OR NOT EXISTS (SELECT 1 FROM subscriptions WHERE id = ?)'}`,
+    binds: [...identities.binds, ...(selected !== 'all' && selected !== 'own' ? [selected, selected] : [])],
+    order: [{ column: 'at', direction: 'desc' }, { column: 'source', direction: 'asc' }, { column: 'sub', direction: 'asc' }, { column: 'id', direction: 'asc' }],
+    project: (selectedRows: Identity[]) => readingEntries(db, selectedRows),
+  });
+}
+async function readingEntries(db: D1Database, selectedRows: Identity[]) {
   const ownIds = selectedRows.filter((r) => r.source === "own").map((r) => r.id);
   const importedIds = selectedRows.filter((r) => r.source === "imported");
-  // At most 50 ids (100 bindings for imported pairs), within D1's 100-bind limit.
+  // Public pages hold at most50 identities. JSON pairs also keep internal calls within D1 bind limits.
   const [ownBodies, importedBodies] = await Promise.all([
-    ownIds.length ? db.prepare(`SELECT i.id, i.kind, i.updated, v.content_html, previous.transclusions AS previous_transclusions
+    ownIds.length ? db.prepare(`SELECT i.id, i.kind, i.updated, v.content_html, previous.transclusions AS previous_transclusions, previous.kind AS previous_kind
       FROM items i LEFT JOIN versions v ON v.item_id = i.id AND v.version = i.version
       LEFT JOIN versions previous ON previous.item_id = i.id AND previous.version = i.version - 1
-      WHERE i.id IN (${ownIds.map(() => "?").join(",")})`).bind(...ownIds).all<{ id: string; kind: string; updated: string; content_html: string | null; previous_transclusions: string | null }>() : { results: [] },
+      WHERE i.id IN (${ownIds.map(() => "?").join(",")})`).bind(...ownIds).all<{ id: string; kind: string; updated: string; content_html: string | null; previous_transclusions: string | null; previous_kind: 'fragment' | 'thread' | 'withdrawn' | null }>() : { results: [] },
     // read_state is the owner's own (migration 0026); null means unread.
-    importedIds.length ? db.prepare(`SELECT i.*, rs.read_version FROM imported_items i
+    importedIds.length ? db.prepare(`SELECT i.*, rs.read_version, s.title AS subscription_title, s.origin FROM imported_items i JOIN subscriptions s ON s.id = i.subscription_id
       LEFT JOIN read_state rs ON rs.subscription_id = i.subscription_id AND rs.remote_id = i.remote_id
-      WHERE ${importedIds.map(() => "(i.subscription_id = ? AND i.remote_id = ?)").join(" OR ")}`)
-      .bind(...importedIds.flatMap((r) => [r.sub, r.id])).all<ImportedItemRow & { read_version: number | null }>() : { results: [] },
+      WHERE (i.subscription_id, i.remote_id) IN (SELECT json_extract(value, '$[0]'), json_extract(value, '$[1]') FROM json_each(?))`)
+      .bind(JSON.stringify(importedIds.map(r => [r.sub, r.id]))).all<ImportedItemRow & { read_version: number | null; subscription_title: string; origin: string }>() : { results: [] },
   ]);
   const ownById = new Map(ownBodies.results.map((r) => [r.id, r]));
   const importedById = new Map(importedBodies.results.map((r) => [JSON.stringify([r.subscription_id, r.remote_id]), r]));
@@ -52,15 +77,14 @@ export async function readingData(db: D1Database, requestedOffset: number, limit
       const item = ownById.get(identity.id);
       if (!item) return null;
       const withdrawn = item.kind === "withdrawn";
-      const kind = item.kind === "thread" || (withdrawn && item.previous_transclusions) ? "thread" : "fragment";
+      const kind = withdrawn ? authoredVersionKind({ kind: item.previous_kind, transclusions: item.previous_transclusions }, Boolean(item.previous_transclusions)) : item.kind === 'thread' ? 'thread' : 'fragment';
       const input: OwnEntryInput = { id: item.id, kind, withdrawn, updated: item.updated, contentHtml: withdrawn ? "" : await sanitizeHtml(item.content_html ?? "") };
       return { ...buildReadingFeed([input], [])[0], key: `own:${item.id}` };
     }
     const row = importedById.get(JSON.stringify([identity.sub, identity.id]));
     if (!row) return null;
-    const sub = subs.find((s) => s.id === row.subscription_id);
-    const input: ImportedEntryInput = { subscriptionId: row.subscription_id, subscriptionTitle: sub?.title || sub?.origin || row.subscription_id, remoteId: row.remote_id, sourceUrl: sub ? sourceTitleAndUrl(row, sub.origin).url : null, kind: row.kind, withdrawn: row.state === "tombstone", l0: row.l0 === 1, updated: row.updated, observedAt: row.observed_at, contentHtml: await sanitizeHtml(row.content_html), pinnedVersionRetained: row.pinned_version_retained, version: row.version, readVersion: row.read_version ?? null };
+    const input: ImportedEntryInput = { subscriptionId: row.subscription_id, subscriptionTitle: row.subscription_title || row.origin || row.subscription_id, remoteId: row.remote_id, sourceUrl: sourceTitleAndUrl(row, row.origin).url, kind: row.kind, withdrawn: row.state === "tombstone", l0: row.l0 === 1, updated: row.updated, observedAt: row.observed_at, contentHtml: await sanitizeHtml(row.content_html), pinnedVersionRetained: row.pinned_version_retained, version: row.version, readVersion: row.read_version ?? null };
     return { ...buildReadingFeed([], [input])[0], key: `imported:${JSON.stringify([row.subscription_id, row.remote_id])}` };
   }));
-  return { items: entries.filter((e) => e !== null), counts, selected, total, offset, limit };
+  return entries.filter((e) => e !== null);
 }

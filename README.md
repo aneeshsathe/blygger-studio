@@ -77,6 +77,7 @@ Then provision the schema, set secrets through Wrangler's prompts, and deploy:
 npx wrangler@4 d1 migrations apply DB --remote
 npx wrangler@4 secret put OWNER_PASSWORD
 npx wrangler@4 secret put COOKIE_SECRET
+node normalize-import-dates.mjs --remote  # finish pending writes first; safe to rerun
 npx wrangler@4 deploy
 ```
 
@@ -162,6 +163,16 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
+### Dependency updates
+
+[Renovate](.github/renovate.json) groups related auth, MCP, TanStack DB, and
+Cloudflare packages and refreshes lockfiles weekly. It follows prereleases for
+TanStack DB and Miniflare. Update pull requests require manual review and merge.
+
+To activate it, merge the config into the default branch and grant the
+[Renovate GitHub app](https://github.com/apps/renovate) access to this repository.
+For a fork, select the repository explicitly when installing the app.
+
 ## Public page caching
 
 Public HTML pages use a shared Cloudflare cache for 60 seconds. After expiry,
@@ -231,6 +242,22 @@ The list comes from `models.json`, merged at build with your gitignored
 | `gemini-generate` | Gemini generateContent | `key_secret` (shipped: `GOOGLE_AI_KEY`) |
 | `workers-ai` | Cloudflare Workers AI, through the Worker's binding | an `ai` binding (`binding`, default `AI`); no key |
 | `openai-chat` | any OpenAI-compatible Chat Completions endpoint | `base_url`, and `key_secret` unless the endpoint is keyless |
+| `systemone` | TypeSafe's System One decision API (Jev), `POST {base_url}/systemone` | `key_secret` (shipped: `TYPESAFE_API_KEY`); `base_url` optional, default `https://api.typesafe.ai/v1` |
+
+**Decision models and the change classifier.** A model listed with
+`"kind": "decision"`, and every `systemone` model, is a decision model: it
+answers typed questions with probabilities and writes no text. Decision models
+are offered only for the change classifier (Settings → AI → change classifier,
+`ai_model_classify`), and text models never are. The classifier is **off by
+default**; with a model chosen, the publish dialog labels each new version of
+your own items `typo`, `minor` or `major` (a republish of the same words is
+`refresh`, decided with no model call), and you can change or clear the label.
+The shipped list has Clef and Clef-flash on Workers AI (the `ai` binding; their
+`params` carry the request's `model` selector) and `jev-latest` on TypeSafe (set
+`npx wrangler@4 secret put TYPESAFE_API_KEY`). Each classification is one call
+against the daily AI budget. The label is kept privately with the version and
+never sent as data: readers see it only as words in your change note. See
+[`docs/api.md`](docs/api.md#change-classifier).
 
 **Workers AI.** The shipped list includes Gemma 4 26B and a few other `@cf/…`
 models, and any `@cf/…` id typed in with *other…* runs there too. Inference is
@@ -294,42 +321,48 @@ Download assets from the same release so the SDK and contract match the Worker.
 Install the SDK archive, then use it from an app on the same origin as Studio:
 
 ```sh
-npm install ./blygger-sdk-0.1.1.tgz
+npm install ./blygger-sdk-SDK_VERSION.tgz
 ```
 
 ```js
 import { BlyggerApi, createBlyggerClient, unwrap } from "@blygger/sdk";
 
-const client = createBlyggerClient({ baseUrl: window.location.origin });
-const reading = await unwrap(BlyggerApi.listReading({ client, query: { offset: 0, limit: 25 } }));
+const client = createBlyggerClient({ baseUrl: new URL("/blyg/api", window.location.origin).href });
+const reading = await unwrap(BlyggerApi.listReading({ client, query: { limit: 25 } }));
 ```
 
-Sign into `/studio` first: API calls use its owner session cookie. The SDK does
+Sign into `{mount}/studio` first: API calls use its owner session cookie. The SDK does
 not create a login session. Node clients must supply a session cookie in
 `headers` or a custom transport. See [SDK usage](sdk/README.md). Never embed an
 owner cookie in browser source. Cross-origin clients can use resource-bound bearer tokens from Studio’s access page. See [client access](docs/client-access.md) for scopes, revocation, and the mounted OAuth/MCP discovery profile. Install the downloads locally. The SDK is not published to the npm registry.
 
-The downloaded OpenAPI file describes `/api` paths. Its default server is
-`http://localhost:8787`. Select your deployed origin in the API tool or generator.
+The downloaded OpenAPI file describes paths relative to the API base. Its default server is
+`http://localhost:8787/api`. Select your full `{mount}/api` URL in the API tool or generator.
 The deployed contract is also available to a signed-in owner at
-`/api/openapi.json`. Downloading the spec does not grant access to the API.
+`{mount}/api/openapi.json`. Downloading the spec does not grant access to the API.
 See [the owner API guide](docs/api.md) for resource routes, partial edits, creation, and pagination.
 
 Interface experiments that should not become the reference design ship as
 [Studio extensions](docs/extensions.md): first-party code an operator compiles
 in with `extensions.local.json` and the owner turns on in Settings. None is
 compiled in or on by default.
+[Modding the Studio](docs/mods.md) says where a larger change can live
+without forking, and what a hook proposed upstream has to satisfy.
 
 ### Upgrade a Worker archive installation
 
+For the0.49.8 revision cutover, finish pending writes, including generation,
+before upgrading. Avoid edits until deployment finishes.
+
 Download the new Worker archive. Check its checksum. Extract it into a new directory.
-Keep your existing deployment config and secrets. Copy the new `worker.js` and
+Keep your existing deployment config and secrets. Copy the new `worker.js`, `normalize-import-dates.mjs` and
 `migrations/` into your deployment directory. Do not replace your config with the
 archive's generic template. Keep `main: "worker.js"` and `no_bundle: true`.
 Save a D1 backup before any required schema changes. Run these commands from your deployment directory:
 
 ```sh
 npx wrangler@4 d1 migrations apply DB --remote  # if the changelog lists migrations
+node normalize-import-dates.mjs --remote  # finish pending writes first; safe to rerun
 npx wrangler@4 deploy
 ```
 
@@ -338,11 +371,21 @@ The archive does not include `npm run upgrade`. Use these steps for each release
 
 ### Upgrade a source installation
 
+For the0.49.8 revision cutover, finish pending writes, including generation,
+before invoking the updater. Avoid edits until deployment finishes.
+
 Commit or stash local changes first, including your deployment config, then run:
 
 ```sh
 npm run upgrade
 ```
+
+The cursor-page cutover also repairs stored imported dates in place. If your
+installed updater predates this step, decline its deploy prompt, then run
+`node --import tsx scripts/normalize-import-dates.ts --remote` after the upgrade
+and before deployment. Keep writes stopped through normalization and deployment.
+The repair reads timestamp metadata in batches, can resume by rerunning, and
+changes no content, publication version or observation time.
 
 The script downloads upstream tags, merges the newest release, preserves your
 `wrangler.jsonc` on conflicts, installs dependencies, applies new migrations,
@@ -388,7 +431,7 @@ For an already published checkout, use only the build and verification commands.
 ## Layout
 
 ```
-src/index.ts        routes — studio and /api registered before the public sub-app
+src/index.ts        routes — mounted Studio and API registered before the public sub-app
 src/protocol.ts     the wire: manifest, feed, item documents
 src/model.ts        publish/withdraw/pin/restore, the state machine
 src/importer/       subscribe side — resolve, feed parse, poll, hoppers, L0
@@ -453,7 +496,7 @@ See [the owner API guide](docs/api.md) for the replacement routes.
 
 The private Studio API now has a checked-in [OpenAPI contract](openapi.json) and a
 [generated JavaScript/TypeScript SDK](sdk/README.md). The owner can download the same
-contract at `/api/openapi.json`. It uses the existing session cookie. This API does
+contract at `{mount}/api/openapi.json`. It uses the existing session cookie. This API does
 not define a public publishing protocol.
 
 `npm run openapi` updates the contract. `npm run sdk:generate` rebuilds the SDK
@@ -466,8 +509,7 @@ Studio 0.10.0 uses React, TanStack Router, TanStack DB, and Base UI. Route loade
 preload collections through the SDK. Active views poll the D1-backed API every
 15 seconds, pause while the tab is hidden, and refresh on focus. Polling keeps
 unsaved editor text. The Worker embeds the browser assets. Deployment needs no
-extra asset binding. For a mounted installation, forward `{mount}/*` and
-`/api/*`, including `{mount}/studio/app.js` and `{mount}/studio/app.css`.
+extra asset binding. For a mounted installation, forward `{mount}/*`, including `{mount}/studio/app.js` and `{mount}/studio/app.css`.
 
 See [the migration plan](docs/migration.md) for the completed SPA cutover and the
 OAuth and MCP client access.

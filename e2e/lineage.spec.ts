@@ -64,7 +64,10 @@ test('the byline glyph counts what a post draws on and what draws on it', async 
   const glyph = nativeEntry(page).locator('[data-action=lineage]');
   await expect(glyph).toHaveAccessibleName('lineage: draws on 2, 0 known to draw on it');
   await expect(glyph.locator('.lg-glyph path.lg-edge')).toHaveCount(2);
+  // The retained post is withdrawn, so it lives under the Background lens.
+  await page.goto('/studio/reading?sub=parity-native&lens=background');
   await expect(retainedEntry(page).locator('[data-action=lineage]')).toHaveAccessibleName('lineage: draws on 0, 1 known to draw on it');
+  await page.goto('/studio/reading?sub=parity-native');
   // A legacy feed has no item documents, so no lineage and no glyph.
   await page.goto('/studio/reading?sub=parity-rss');
   await expect(page.locator('.reading-entry').first()).toBeVisible();
@@ -116,7 +119,7 @@ test('the explanation button runs the action: stub ↗ opens a response', async 
   await previewAt(page, sheet.locator('[data-vertex=stub]'));
   const created = page.waitForResponse(response => response.url().endsWith('/api/items') && response.request().method() === 'POST');
   await sheet.locator('.lg-explain').getByRole('button', { name: 'stub ↗', exact: true }).click();
-  expect((await created).request().postDataJSON()).toEqual({ mode: 'response', source: { subscription_id: 'parity-native', remote_id: NATIVE } });
+  expect((await created).request().postDataJSON()).toEqual({ mode: 'response', source: { subscriptionId: 'parity-native', remoteId: NATIVE } });
   await expect(page).toHaveURL(/\/edit\//);
 });
 
@@ -157,12 +160,16 @@ test('a node re-centres the view, and what you can do follows what is held here'
 test('our own thread lists its verified mentions as what came from it', async ({ page }) => {
   // Other suites publish into the same fixture, so find the page it is on now.
   const index = await page.evaluate(async () => {
-    for (let offset = 0; ; offset += 50) {
-      const page = await (await fetch(`/api/reading?sub=own&limit=50&offset=${offset}`)).json() as { items: { own?: { contentHtml: string } }[]; total: number };
-      const at = page.items.findIndex((row) => row.own?.contentHtml.includes('Mention target fixture'));
+    let cursor: string | undefined, offset = 0;
+    do {
+      const response = await fetch('/api/reading?' + new URLSearchParams({ sub: 'own', limit: '50', ...(cursor ? { cursor } : {}) }));
+      if (!response.ok) throw new Error(`Reading page failed: ${response.status}`);
+      const value: { items: { own?: { contentHtml: string } }[]; page: { nextCursor: string | null } } = await response.json();
+      const at = value.items.findIndex(row => row.own?.contentHtml.includes('Mention target fixture'));
       if (at >= 0) return offset + at;
-      if (offset + 50 >= page.total) return -1;
-    }
+      offset += value.items.length; cursor = value.page.nextCursor ?? undefined;
+    } while (cursor);
+    return -1;
   });
   expect(index).toBeGreaterThanOrEqual(0);
   await page.goto(`/studio/reading?sub=own&offset=${Math.floor(index / 25) * 25}`);
@@ -175,7 +182,7 @@ test('our own thread lists its verified mentions as what came from it', async ({
   await expect(list.locator('li').filter({ hasText: 'Native title' })).toContainText('verified mention');
   await expect(list.locator('li').filter({ hasText: 'Source author' })).toHaveCount(1);
   await previewAt(page, sheet.locator('[data-vertex=stub]'));
-  await expect(sheet.locator('.lg-explain')).toContainText('This is your own post');
+  await expect(sheet.locator('.lg-explain .lg-note')).toContainText('nobody is told');
 });
 
 test('quote selection opens the stub editor', async ({ page }) => {
@@ -185,7 +192,7 @@ test('quote selection opens the stub editor', async ({ page }) => {
   await previewAt(page, sheet.locator('[data-vertex=quote]'));
   const created = page.waitForResponse(response => response.url().endsWith('/api/items') && response.request().method() === 'POST');
   await sheet.locator('.lg-explain').getByRole('button', { name: 'quote a passage' }).click();
-  expect((await created).request().postDataJSON()).toEqual({ mode: 'response', source: { subscription_id: 'parity-native', remote_id: NATIVE } });
+  expect((await created).request().postDataJSON()).toEqual({ mode: 'response', source: { subscriptionId: 'parity-native', remoteId: NATIVE } });
   await expect(page).toHaveURL(/\/edit\//);
   await expect(page.locator('[data-action=choose-passage]')).toBeVisible();
 });

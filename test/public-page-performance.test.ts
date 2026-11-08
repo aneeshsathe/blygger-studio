@@ -35,11 +35,12 @@ async function fixture(count: number) {
 }
 
 describe("public homepage read budget", () => {
-  beforeEach(async () => { await env.DB.batch(["versions", "media", "items"].map(table => env.DB.prepare(`DELETE FROM ${table}`))); });
+  beforeEach(async () => { await env.DB.batch(["versions", "media", "version_media", "items"].map(table => env.DB.prepare(`DELETE FROM ${table}`))); });
   it("preserves mixed-card order, published text, pins, images, metadata and the older link within five render queries", async () => {
     await fixture(100);
     await env.DB.prepare("INSERT INTO versions (item_id,version,content_md,content_html,content_hash,published_at,pinned) VALUES ('card0',1,'old','<p>old body</p>','h','2026-01-01',1)").run();
     await env.DB.prepare("INSERT INTO media (id,item_id,r2_key,mime,alt,created) VALUES ('img','card0','media/img.png','image/png','my image','2026-01-01')").run();
+    await env.DB.prepare("INSERT INTO version_media (item_id,version,media_id) VALUES ('card0',2,'img')").run();
     const settings = await getSettings(env.DB), items = await listFeedItems(env.DB, 100), meter = measured(env.DB);
     const html = await feedPage(meter.db, settings, items, true, "/blyg", "https://example.com/blyg/");
     expect(html).toContain('href="/blyg/f/card0/v1/"');
@@ -86,6 +87,7 @@ describe("public homepage read budget", () => {
     await env.DB.prepare("INSERT INTO subscriptions (id,kind,origin,feed_url,title,created,in_blogroll) VALUES ('sub','blyg','https://remote.example/','https://remote.example/feed.xml','Live source','2026-01-01',1)").run();
     await env.DB.prepare("INSERT INTO imported_items (subscription_id,remote_id,kind,state,version,observed_at,page) VALUES ('sub','remote','thread','current',1,'2026-01-01','/custom')").run();
     await env.DB.prepare("INSERT INTO media (id,item_id,r2_key,mime,alt,created) VALUES ('threadimg','card3','media/thread.png','image/png','thread image','2026-01-01')").run();
+    await env.DB.prepare("INSERT INTO version_media (item_id,version,media_id) VALUES ('card3',2,'threadimg')").run();
     await env.DB.prepare("INSERT INTO media (id,r2_key,mime,created) VALUES ('avatar','media/avatar.png','image/png','2026-01-01')").run();
     const settings = { ...await getSettings(env.DB), avatar_media_id: 'avatar' }, meter = measured(env.DB);
     const html = await feedPage(meter.db, settings, await listFeedItems(env.DB, 101), false, '/mounted', 'https://example.com/mounted/');

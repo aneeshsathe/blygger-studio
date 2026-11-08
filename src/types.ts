@@ -40,6 +40,8 @@ export interface Env {
   OPENAI_API_KEY?: string;
   /** Google Gemini API key, when a Gemini model is chosen in Settings (0.26.0). Wrangler secret. */
   GOOGLE_AI_KEY?: string;
+  /** TypeSafe System One API key, when Jev is chosen as the change classifier (session 49). Wrangler secret. */
+  TYPESAFE_API_KEY?: string;
   /**
    * The Workers AI binding (`"ai": { "binding": "AI" }` in wrangler.jsonc), for
    * `@cf/…` models (studio#8). Optional and off by default: a model only runs
@@ -51,6 +53,8 @@ export interface Env {
 
 export interface ItemRow {
   id: string;
+  /** Private concurrency identity, independent of the public version. */
+  revision: number;
   kind: "fragment" | "thread" | "withdrawn";
   status: "draft" | "public" | "withdrawn";
   created: string;
@@ -62,7 +66,7 @@ export interface ItemRow {
    * Working-copy-side cache of per-scope TK generation provenance (migration
    * 0005) — JSON array of `ScopeProvenance | null`, positionally aligned to
    * the scope order in `content_md` as of the last /generate call. Not a
-   * wire artifact; see model.ts getTkProvenance/setTkProvenance.
+   * wire artifact; see model.ts getTkProvenance and item-revision.ts installWorkingCopy.
    */
   tk_provenance_json: string | null;
   /**
@@ -215,6 +219,8 @@ export interface ScopeProvenance {
 }
 
 export interface VersionRow {
+  /** NULL only for legacy versions whose intent was not established (0034). */
+  kind: 'fragment' | 'thread' | 'withdrawn' | null;
   item_id: string;
   version: number;
   content_md: string;
@@ -276,6 +282,14 @@ export interface SubscriptionRow {
   title_auto: number;
   /** JSON `Surface` (src/surface.ts): where a templated blyg's files live. NULL = default paths. */
   surface: string | null;
+  /**
+   * A hopper subscription (migration 0038; spec 0.4 §16.12, decision #86):
+   * the hopper feed's resolved absolute URL. NULL for every other subscription. Such a
+   * row is `kind: "rss"` (its entries are L0 rows), its `origin` is the blyg's
+   * identity origin and its `feed_url` the hopper feed: identity is the pair.
+   * Lookups that mean "the whole blyg at this origin" exclude it.
+   */
+  hopper_feed?: string | null;
 }
 
 export interface ImportedItemRow {
@@ -431,6 +445,17 @@ export interface Settings {
   ai_model_changelog: string;
   /** Feed scoring: stored now, used once the smart feed's agent exists. */
   ai_model_feed: string;
+  /**
+   * The change classifier (session 49): a decision model id (Clef, Jev), or
+   * empty, which is off and the default. See src/change-class.ts.
+   */
+  ai_model_classify: string;
+  /**
+   * Whether the classifier's category leads the changelog note text, applied in
+   * the publish dialog where the author sees it. On by default; it matters only
+   * while ai_model_classify is set. The category never travels as a field.
+   */
+  change_category_in_note: boolean;
   /** The smart feed's rubric: how the owner's agent should score new items. Stored only, for now. */
   feed_prompt: string;
   /** TK generation: optional site-level style prompt appended to every generation request. */
@@ -506,6 +531,12 @@ export interface Settings {
   links_blygger_org: boolean;
   /** A link to blygger.com (the directory) in the links section. On by default. */
   links_blygger_com: boolean;
+  /**
+   * Per-hopper RSS feeds at `{mount}/h/{slug}/feed.xml`, their page links and the
+   * manifest's `hoppers` key (src/hopper-feed.ts). Off by default: spec 0.4 §16.12
+   * (decision #86) is a ruled shape awaiting its two-node gate.
+   */
+  hopper_feeds: boolean;
   /** The setup wizard's state: `pending` (fresh install), `notice` (existing node, told once), `done`. */
   setup: "pending" | "notice" | "done";
   /** Where to ask. Configurable so a fork checks its own releases, not ours. */
@@ -545,7 +576,7 @@ export const BRAND = {
 /** Reference-client default mount when Env.MOUNT is unset. Deployment lexicon, not wire vocabulary — deliberately ≠ BRAND.slug. */
 export const DEFAULT_MOUNT = "/blyg";
 
-/** Origin-relative path of the reference client's Webmention endpoint (v0.3-plan §2.3.1) — inside the origin surface, because it is a protocol surface, unlike host-rooted /studio and /api. */
+/** Origin-relative path of the reference client's Webmention endpoint (v0.3-plan §2.3.1) — inside the origin surface, because it is a protocol surface. */
 export const WEBMENTION_PATH = "webmention";
 
 /**

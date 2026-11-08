@@ -141,10 +141,10 @@ describe("the candidate list pages, and says so", () => {
   // Storage is shared across this file, so every case searches for its own
   // token rather than the whole blyg — otherwise the totals drift with
   // whatever the describes above happened to publish.
-  const search = (cookie: string, q: string, offset?: number) =>
-    apiJson(cookie, "GET", `/api/search?q=${q}${offset === undefined ? "" : `&offset=${offset}`}`);
+  const search = (cookie: string, q: string, cursor?: string) =>
+    apiJson(cookie, "GET", `/blyg/api/search?q=${q}${cursor === undefined ? "" : `&cursor=${encodeURIComponent(cursor)}`}`);
 
-  it("caps a page at 20 but reports the true total", async () => {
+  it("caps a page at20 and returns an opaque continuation", async () => {
     const cookie = await login();
     // 23 > one page, so the old silent slice would have looked identical to
     // "that is everything".
@@ -152,37 +152,29 @@ describe("the candidate list pages, and says so", () => {
 
     const first = await search(cookie, "pagingtoken");
     expect(first.json.items).toHaveLength(20);
-    expect(first.json.total).toBe(23);
-    expect(first.json.offset).toBe(0);
-    expect(first.json.limit).toBe(20);
+    expect(first.json.page).toEqual({ limit: 20, nextCursor: expect.any(String) });
+    expect(first.json).not.toHaveProperty('total');
 
-    const second = await search(cookie, "pagingtoken", 20);
+    const second = await search(cookie, "pagingtoken", first.json.page.nextCursor);
     expect(second.json.items).toHaveLength(3);
-    expect(second.json.total).toBe(23);
-    expect(second.json.offset).toBe(20);
+    expect(second.json.page.nextCursor).toBeNull();
 
     // The two pages partition the list — no overlap, nothing dropped.
     const ids = [...first.json.items, ...second.json.items].map((r: { id: string }) => r.id);
     expect(new Set(ids).size).toBe(23);
   });
 
-  it("an offset past the end is empty, not an error", async () => {
+  it('ends a one-item match with a null continuation', async () => {
     const cookie = await login();
-    await createAndPublish(cookie, "pastendtoken the only one");
-    const res = await search(cookie, "pastendtoken", 500);
-    expect(res.status).toBe(200);
-    expect(res.json.items).toEqual([]);
-    expect(res.json.total).toBe(1);
+    const id = await createAndPublish(cookie, 'pastendtoken the only one');
+    const result = await search(cookie, 'pastendtoken');
+    expect(result.status).toBe(200); expect(result.json.items.map((row: { id: string }) => row.id)).toEqual([id]);
+    expect(result.json.page.nextCursor).toBeNull();
   });
 
-  it("rejects invalid offsets while treating an empty offset as zero", async () => {
+  it('rejects every old offset form, including empty and zero', async () => {
     const cookie = await login();
-    await createAndPublish(cookie, "junkoffsettoken the only one");
-    for (const bad of ["abc", "-5"]) {
-      expect((await apiJson(cookie, "GET", `/api/search?q=junkoffsettoken&offset=${bad}`)).status).toBe(400);
-    }
-    const empty = await apiJson(cookie, "GET", "/api/search?q=junkoffsettoken&offset=");
-    expect(empty.json.offset).toBe(0); expect(empty.json.items).toHaveLength(1);
+    for (const offset of ['abc', '-5', '', '0']) expect((await apiJson(cookie, 'GET', `/blyg/api/search?q=junkoffsettoken&offset=${offset}`)).status).toBe(400);
   });
 
   it("matches a word longer than D1's 50-byte LIKE cap, case-folded, with % and _ literal", async () => {
@@ -192,16 +184,16 @@ describe("the candidate list pages, and says so", () => {
     await createAndPublish(cookie, "https://longsearchtoken.example/some/deeply/nested/path/toXa/100X/page");
     const res = await search(cookie, encodeURIComponent(url.toUpperCase().replace("HTTPS", "https")));
     expect(res.status).toBe(200);
-    expect(res.json.total).toBe(1);
+    expect(res.json.items).toHaveLength(1); expect(res.json.page.nextCursor).toBeNull();
   });
 
-  it("the total counts matches, not the whole blyg", async () => {
+  it("returns only the matching items", async () => {
     const cookie = await login();
     await createAndPublish(cookie, "alphatoken one");
     await createAndPublish(cookie, "alphatoken two");
     await createAndPublish(cookie, "betatoken three");
     const res = await search(cookie, "alphatoken");
-    expect(res.json.total).toBe(2);
+    expect(res.json.page.nextCursor).toBeNull();
     expect(res.json.items).toHaveLength(2);
   });
 

@@ -3,6 +3,7 @@ import { availableFeedAlgorithms, resolveFeedAlgorithm } from "./feeds/available
 import { loadFeedHistory } from "./feeds/history.ts";
 import type { ServerExtension } from "./extensions/server.ts";
 import { reverseChronological } from "./feeds/reverse-chronological.ts";
+import { authoredItemKindSql } from './version-state.ts';
 
 export type FeedItem = Pick<ItemRow, "id" | "kind" | "created" | "updated" | "version" | "forked_from" | "fork_cite" | "highlight_override">;
 
@@ -52,20 +53,22 @@ export interface FeedCardData {
  */
 export async function loadFeedData(db: D1Database, items: FeedItem[], avatarId: string) {
   const selected = JSON.stringify(items.map(({ id, version }) => ({ id, version })));
-  const ids = JSON.stringify(items.filter(i => i.kind !== "withdrawn").map(i => i.id));
+  const live = JSON.stringify(items.filter(i => i.kind !== "withdrawn").map(({ id, version }) => ({ id, version })));
   const [versions, pins, media, avatar] = await db.batch([
     db.prepare(`SELECT v.item_id, v.content_html, v.note, v.transclusions, v.stub_of, v.stub_cite, v.generated_json FROM json_each(?) s JOIN versions v
       ON v.item_id = json_extract(s.value, '$.id') AND v.version = json_extract(s.value, '$.version')`).bind(selected),
     db.prepare(`SELECT v.item_id, v.version FROM json_each(?) s JOIN versions v
       ON v.item_id = json_extract(s.value, '$.id') WHERE v.pinned = 1 ORDER BY v.version`).bind(selected),
-    db.prepare(`SELECT m.* FROM json_each(?) s JOIN media m ON m.item_id = s.value
-      ORDER BY m.created ASC`).bind(ids),
+    db.prepare(`SELECT vm.item_id AS version_item, m.* FROM json_each(?) s JOIN version_media vm
+      ON vm.item_id = json_extract(s.value, '$.id') AND vm.version = json_extract(s.value, '$.version')
+      JOIN media m ON m.id = vm.media_id ORDER BY m.created ASC, m.rowid ASC`).bind(live),
     db.prepare("SELECT * FROM media WHERE id = ?").bind(avatarId),
   ]);
   const cards = new Map<string, FeedCardData>(items.map(i => [i.id, { latest: null, pins: [], media: [] }]));
   for (const v of versions.results as unknown as FeedVersion[]) cards.get(v.item_id)!.latest = v;
   for (const pin of pins.results as unknown as { item_id: string; version: number }[]) cards.get(pin.item_id)!.pins.push(pin.version);
-  for (const m of media.results as unknown as MediaRow[]) cards.get(m.item_id!)!.media.push(m);
+  // Keyed by the version's item: a row detached since still belongs to the version that showed it.
+  for (const { version_item, ...m } of media.results as unknown as (MediaRow & { version_item: string })[]) cards.get(version_item)!.media.push(m);
   const provenance = await loadProvenance(
     db,
     items.filter(i => i.kind === "thread").map(i => JSON.parse(cards.get(i.id)!.latest?.transclusions || "[]") as Transclusion[]),
@@ -90,13 +93,12 @@ export async function loadProvenance(db: D1Database, threads: Transclusion[][]):
   const provenance: FeedProvenance = { localKinds: new Map(), remoteSources: new Map() };
   if (!localIds.size && !remote.size) return provenance;
   const [local, sources] = await db.batch([
-    db.prepare(`SELECT i.id, CASE WHEN i.kind = 'withdrawn' THEN
-      CASE WHEN COALESCE(v.transclusions, '') != '' THEN 'thread' ELSE 'fragment' END ELSE i.kind END AS kind
+    db.prepare(`SELECT i.id, ${authoredItemKindSql('v')} AS kind
       FROM json_each(?) s JOIN items i ON i.id = s.value
       LEFT JOIN versions v ON i.kind = 'withdrawn' AND v.item_id = i.id AND v.version = i.version - 1`)
       .bind(JSON.stringify([...localIds])),
     db.prepare(`SELECT s.origin, ii.remote_id AS id, ii.kind, ii.page, s.title
-      FROM json_each(?) r JOIN subscriptions s ON s.origin = json_extract(r.value, '$.origin')
+      FROM json_each(?) r JOIN subscriptions s ON s.origin = json_extract(r.value, '$.origin') AND s.hopper_feed IS NULL
       JOIN imported_items ii ON ii.subscription_id = s.id AND ii.remote_id = json_extract(r.value, '$.id')`)
       .bind(JSON.stringify([...remote.values()])),
   ]);

@@ -5,15 +5,14 @@
 // refresh an item when it has drifted far enough, and in order of drift. The
 // order is the server's (`behind`, the versions the stale quotes have missed),
 // so a future maintenance agent and this page read the same queue.
-import { useEffect, useState } from 'react';
 import { useLiveQuery } from '@tanstack/react-db';
 import { Link } from '@tanstack/react-router';
 import type { ThreadFreshness } from '../../sdk/dist/browser.js';
-import { BlyggerApi, unwrap } from '../../sdk/dist/browser.js';
 import { renderMarkdown } from '../markdown.ts';
+import { withoutComments } from '../comments.ts';
 import { extractDirectives } from '../directives.ts';
 import { previewFromHtml } from '../preview.ts';
-import { client, items } from './data.ts';
+import { staleThreadItemsView } from './data.ts';
 import { Failure, useChrome } from './components.tsx';
 
 export const UPDATES_NOTE =
@@ -35,51 +34,43 @@ export function stalenessLine(t: Pick<ThreadFreshness, 'behind' | 'stale' | 'blo
 
 export function UpdatesPage() {
   useChrome({ framed: false });
-  const rows =
-    useLiveQuery({ query: (q) => q.from({ item: items }) }).data ?? [];
-  const [queue, setQueue] = useState<ThreadFreshness[]>();
-  const [error, setError] = useState<unknown>();
-  useEffect(() => {
-    let live = true;
-    unwrap(BlyggerApi.listStaleThreads({ client }))
-      .then((r) => live && setQueue(r.items))
-      .catch((e) => live && setError(e));
-    return () => {
-      live = false;
-    };
-  }, []);
-  const label = (id: string) => {
-    const row = rows.find((r) => r.id === id);
-    if (!row) return id.slice(0, 8);
+  const result = useLiveQuery(staleThreadItemsView);
+  const error = result.isLoadingError || result.isCrashed || result.isSyncError
+    ? new Error('Could not check quoted snapshots.') : undefined;
+  const label = ({ freshness, item }: NonNullable<typeof result.data>[number]) => {
+    if (!item) return freshness.id.slice(0, 8);
     const p = previewFromHtml(
-      renderMarkdown(extractDirectives(row.content_md).withoutDirectives),
+      renderMarkdown(extractDirectives(withoutComments(item.contentMd)).withoutDirectives),
     );
-    return p.title || p.body || id.slice(0, 8);
+    return p.title || p.body || freshness.id.slice(0, 8);
   };
   return (
     <>
       <h2 className="view-h">updates</h2>
       <p className="view-sub updates-note">{UPDATES_NOTE}</p>
       <Failure error={error} />
-      {queue === undefined && !error ? (
+      {result.isLoading ? (
         <p className="h-hint">Checking quotes…</p>
-      ) : queue?.length ? (
+      ) : result.data?.length ? (
         <ul className="nav-list updates-list">
-          {queue.map((t) => (
-            <li key={t.id} data-behind={t.behind}>
-              <Link to="/edit/$id" params={{ id: t.id }} hash="snapshots">
-                <span className="ml">
-                  {label(t.id)}
-                  <span className="md">{stalenessLine(t)}</span>
-                </span>
-                <span className="chev" aria-hidden="true">
-                  ›
-                </span>
-              </Link>
-            </li>
-          ))}
+          {result.data.map((row) => {
+            const t = row.freshness;
+            return (
+              <li key={t.id} data-behind={t.behind}>
+                <Link to="/edit/$id" params={{ id: t.id }} hash="snapshots">
+                  <span className="ml">
+                    {label(row)}
+                    <span className="md">{stalenessLine(t)}</span>
+                  </span>
+                  <span className="chev" aria-hidden="true">
+                    ›
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
-      ) : queue ? (
+      ) : result.isReady && !error ? (
         <p className="h-hint">Nothing is stale right now.</p>
       ) : null}
     </>

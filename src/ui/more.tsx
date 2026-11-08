@@ -12,7 +12,7 @@ import {
 } from './components.tsx';
 import { CLIENT } from '../client.ts';
 import { compiledExtensions } from '../../build/extensions.ui.ts';
-import { enabledExtensions } from './extensions.tsx';
+import { enabledExtensions, mainMenuPage } from './extensions.tsx';
 
 /** The fifth tab: update notices, the less-used screens, the public page, log out. */
 export function MorePage() {
@@ -21,15 +21,16 @@ export function MorePage() {
   const update = useUpdateState();
   const [error, setError] = useState<unknown>();
   const publicUrl = new URL(`${mount}/`, location.origin).href;
-  const pages = enabledExtensions(compiledExtensions, settings?.extensions).filter(
-    (extension) => extension.page,
+  const enabled = enabledExtensions(compiledExtensions, settings?.extensions);
+  const pages = enabled.filter(
+    (extension) => extension.page && extension !== mainMenuPage(enabled),
   );
   return (
     <>
       <h2 className="view-h">more</h2>
       <div style={{ height: 10 }} />
       <Failure error={error} />
-      {settings?.update_check && !settings.update_notice_ack ? (
+      {settings?.updateCheck && !settings.updateNoticeAck ? (
         <div className="banner banner-info update-banner notice" id="update-notice">
           <span className="mark" aria-hidden="true">
             i
@@ -43,9 +44,9 @@ export function MorePage() {
               onClick={() =>
                 void settingsCollection
                   .update('settings', (row) => {
-                    row.update_notice_ack = true;
+                    row.updateNoticeAck = true;
                   })
-                  .isPersisted.promise.catch(setError)
+                  .when('settled').catch(setError)
               }
             >
               got it
@@ -53,7 +54,7 @@ export function MorePage() {
           </div>
         </div>
       ) : null}
-      {settings?.update_check && update?.behind ? (
+      {settings?.updateCheck && update?.behind ? (
         <div className="banner banner-info update-banner" id="update-behind">
           <span className="mark" aria-hidden="true">
             ↑

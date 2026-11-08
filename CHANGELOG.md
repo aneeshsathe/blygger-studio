@@ -18,6 +18,657 @@ not have its own repo until session 26.
 
 ---
 
+## 0.57.0 — Writing a book on the studio
+
+Most of this release was asked for while writing a book on the studio (the blykker
+pilot, *New Nature*).
+
+**Comments to self** (#131). In a working copy, `/* … */` holds a note for you:
+inline or over several lines, kept across saves and publishes, and left out of
+everything public: the page, feeds, item documents, history and quotes. A `[TK]`
+scope inside one can be generated as usual. Editing only a comment is not an
+unpublished change. An unclosed `/*`, or a `*/` on its own, blocks publish rather
+than risk showing the note. In code they are literal; elsewhere `\/*` and `\*/` write
+the characters. **Existing text can change meaning:** a working copy that already has
+`/*` outside code will either refuse to publish with a reason or, if a `*/` follows,
+drop the text between them at its next publish or quote refresh. The preview shows
+this first, and already-published versions don't change. Discarding changes or
+restoring a version removes comments, and the confirm dialog says so.
+
+**Focus view** (#126). A full-screen writing view in the full editor: the icon at the
+right of the editor's head line, or ⌘⇧↩ / Ctrl+Shift+Enter; Esc leaves. It has
+typewriter scrolling, controls that fade while you type, the counts in a corner, and a
+**preview** tab (⌘⌥↩ / Ctrl+Alt+Enter). Text, caret, scroll and undo history all
+survive the switch, and autosave keeps running.
+
+**Word count while writing** (#125). The `word-count` extension now also shows its
+count beside the character count, in the composer and the full editor, through a
+new general `draftCounter` extension slot. Like the character count, it leaves comments
+to self out.
+
+**Extension pages can sit in the main menu** (#133). `page.mainMenu: { icon }` links an
+extension page from the main menu, above compose, instead of from More. Browser only.
+
+**A quote's label is shown to readers** (#136, ROADMAP row 79, decision #81). A labelled
+directive, `![[id | text]]`, bakes `data-blyg-label` on its blockquote. Public pages,
+the reader and fork flattening use it as the attribution link's text. What the link
+said before stays beside it, so a label never hides whose quote it is and is never
+shown as the quoted item's title. Unlabelled quotes bake byte-identically. The reader
+conformance suite goes from 74 to 79 passing.
+
+**Single-node deploys** (#138). A self-host whose `wrangler.private.jsonc` has no
+`env` block (one target, `"env": ""`) now passes `npm test` and `deploy:all`'s
+cross-check. The pinned-`account_id` guard still applies.
+
+Private contract, SDK and protocol version unchanged (`"0.4"`).
+
+**Migrations:** none.
+
+## 0.56.0 — Mentions means people now
+
+**A Mentions lens in the reader** (#134, `tn-6`). Reading's new lens lists items you
+already read whose own h-cards name you: your author URL or your blyg's address. The
+mention is highlighted wherever you read it, and in this lens the card scrolls to it.
+It is a find, not a notification: nobody told you, nothing is verified, nothing is sent,
+and it shows no tally. Quotes of someone else's words don't count, feeds you don't read
+aren't searched, and legacy RSS items aren't indexed. Items imported earlier are read
+by a backfill, 500 every 15 minutes, so older mentions appear over a while.
+
+**The old mentions tab is now "responses".** Only the label changes: `/mentions`, the
+API and the protocol's own term stay.
+
+Private contract **5.7.0** (additive: `mentions=true` on `GET /reading` and
+`/reading/summary`); SDK **0.13.0**. Protocol version unchanged (`"0.4"`).
+
+**Migrations:** `0043` (`imported_mentions`, `imported_mentions_backfill`). Apply it
+before deploying.
+
+## 0.55.3 — Item pages say who wrote them, to software
+
+**Item pages are microformats2 h-entries** (#132, `tn-6`). Live and pinned-version
+pages mark up the URL, date, content and author, with the byline as a `p-author
+h-card`, so a parser gets the author and any mentions from one read. It is hidden, so
+pages look as they did. It is page markup only: nothing reaches item documents or feeds.
+
+Private contract and SDK unchanged. Protocol version unchanged (`"0.4"`).
+
+**Migrations:** none. A node coming from before 0.55.0 needs `0042`.
+
+## 0.55.2 — Knowing which mode you are in, and the editors' keyboard
+
+**Fragment or thread at a glance** (#128). In the composer, full editor and quick
+edit, a fragment's box takes a light tint of the theme's accent. Thread-only tools stay
+in the row, greyed, so nothing shifts when the kind changes. The count is bolder and
+now appears in quick edit; past 1000 in a fragment, it and the text go red. The full
+editor's count never went red before: a stylesheet rule cancelled it.
+
+**Bold, italics and links from the keyboard** (#129). Cmd/Ctrl+B, I and K in all three
+editors. Pressing again takes the formatting off, and undo works. Macs use Cmd only, so
+Ctrl+B and Ctrl+K keep their system meanings.
+
+**The full editor's panes start level, and its preview's quotes look like the public
+page's** (#130). The toolbar sits above both panes. Quotes take the public styling, and
+a thread preview shows the line under each one.
+
+**Subscribing stays in one sheet** (#127). After subscribing to a blyg, the sheet
+carries on to the address book offer instead of closing and opening another.
+
+Private contract and SDK unchanged. Protocol version unchanged (`"0.4"`).
+
+**Migrations:** none.
+
+## 0.55.1 — The address book meets you where you find people
+
+**Subscribing offers the blyg** (#124). Subscribe to one blyg by hand and the Studio
+asks "Add this blyg to address book?", filled in from its manifest. It doesn't ask for
+OPML imports, RSS feeds or hopper subscriptions, or when the URL is already in the book.
+
+**The reading menu's "add author to address book"** does the same for an entry's author.
+
+**Help text on each field, and the address book has its own form.** It used to sit
+inside the settings form, so "save settings" sat beside it and did nothing for it, and
+Enter would have saved settings. "Name" is now "Display name".
+
+Private contract and SDK unchanged. Protocol version unchanged (`"0.4"`).
+
+**Migrations:** none.
+
+## 0.55.0 — An address book, and @mentions that become links at publish
+
+**Type `@handle` while writing** (#123, `tn-6`). Add people in Settings → Address
+book. At publish, a handle that names a contact becomes a link in `content_md` and
+an h-card in `content_html`, on every write path: the editor, the API and any tool.
+Your working copy keeps the `@handle`. A handle that names nobody stays plain text,
+and publish and preview return it as `unresolvedHandles`, with a warning in the editor.
+
+A mention notifies nobody. Nothing new reaches the wire: no member, no relation,
+nothing sent.
+
+**Adding a contact reads their page** for `rel="me"` links, and those identifiers
+travel with the mention. Identifiers added by hand or through the API stay in the
+book and never go on the wire. A contact needs an `https` URL for now.
+
+Private contract **5.6.0** (additive: `/contacts`, `POST /contacts/{id}/resolve`,
+`unresolvedHandles`); SDK **0.12.0**. Protocol version unchanged (`"0.4"`).
+
+**Migrations:** `0042` (`contacts`). Apply it before deploying.
+
+## 0.54.1 — One theme colour at the door, and mention identifiers survive import
+
+**The themed login page carries one `theme-color` tag.** It had the default and
+the theme's, so which one a browser used was up to the browser.
+
+**Imported HTML keeps `<data value>`.** A mention's alternate identifiers travel
+in `<data class="u-url" value="…">` (`tn-6` section 5.3), and the sanitizer used to
+unwrap them. `value` is allowed on `<data>` only. It is inert text and is never
+fetched. Nothing in the Studio writes this markup yet.
+
+Private contract and SDK unchanged. Protocol version unchanged (`"0.4"`).
+
+**Migrations:** none.
+
+## 0.54.0 — Word counts, a hopper picker that waits for its list
+
+**The `word-count` extension** (#117). Each reading entry's byline shows its word
+count, published and in draft. A thread whose outline forms a clean tree (list items
+that are nothing but `[[id]]` links, as a table of contents is written) also gets
+the words in the whole document under it, again on both sides. Inline links and
+transclusions are not followed. A cycle, a repeated item, a link to anything that
+is not one of your own items, or a tree over 500 items gives no total, and the
+tooltip says why. It has a server half, so releases don't carry it: compile it in
+through `extensions.local.json`, then turn it on in Settings → extensions. Nothing
+reaches the wire. `docs/extensions.md` has the rule.
+
+**The editor's "add to hopper…" picker waits for its list** (Kyle Mathews, #122).
+Opening the actions menu before the hopper list had loaded could offer only "new
+hopper…", because the menu kept the empty list it started with. The Mentions half
+of #118 is still open.
+
+**A test that expired.** `classifyLinks` compared its cache's age with the wall clock
+rather than the `now` it was given, so `test/peek.test.ts` began to fail on
+2026-11-05 on every checkout. No effect on a running node.
+
+Private contract **5.5.0** (additive: `GET /api/ext/word-count/counts`, which answers
+404 unless the extension is compiled in and enabled); SDK **0.11.0**. Protocol
+version unchanged (`"0.4"`).
+
+**Migrations:** none.
+
+## 0.53.0 — Search, the install's theme at the door, tabs that say which studio
+
+**Search on the reading and compose pages** (#120). The search the `[[` picker
+runs, on two more pages. Type in the box at the top; the query goes in the
+address (`?q=`), so back returns to the results. `/` focuses the box and Escape
+clears it. Matched words are marked.
+
+- **Reading** searches what the picker offers: your published items and the blygs
+  you follow. With one source selected it searches that source only; a button
+  widens it to everything. Hits open in the reader.
+- **Compose** searches *this blyg only* by default, or *everything*. It finds
+  drafts and unpublished changes too, marked as such. Your own items open in the
+  editor.
+
+The picker is unchanged: it still offers only what a quote or link can name.
+
+**The login page wears the install's theme** (#119). It used to show the
+studio's own light/dark colours until you logged in; now it is painted in the
+theme the studio switches to, wrong-password page included.
+
+**Each studio's tab says which it is** (#121). The tab title is
+"blyg studio — {site title}", and the ❝ tab icon takes the theme's accent, so
+several open studios can be told apart without clicking in.
+
+**Read batches keep malformed paths to themselves** (Kyle Mathews, #116). A path
+with malformed Unicode now fails only its own read, with a 400, after the usual
+permission and quota checks; the other reads in the batch keep their results.
+
+Private contract **5.4.0** (additive: `include=drafts` on `GET /search`, `draft`
+on its results); SDK **0.10.0**. Protocol version unchanged (`"0.4"`).
+
+**Migrations:** none.
+
+## 0.52.0 — Collection read batches and smaller Mentions loads
+
+Mentions opens with 10 groups and 10 receipts per group. Each list keeps its
+own cursor and full counts. Corrected page sizes avoid extra continuation
+requests, and simultaneous freshness checks share one pending read.
+
+Studio batches independent reads by collection operation while retaining the
+existing endpoints, query validation, permissions, and work budgets. Each child
+keeps its own status and retry hints. Within each server read batch, ready SQL
+and admission statements share D1 calls without a timer window or query rewrites.
+Logical read charges stay unchanged. Batch results are not cached, and a mutation
+starts a fresh revision check.
+Browser batches dispatch in microtasks, so they do not wait for timers that can
+be throttled in background tabs.
+
+The group query aggregates counts and uses indexed winner lookups instead of
+ranking every receipt with window functions. No rollup table or trigger is added.
+
+Private contract **5.3.0** (additive `POST /read-batch`); SDK **0.9.0**.
+Protocol version unchanged (`"0.4"`).
+
+**Subscribing to a collection no longer needs your own collection feeds on**
+(Aneesh Sathe, #112). Pasting the page or feed URL of another blyg's public
+collection now proposes a collection subscription on every node; the
+`hopper_feeds` setting governs only publishing this node's own collection feeds.
+API clients that want the whole blyg send `wholeBlyg: true`.
+
+**Two lookups no longer read whole tables** (#113, reported by patwater).
+Resolving an imported item by id alone, and listing each reading entry's
+collections, each scanned a table on free-plan D1, where the reads count against
+a daily limit. Both now use an index. (The reader inbox's own ordering index
+shipped in 0.49.12; nodes older than that should upgrade for it.)
+
+**Migrations:** **0040** (one covering expression index on `mentions_in`) and
+**0041** (indexes on `imported_items(remote_id)` and `hopper_items` membership).
+Indexes only. Apply before deploying.
+
+## 0.51.0 — Faster Studio actions, paged Mentions
+
+**Buttons act at once** (Kyle Mathews, #111). Saving, read marks, thumbs and
+other row actions now change the row you are looking at straight away, and the
+server's answer confirms it. They used to wait for the server and then reload
+whole collections, which is why many buttons felt slow. A write that fails puts
+the row back. Rapid clicks on one row are applied in order. Each view now loads
+only what it shows: the editor asks for one item, Updates only the stale ones.
+
+**Mentions opens quickly on a busy blyg.** It loads 25 posts at a time, each
+with its first 10 mentions, and "load more" fetches the rest. Totals are still
+complete. Source cards load as they scroll into view and never hold up
+navigation.
+
+Private contract **5.2.0** (additive: `GET /mention-groups`,
+`GET /mentions/summary`, `GET /mentions?targetItemId=…`); SDK **0.8.0**.
+TanStack DB 1.0.0-rc.1.2. Protocol version unchanged (`"0.4"`).
+
+**Migrations:** **0039** (one index on `mentions_in`, no data change). Apply
+before deploying.
+
+## 0.50.0 — Hopper feeds, and two quoting fixes
+
+**Hopper feeds** (Aneesh Sathe, #84; spec 0.4 §16.12, decision #86). Off until
+you turn on **Settings → Network → hopper feeds**. With it on:
+
+- Each **public** hopper gets an RSS feed at `{mount}/h/{slug}/feed.xml`. The
+  feed is the whole list, newest-joined first. Each entry is an excerpt that
+  links to the member's own page, with `<source>` naming the member's blyg.
+  It carries no `blyg:` markup, so blyg-aware readers never take it for a
+  second feed of your blyg. The hopper page links to it.
+- Your manifest gains a `hoppers` list naming your public hoppers. A private
+  hopper is never listed, and its feed answers 404.
+- **Subscribing**: paste a hopper's page or feed URL from another blyg, and
+  the subscribe sheet offers that hopper, with "whole blyg instead" beside it.
+  A hopper subscription lives next to a whole-blyg subscription to the same
+  blyg. Its entries are summaries and links: they are never quoted or used as
+  a source, and they never stand in for the blyg's own citation. An entry that
+  leaves the hopper leaves your reading at the next poll. If the blyg stops
+  listing the hopper, the subscription pauses and says so. It never turns into
+  a whole-blyg subscription on its own.
+- Your feed, item documents and archive index are byte-identical with the
+  setting on or off.
+
+**Partial quotes follow CommonMark's blockquote** (Aneesh Sathe, #106, fixes
+#104; decision #76). A line written directly under a quote, without its own
+`>`, is now part of the quoted passage, as it is when the quote renders. It
+used to publish as your own words. An unprefixed `![[id]]` line still ends the
+quote. If you have a draft that relied on the old reading, add a blank line
+after the quote.
+
+**Quotes in generated text with provenance** (Aneesh Sathe, #107, fixes #105;
+decision #60). An own-line `![[id]]` in the output of a generated block that
+records its sources is now quoted at publish, inside the generated block. It
+used to stay literal text, while the publish warning said it had been quoted.
+The thread preview does the same.
+
+Private contract **5.1.0** (additive: `Subscription.hopperFeedUrl`, hopper
+subscribe proposals, `wholeBlyg` on `createSubscription`, the `hopperFeeds`
+setting); SDK **0.7.0**. Protocol version unchanged (`"0.4"`).
+
+**Migrations:** **0038** (`subscriptions.hopper_feed`, a unique index on hopper
+subscriptions, the subscriptions change trigger recreated). Apply before
+deploying. 0037 is left unused on purpose. It is reserved for a later
+migration, and applying 0038 first is safe.
+
+## 0.49.12 — Host-root `/api` alias for mounted nodes
+
+0.49.7 moved REST to `{mount}/api` with no alias. A node mounted at a path
+(`/blyg` is one of the two recommended mounts) broke every tool still calling
+host-root `/api`. The old address answers again, for two releases: requests to
+`/api/…` on a mounted node are served as `{mount}/api/…`, with
+`Deprecation: true` and a `Link: <…{mount}/api>; rel="successor-version"`
+header. Bearer tokens issued for the old `{origin}/api` audience are accepted
+on both addresses, and a stored grant for it can still refresh. Discovery
+(capabilities, OpenAPI `servers`, resource metadata, `data-api-base`) names only
+the mounted address. Root-mounted nodes are unchanged. Move tools to
+`{mount}/api` before the alias is removed.
+
+**Migrations:** none.
+
+## 0.49.11 — Digest media URLs
+
+New uploads use media/{id}/{sha256}.{ext}, including unattached files. A verified
+digest URL retained by a published version uses immutable public caching. Legacy
+URLs, current avatars, and later attachments without a published reference keep
+ETag revalidation. Private bytes stay private and no-store.
+
+Discarding a draft preserves media rows used by published posts or the current
+avatar. Digest URL text wraps in Studio attachment cards on phones. Private API
+preflight explicitly sends no-store. Existing duplicate uploads retain their URL
+and revision, including legacy URLs.
+
+**Migrations:** None. Existing media URLs and publication bytes need no rewrite.
+This release uses private contract5.0.0 and SDK0.6.0 from0.49.10.
+
+## 0.49.10 — Bounded cursor pages
+
+Private collection reads use opaque cursor pages. Studio loads bounded item,
+history, hopper, signal and browse windows through the native TanStack pager.
+Item and hopper detail no longer include whole historical/member collections.
+Named summary reads provide counts. Relevant mutations expire continuations
+with409 cursor-expired so clients restart the acquisition.
+
+This is a hard private contract cutover to5.0.0 and SDK0.6.0. Update clients and
+API together. HTTP offset, imported-feed next, embedded history and hopper preview
+inputs are removed. Public protocol representations do not change.
+
+Imported created/updated dates normalize to ISO8601 UTC at storage. Invalid dates
+become null. Existing timestamps need the bundled resumable metadata repair before
+deployment. It preserves content, versions, observation times and read state.
+Finish pending writes and generation, then avoid edits through repair/deployment.
+
+**Migrations:** 0036_cursor_generations.sql adds interactions/browse change domains
+and cursor indexes. After schema migration, run
+`node --import tsx scripts/normalize-import-dates.ts --remote` for source installs,
+or `node normalize-import-dates.mjs --remote` for Worker archives, before deploying.
+The current updater and deploy-all run this step. Older running updaters need the
+explicit command after declining their deploy prompt. See README upgrade steps.
+
+## 0.49.9 — Explicit private resources
+
+The private API and SDK use camelCase fields and explicit resources. Imported
+metadata contains structured values, retains unknown remote members, and falls
+back per damaged stored column. Item kind stays fragment or thread after
+withdrawal, with publication state in status. Media URLs are absolute and
+include the deployment mount. Private errors use code, message, and optional
+details. Studio and SDK0.5.0 use private contract4.0.0 together.
+
+This is a hard private API cutover. Update clients with the server. Storage and
+public Blygger protocol formats stay intact, including legacy media URLs.
+Finish pending writes and generation before upgrading, and avoid edits until
+deployment finishes.
+
+**Migrations:** none in this release. Earlier stack releases include 0035.
+
+## 0.49.8 — Conditional item writes
+
+Item reads and creation return a private revision. Item commands require
+`expectedRevision` and return the resulting revision. Stale commands return409
+with `code: "revision-conflict"`. Text, generation provenance, attachment
+membership, and publication changes share the same conditional transition.
+Studio keeps the revision tied to its accepted text and serializes its writes.
+Private contract version:3.0.0. SDK version:0.4.0.
+
+**Migrations:** 0035 adds the private revision and updates private item polling
+invalidation. Finish pending writes, including generation, before this upgrade.
+Avoid edits until deployment finishes. Old in-flight writes do not participate
+in the new revision checks.
+
+## 0.49.7 — Mounted private API
+
+REST now lives at `{mount}/api`. Set SDK base URLs to that full address. Mounted nodes remove host-root `/api`; replace old REST tokens or request new OAuth consent. MCP audiences stay the same. Private contract version: 2.0.0. SDK version: 0.3.0.
+
+**Migrations:** none.
+
+## 0.49.6 — 2026-10-31
+
+**Migrations: none.**
+
+- REST and MCP invoke shared domain operations after identity verification.
+  The shared runner applies scopes, conditional permissions, live extension
+  gates, validation, and work budgets. MCP no longer creates internal REST
+  requests or multipart forms.
+- Both upload adapters supply the same decoded media bytes and metadata.
+  Existing duplicate handling, published-item permissions, rollback, retained
+  bytes, publication warnings, and background effects remain part of the
+  shared operations.
+- Server extension read handlers receive a domain context and validated input,
+  and return typed outcomes. See `docs/extensions.md` for the callback change.
+  Private API payloads, paths, and generated SDK stay stable in this part.
+
+## 0.49.5 — 2026-10-31
+
+**Migrations: none.**
+
+- Authenticated clients can read `/api/capabilities` for canonical endpoints,
+  the contract version, available operations, and extension state. Each grant
+  can inspect its own capabilities, including a grant with only `reading:state`.
+- REST and MCP use each operation's declared scopes and conditional permission
+  rules. MCP discovery filters disabled and uncompiled extensions. Execution
+  checks current feature state again. Static OpenAPI and SDKs retain all routes.
+- MCP hints describe effects rather than HTTP verbs. Live previews spend the
+  read budget. Link classification retains read authority and spends the write
+  budget because it can fetch remote pages and store its probe cache.
+
+## 0.49.4 — 2026-10-31
+
+**Migrations: 0034** (`versions.kind`, nullable for unresolved legacy rows).
+
+- Normal empty and media-only publications retain their authored kind. They can
+  be pinned, restored, forked, and compared without being mistaken for withdrawal
+  endcaps. Studio history offers the same pin and restore actions.
+- New publications and withdrawals store explicit version state. The migration
+  backfills facts supported by retained data and leaves ambiguous old rows
+  unclassified. Those rows keep each reader's existing legacy interpretation.
+  Frozen publication fields remain unchanged. Old Workers can still insert rows
+  during the migration/deploy window.
+- Authored-kind reads use stored version state across private reading, public
+  pages, feeds, provenance, forks, and mentions. Publishing-history ordering
+  includes explicit empty publications and excludes withdrawals.
+
+## 0.49.3 — 2026-10-31
+
+**Migrations: none.**
+
+- Public JSON, OPML, CSS, Studio assets, and legacy media URLs provide ETags
+  and conditional GET/HEAD responses. JSON validators cover all emitted data,
+  including changelog pin flags and mutable author/origin metadata on pins.
+  Legacy random-ID media URLs revalidate rather than promise immutable caching.
+- CORS and cache policy apply to actual OAuth responses, public wire errors,
+  explicit conditional preflight, and bearer-authenticated private media reads.
+  Browser clients can inspect validators, retry delays, supported methods,
+  returned locations, and authentication challenges where CORS permits reads.
+- Authorization endpoints exclude CORS on canonical and trailing-slash routes,
+  including preflight. Early private size-limit errors and MCP origin denials
+  have an explicit no-store policy. Native OAuth discovery retains its public
+  cache lifetime, and signing-key metadata has an explicit revalidation policy.
+- Wrong-method responses include owner grant administration, schema delivery,
+  and MCP in their Allow headers. Enabled Webmention reports POST as its method;
+  disabled Webmention remains absent.
+
+## 0.49.2 — 2026-10-31
+
+**Migrations: none.**
+
+- Restoring an item version restores its attachment membership with its text.
+  Discard restores detached published attachments and excludes unpublished
+  additions. Earlier versions retain their media and bytes. A stale restore
+  returns 409 without changing text or membership.
+- A provenance-only PATCH guards the stored text used to validate its TK scopes.
+  A concurrent text change returns 409. A PATCH supplying replacement text and
+  matching provenance keeps its existing behavior.
+
+## 0.49.1 — 2026-10-30
+
+**Migrations: none.**
+
+Two contributed Studio changes (Kyle Mathews' #85 and #86) and two end-to-end test fixes. No API, contract or data changes.
+
+- **The studio title links to the reading page** (#86). The site name and
+  "blygger studio" in the top bar are now a link, with a visible keyboard focus
+  outline.
+- **Preloads and polling use TanStack Query's own machinery** (#85). Hovering or
+  focusing a Studio link now completes the preload: route loaders warm hopper
+  previews, mention source details and reader targets before the page renders.
+  The custom polling scheduler and its per-component hooks are gone; live
+  collections opt into Query's 15-second polling with visibility handling, and
+  Settings and Authorizations refresh on return, reconnect or write without a
+  timer. Reader links (quoted layers, body links, breadcrumbs, history, peek
+  sources) are router links, so they open in new tabs and preload on intent.
+  Hover and focus do not change the browsing trail or log a visit. DB and
+  React DB move to 1.0.0-rc.1, Query Collection to 1.5.0 and Query Core to
+  5.105.0; DB is now an explicit dependency.
+- **`AGENTS.md` is the project instructions file** (#85), with `CLAUDE.md`
+  kept as a symlink to it.
+- Tests: `reader-browse` waits for the feed to end the walk before re-entering
+  an item, and `generated-highlight` runs under the per-test edge identity and
+  resets its setting in `afterEach`.
+
+## 0.49.0 — 2026-10-29
+
+**Migrations: 0033** (`browse_log`, `link_probe`; both studio-private). Apply it to every D1 before deploying.
+
+- **Browse the thicket from the reader.** Every quoted layer in an entry, at
+  any depth, now says whose it is and opens in the reader; so does any ordinary
+  link that names a blyg item (the server looks at the page the link points to,
+  §5.8's `rel="alternate"` item document, and remembers the answer for a
+  week). An item of a blyg you hold opens at its own address; one you do not
+  hold opens at `/peek`, read from its origin with nothing stored, with a
+  *subscribe* button. A stub opened that way shows what it responds to, and
+  that opens too. Back retraces the descent one entry at a time, and a
+  breadcrumb shows the path.
+- **Browsing history.** The walk is logged privately (`browse_log`, a tree: each
+  step names the step it was reached from) and a *history* pane beside the
+  reader (a bottom sheet on a phone) shows this walk and earlier ones, with
+  *clear history*. Never on the wire or a public page.
+- **Public pages name every nested quote.** `injectNestedProvenance`: the
+  provenance line, with a link, now appears on quotes inside quotes too; an
+  absent `data-blyg-origin` takes the origin of the layer that baked it. Links
+  behave as ordinary links.
+- **Links that are not blyg items open in a new tab**, so reading your place is
+  kept; and opening an item of a blyg you do not subscribe to shows an alert,
+  *You're not subscribed to this blyg — subscribe?*, with the subscribe sheet
+  prefilled.
+- **Withdrawn posts are background.** The Background lens, a placeholder until
+  now, lists withdrawn posts (your own endcaps and the blygs you read); every
+  other lens, the sources counts and hopper timelines leave them out.
+  `GET /reading` takes `background=true`.
+- **A revised post leads with its latest changelog entry.** On a feed card for
+  an imported blyg item past its first version the line `V3: …` comes first,
+  read from the origin's changelog once the card is on screen (nothing new is
+  stored); with no note for that version it says `V3: No changelog entry
+  available`.
+- New operations: `peekItem`, `classifyLinks` (both `owner:read`), `listBrowse`
+  (`owner:read`), `logBrowse` and `clearBrowse` (`reading:state`).
+
+- **A stub's passage is selected in the editor's own preview.** The separate
+  chooser pane, which showed the quoted post a second time, is gone. Select
+  text inside the stub's quote in the preview and press *quote only this*; the
+  passage is written under that quote's `![[id]]`, whichever of several it is.
+  On a phone the button *select a passage in the preview* switches panes, and
+  the draft returns after the choice. *Quote another passage* adds a whole-post
+  quote after the cursor to select from, replacing *add as another quote* and
+  *replace the first quote*. Selections inside a nested quote, or while the
+  preview is out of step with the draft, offer nothing.
+
+## 0.48.2 — 2026-10-20
+
+**Migrations: none.** Implements protocol 0.4.
+
+- **A mention without the target's page names its item document** (decision
+  #85, [blygger-spec#17](https://github.com/blygger/blygger-spec/issues/17),
+  Robert Peake's follow-up). §15.2's sixth revision says a sender targets the
+  item's `page` when it holds one and otherwise the item document, expanded
+  from the target origin's `item` template or the default `items/{id}.json`;
+  it must never guess the `f/{id}/`·`t/{id}/` convention. The studio used to
+  guess, and called every item of unknown kind a fragment, which a 0.48.1
+  receiver refuses for a thread and Soapbox refuses always. Now a subscribed
+  origin's stored surface supplies the template with no network; for an
+  origin we do not subscribe to, the publish path reads `{origin}blyg.json`
+  once per origin with the bounded mention fetch, takes its `item` template
+  and its `webmention` endpoint, and falls back to the default address when
+  the manifest is missing or says nothing. The endpoint is recorded on the
+  outbound row, because delivery finds endpoints through subscriptions and an
+  item document carries no `rel="webmention"` for W3C discovery. Stubs,
+  transclusions, links, generation sources and forks all take the same path;
+  the re-send test on the target's version is unchanged. Mentions already
+  queued keep the target they were queued with.
+
+## 0.48.1 — 2026-10-20
+
+**Migrations: none.** Implements protocol 0.4.
+
+- **A Webmention may name a pinned version of an item** (decision #84,
+  [blygger-spec#17](https://github.com/blygger/blygger-spec/issues/17), Robert
+  Peake). §15.3 step 1 now tests a target by membership: it must resolve, by
+  the receiver's own published data, to one of its items. The endpoint
+  already accepted an item's page and its item document; it now also accepts
+  a pinned version's document (`items/{id}/v{n}.json`) and page
+  (`f/{id}/v{n}/`, `t/{id}/v{n}/`, under the version's authored kind). Each
+  resolves to the item, and the mention is recorded against the item, never
+  a version. A version that is not pinned, or an unknown id, is still 400.
+  So is a live page named under the wrong kind (a fragment at `t/{id}/`, a
+  thread at `f/{id}/`): the studio answers 404 there, so it is not an address
+  this receiver serves. A withdrawn item keeps its authored kind, and the
+  item document stays accepted for either kind.
+  The mount-prefix check stays, with a comment saying why it is a membership
+  test here (this studio never relocates its surface or emits an absolute
+  `page`) and what a client that does either must check instead.
+
+## 0.48.0 — 2026-10-19
+
+**Migrations: 0028, 0030, 0031, 0032** — apply them before deploying
+(`wrangler d1 migrations apply DB --remote`). 0031 backfills
+`version_media` so no live document changes at upgrade. Optional new secret
+`TYPESAFE_API_KEY`, needed only to use Jev as the change classifier.
+Implements protocol 0.4.
+
+- **Own items in the reading feed get stub ↗, add to hopper and fork**
+  (Venkat). Your own entries offered only edit and link post. A stub of your
+  own post quotes its live version and cites it with a same-origin `stub_of`,
+  which sends no mention (§15.2); a withdrawn post is cited without a quote.
+  The lineage sheet now offers these actions on your own posts and says what
+  differs.
+- **Local mentions on public pages** (Venkat). A fragment or thread page lists
+  this blyg's own published items that stub, quote or fork it, each linked
+  back, so a transclusion is walkable in both directions on your site. Like
+  Responses it is page chrome, never in a document, feed or hash; unlike
+  Responses it needs no opt-in, because every row is your own. Only live
+  versions count: a quote edited out, or a withdrawn quoter, leaves the list.
+- **Attachments per version** (studio#7, Aneesh Sathe; migration 0031). Each
+  published version records the attachments it showed. Removing an attachment
+  drops it from the next version only; earlier versions keep listing it and
+  its bytes keep serving. Before, an attachment appended below a post could
+  have its bytes deleted while a published version still listed it.
+- **Duplicate uploads return the existing file** (studio#7, Aneesh Sathe;
+  migration 0028). The same bytes, type and placement on the same item store
+  nothing new; `POST /api/media` answers `200` with `duplicate: true`.
+- **Optional change classifier** (Aneesh Sathe; migration 0030). Off unless
+  Settings → AI → change classifier names a decision model (Clef or Clef-flash
+  on Workers AI, or TypeSafe's Jev). It suggests `typo`, `minor` or `major`
+  for a new version in the publish dialog, `refresh` for a republish of the
+  same words with no model call, and can lead the change note with that word.
+  The label is kept privately with the version; readers see it only as words
+  in your note, and no client gives it meaning (decision #83).
+- **OPML import** (studio#63, Aneesh Sathe). Import subscriptions from an OPML
+  file in Sources, with a preview, per-feed choice, an optional add-to-blogroll,
+  and a per-row result. Imported feeds are fetched by the next background poll.
+- **Mentions show up as they arrive** (Aneesh Sathe; migration 0032). Verified
+  responses, and hiding or showing one, now refresh the public page at once
+  instead of after the edge cache expired (up to about six minutes), and the
+  studio's mention views re-read only when something changed.
+- **Newest Webmention responses first** (Kyle Mathews). Response groups on the
+  Webmentions page had come back in random id order.
+- **Label grammar: six edge cases fixed** (#70, Aneesh Sathe), found porting
+  the renderer to another client, among them a label escaped twice inside a
+  generated block and a backtick in one label disabling a later link.
+- **Studio on the phone** (Aneesh Sathe): no more random zoom on iOS (fields
+  under 16px, double-tap), compact reading cards, full-screen reading, and a
+  quieter composer and editor.
+- TanStack DB packages updated (Kyle Mathews).
+
+---
+
 ## 0.47.0 — 2026-10-17
 
 **Migrations: none.** No config change. Implements protocol 0.4, opened today.

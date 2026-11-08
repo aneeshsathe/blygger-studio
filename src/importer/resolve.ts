@@ -13,7 +13,9 @@ import { platformFetch } from "./http.ts";
 export type BlygManifestLike = Record<string, unknown> & { blyg: unknown };
 
 export type ResolveResult =
-  | { kind: "blyg"; origin: string; manifestUrl: string; manifest: BlygManifestLike; siteMismatch?: { asserted: string; actual: string } }
+  // `hopper`: §12.1 step 7 matched the input to one of the manifest's public
+  // hoppers, so this resolves to `{ origin, manifest, hopper_feed }` (§12.2).
+  | { kind: "blyg"; origin: string; manifestUrl: string; manifest: BlygManifestLike; siteMismatch?: { asserted: string; actual: string }; hopper?: HopperMatch }
   | { kind: "rss"; feedUrl: string }
   | { kind: "failure"; tried: string[] };
 
@@ -142,8 +144,67 @@ function hasRelToken(rel: string, token: string): boolean {
   return rel.toLowerCase().split(/\s+/).includes(token);
 }
 
+/** One `hoppers` entry (§16.12 rule 1), resolved against the identity origin. */
+export interface HopperMatch {
+  title: string;
+  page: string;
+  feed: string;
+}
+
+const withoutTrailingSlash = (u: string) => u.replace(/\/+$/, "");
+
+/**
+ * §12.1 step 7, hopper match (spec 0.4 §16.12 rule 4, decision #86). The
+ * input URL, query and fragment stripped and *before* step
+ * 1's trailing slash, against each `hoppers` entry's `feed` and `page`
+ * resolved against the identity origin; a page matches with or without its
+ * trailing slash. Only an entry with a `feed` makes a hopper subscription: a
+ * page-only match, or none, resolves as the blyg. No fetch: the manifest is
+ * already in hand.
+ */
+export function matchHopper(inputUrl: string, origin: string, manifest: BlygManifestLike): HopperMatch | null {
+  if (!Array.isArray(manifest.hoppers)) return null;
+  let input: string;
+  try {
+    const u = new URL(inputUrl);
+    u.search = "";
+    u.hash = "";
+    input = u.toString();
+  } catch {
+    return null;
+  }
+  const abs = (v: unknown) => {
+    if (typeof v !== "string" || !v) return null;
+    try {
+      return new URL(v, origin).toString();
+    } catch {
+      return null;
+    }
+  };
+  for (const raw of manifest.hoppers as unknown[]) {
+    if (!raw || typeof raw !== "object") continue;
+    const entry = raw as Record<string, unknown>;
+    const page = abs(entry.page);
+    const feed = abs(entry.feed);
+    if (!page || typeof entry.title !== "string") continue;
+    const hit = input === feed || withoutTrailingSlash(input) === withoutTrailingSlash(page);
+    if (hit) return feed ? { title: entry.title, page, feed } : null;
+  }
+  return null;
+}
+
 export async function resolve(inputUrl: string, fetchFn: FetchLike = platformFetch): Promise<ResolveResult> {
   const tried: string[] = [];
+  // Every manifest steps 2–5 resolve passes through here, and step 7 always
+  // runs on it (ROADMAP row 100): subscribing is a reader's act, and only a
+  // feed the manifest itself lists can match, so it needs no gate. The
+  // `hopper_feeds` setting governs publishing this node's own hopper feeds.
+  const done = (found: Found): ResolveResult => {
+    const result = finalizeBlyg(found);
+    if (result.kind !== "blyg") return result;
+    const hopper = matchHopper(inputUrl, result.origin, result.manifest);
+    return hopper ? { ...result, hopper } : result;
+  };
 
   // Step 1: normalize.
   let candidate: string;
@@ -155,7 +216,7 @@ export async function resolve(inputUrl: string, fetchFn: FetchLike = platformFet
 
   // Step 2: direct probe.
   const direct = await probeManifest(candidate, fetchFn, tried);
-  if (direct) return finalizeBlyg(direct);
+  if (direct) return done(direct);
 
   // Steps 3/4: fetch the input URL itself once; branch on what it parses as.
   let l0FeedUrl: string | null = null;
@@ -176,7 +237,7 @@ export async function resolve(inputUrl: string, fetchFn: FetchLike = platformFet
         if (feedProbe.manifestUrl) {
           const abs = new URL(feedProbe.manifestUrl, finalUrl).toString();
           const upgraded = await fetchManifestAt(abs, fetchFn, tried);
-          if (upgraded) return finalizeBlyg(upgraded);
+          if (upgraded) return done(upgraded);
         }
         // No manifest link, or the upgrade fetch failed — hold as the L0 candidate, keep going.
         l0FeedUrl = finalUrl;
@@ -196,7 +257,7 @@ export async function resolve(inputUrl: string, fetchFn: FetchLike = platformFet
           }
           if (href) {
             const direct = await fetchManifestAt(href, fetchFn, tried);
-            if (direct) return finalizeBlyg(direct);
+            if (direct) return done(direct);
             let hrefOrigin: string | null = null;
             try {
               hrefOrigin = normalizeOrigin(href);
@@ -205,7 +266,7 @@ export async function resolve(inputUrl: string, fetchFn: FetchLike = platformFet
             }
             if (hrefOrigin) {
               const relResult = await probeManifest(hrefOrigin, fetchFn, tried);
-              if (relResult) return finalizeBlyg(relResult);
+              if (relResult) return done(relResult);
             }
           }
         }
@@ -226,7 +287,7 @@ export async function resolve(inputUrl: string, fetchFn: FetchLike = platformFet
   const hostOrigin = new URL(candidate).origin;
   for (const base of [`${hostOrigin}/blyg/`, `${hostOrigin}/`]) {
     const r = await probeManifest(base, fetchFn, tried);
-    if (r) return finalizeBlyg(r);
+    if (r) return done(r);
   }
 
   // Step 6: RSS fallback.

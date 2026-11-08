@@ -10,7 +10,7 @@
 import { admitAi } from "../security-budgets.ts";
 import { getSettings } from "../model.ts";
 import type { Env, Settings } from "../types.ts";
-import { MODELS, bindingName, providerConfigured, providerFor, type AiPurpose, type Manifest, type ProviderSpec } from "./models.ts";
+import { MODELS, bindingName, isDecisionModel, providerConfigured, providerFor, type AiPurpose, type Manifest, type ProviderSpec } from "./models.ts";
 
 export interface GenerateRequest {
   instruction: string;
@@ -136,6 +136,7 @@ export async function complete(
   const provider = providerFor(model, models);
   if (!provider) throw new ProviderError(`no provider is known for model "${model}": add it to models.json (or models.local.json)`);
   const { spec } = provider;
+  if (isDecisionModel(model, models)) throw new ProviderError(`"${model}" is a decision model: it answers typed questions and writes no text, so it cannot serve ${PURPOSE_LABELS[purpose]}`);
   if (!providerConfigured(env, spec)) throw new ProviderError(notConfigured(spec));
   const vars = env as unknown as Record<string, unknown>;
   const apiKey = spec.key_secret ? (vars[spec.key_secret] as string) : "";
@@ -153,6 +154,8 @@ export async function complete(
       return workersAi(vars[bindingName(spec)] as WorkersAiBinding, model, system, user, params);
     case "openai-chat":
       return openaiChat(spec.base_url ?? "", apiKey, model, system, user, params, fetchImpl);
+    case "systemone":
+      throw new ProviderError(`"${model}" is served by a decision-model API, which writes no text`);
   }
 }
 
@@ -327,4 +330,139 @@ async function openaiChat(baseUrl: string, apiKey: string, model: string, system
   const headers: Record<string, string> = apiKey ? { authorization: `Bearer ${apiKey}` } : {};
   const json = (await postJson(fetchImpl, url, headers, { max_tokens: MAX_TOKENS, ...params, model, messages: chatMessages(system, user) })) as ChatCompletion;
   return { text: chatText(json), model: json.model ?? model };
+}
+
+/* ---------------- Decision models ---------------- */
+//
+// A decision model (Cloudflare's Clef and Clef-flash on Workers AI, TypeSafe's
+// Jev on its System One API) takes a `state` and a map of typed questions and
+// returns, per question, the chosen option with a probability for every
+// option. It writes no text, so it is a separate call from `complete()`, and
+// the two never share a model (models.ts isDecisionModel).
+//
+// Request shape: the System One API, which Clef implements ("fully Jev-API
+// compatible", https://blog.cloudflare.com/clef-decision-models):
+//   { model, state, questions: { <id>: { type: "choice", instructions, criteria: { <option>: <description> } }
+//                                    | { type: "score", instructions, criteria: [<level 0>, <level 1>, …] }
+//                                    | { type: "noul", instructions, criteria?: { true, false } } } }
+// Response shape, from Cloudflare's published output schema
+// (https://developers.cloudflare.com/workers-ai/models/clef/schema-output.json)
+// and TypeSafe's API reference (https://docs.typesafe.ai/api.md), which agree:
+//   { model, answers: { <id>: { type: "choice", choice, probabilities: { <option>: p }, confidence }
+//                            | { type: "score", score, legend: { "0": … }, probabilities: { "0": p }, confidence }
+//                            | { type: "noul", noul: p } }, usage }
+// Parsed defensively anyway: a REST-style `{ result: { answers } }` envelope is
+// unwrapped, an answer naming an option that was not asked is dropped, and an
+// answer with no usable probability is dropped. A dropped answer is simply
+// absent from the result; the caller decides what absence means.
+
+export type DecisionQuestion =
+  | { type: "choice"; instructions: string; criteria: Record<string, string | null> }
+  | { type: "score"; instructions: string; criteria: string[] }
+  | { type: "noul"; instructions: string; criteria?: { true?: string; false?: string } };
+
+/**
+ * One parsed answer. `choice` is an option key for a choice question, a level
+ * index ("0", "1", …) for a score question, and "yes"/"no" for a noul;
+ * `probability` is the probability of that choice.
+ */
+export interface DecisionAnswer {
+  choice: string;
+  probability: number;
+}
+export interface DecisionResult {
+  answers: Record<string, DecisionAnswer>;
+  /** The model id asked for: the honest disclosure, whatever version string the response carries. */
+  model: string;
+}
+
+/** TypeSafe's documented endpoint base (https://docs.typesafe.ai/api.md); a provider's base_url overrides it. */
+export const SYSTEMONE_BASE_URL = "https://api.typesafe.ai/v1";
+
+const isProbability = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** The highest-probability option among `options`, or null when none has a probability. */
+function argmax(probabilities: Record<string, unknown>, options: string[]): string | null {
+  let best: string | null = null;
+  for (const o of options) {
+    const p = probabilities[o];
+    if (isProbability(p) && (best === null || p > (probabilities[best] as number))) best = o;
+  }
+  return best;
+}
+
+/** Parse one answer against the question that asked it; null when it is not usable. */
+export function parseDecisionAnswer(question: DecisionQuestion, raw: unknown): DecisionAnswer | null {
+  if (!isRecord(raw)) return null;
+  if (question.type === "noul") {
+    const p = raw.noul;
+    if (!isProbability(p)) return null;
+    return p >= 0.5 ? { choice: "yes", probability: p } : { choice: "no", probability: 1 - p };
+  }
+  const options = question.type === "choice" ? Object.keys(question.criteria) : question.criteria.map((_, i) => String(i));
+  const probabilities = isRecord(raw.probabilities) ? raw.probabilities : {};
+  const named = question.type === "choice" && typeof raw.choice === "string" && options.includes(raw.choice) ? raw.choice : null;
+  const choice = named ?? argmax(probabilities, options);
+  if (choice === null) return null;
+  const own = probabilities[choice];
+  const probability = isProbability(own) ? own : isProbability(raw.confidence) ? raw.confidence : null;
+  if (probability === null) return null;
+  return { choice, probability };
+}
+
+/** Parse a whole response; answers that are absent or unusable are left out. */
+export function parseDecisionResponse(questions: Record<string, DecisionQuestion>, raw: unknown): Record<string, DecisionAnswer> {
+  const body = isRecord(raw) && !isRecord(raw.answers) && isRecord(raw.result) ? raw.result : raw;
+  const answers = isRecord(body) && isRecord(body.answers) ? body.answers : {};
+  const out: Record<string, DecisionAnswer> = {};
+  for (const [id, q] of Object.entries(questions)) {
+    const parsed = parseDecisionAnswer(q, answers[id]);
+    if (parsed) out[id] = parsed;
+  }
+  return out;
+}
+
+/**
+ * Ask a decision model `questions` about `state`. One budgeted AI call
+ * (admitAi), like every other model call; throws ProviderError (AiBudgetError
+ * for the budget) on any failure, including a model that is not a decision
+ * model. Clef runs on the Workers AI binding, with the body's `model` selector
+ * ("clef" / "clef-flash") taken from the model's params, else the id's last
+ * segment; Jev goes over HTTP to `{base_url}/systemone` with the key as a
+ * bearer token.
+ */
+export async function decide(
+  env: Env,
+  modelId: string,
+  state: string,
+  questions: Record<string, DecisionQuestion>,
+  fetchImpl: ProviderFetchLike = platformProviderFetch,
+  models: Manifest = MODELS,
+): Promise<DecisionResult> {
+  const model = modelId.trim();
+  if (!model) throw new ProviderError("no decision model is configured");
+  const provider = providerFor(model, models);
+  if (!provider) throw new ProviderError(`no provider is known for model "${model}": add it to models.json (or models.local.json)`);
+  if (!isDecisionModel(model, models)) throw new ProviderError(`"${model}" is not a decision model: list it in models.json with "kind": "decision"`);
+  const { spec } = provider;
+  if (!providerConfigured(env, spec)) throw new ProviderError(notConfigured(spec));
+  if (!await admitAi(env)) throw new AiBudgetError("daily AI call budget exceeded");
+  const vars = env as unknown as Record<string, unknown>;
+  let raw: unknown;
+  if (spec.api === "workers-ai") {
+    const params = { ...spec.params, ...provider.model?.params };
+    const selector = typeof params.model === "string" && params.model ? params.model : model.split("/").pop();
+    try {
+      raw = await (vars[bindingName(spec)] as WorkersAiBinding).run(model, { ...params, model: selector, state, questions });
+    } catch (e) {
+      throw new ProviderError(`provider request failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  } else if (spec.api === "systemone") {
+    const url = `${(spec.base_url || SYSTEMONE_BASE_URL).replace(/\/+$/, "")}/systemone`;
+    raw = await postJson(fetchImpl, url, { authorization: `Bearer ${vars[spec.key_secret ?? ""] as string}` }, { model, state, questions });
+  } else {
+    throw new ProviderError(`"${model}" is listed as a decision model on a provider (${spec.label}) that cannot serve one`);
+  }
+  return { answers: parseDecisionResponse(questions, raw), model };
 }

@@ -1,12 +1,16 @@
+import { retainedMediaSql, avatarMediaSql } from './media-retention.ts';
+import { assertItemRevision, ItemRevisionConflict } from './item-revision.ts';
+import { authoredVersionKind, versionState } from './version-state.ts';
 import { DEFAULT_FONT, isFont } from "./fonts.ts";
 import { DEFAULT_FEED_ORDER } from "./feeds/index.ts";
 import { DEFAULT_POSTS_PATH } from "./front-page.ts";
 import { parseCustomTheme } from "./themes.ts";
 // Data access + publish-flow semantics — v0.1-plan §3.1.
 
+import { consumeHandles, withMentionCards } from "./contacts.ts";
 import { renderMarkdown } from "./markdown.ts";
-import { htmlCodeRanges } from "./code-ranges.ts";
 import { annotateGenerated, applyGeneratedWrappers, parseScopes, stripToOutput, TkPublishError, unresolvedScopes } from "./tk.ts";
+import { CommentPublishError, parseComments, sameOutsideComments, type CommentRange } from "./comments.ts";
 import { recordPublishInteractions } from "./interactions.ts";
 import { applyVersionAgreement, composeStubCite, composeTransclusionCite, parseStoredStub } from "./stub.ts";
 import {
@@ -20,7 +24,7 @@ import {
 import type { ForkedFrom, ItemRow, MediaRow, ScopeProvenance, Settings, StubCite, StubOf, Transclusion, VersionRow } from "./types.ts";
 import { FRAGMENT_MAX_CHARS } from "./types.ts";
 import { parseEnabledExtensions } from "./extensions/names.ts";
-import { absolutizeHtml, authoredText, contentHash, isFollowableUrl, newId, nowIso } from "./util.ts";
+import { absolutizeHtml, authoredText, contentHash, isFollowableUrl, newId, nowIso, visibleMedia } from "./util.ts";
 
 export { TkPublishError, TransclusionResolveError };
 
@@ -134,6 +138,9 @@ export function settingsFromMap(map: Record<string, string>): Settings {
     ai_model_tk: map.ai_model_tk ?? map.ai_model ?? "",
     ai_model_changelog: map.ai_model_changelog ?? map.ai_model ?? "",
     ai_model_feed: map.ai_model_feed ?? "",
+    // Off by default: an empty model is no classifier (session 49).
+    ai_model_classify: map.ai_model_classify ?? "",
+    change_category_in_note: map.change_category_in_note !== "off",
     feed_prompt: map.feed_prompt ?? "",
     ai_style_prompt: map.ai_style_prompt ?? "",
     // Default on: an existing deployment's behaviour must not change under it.
@@ -161,6 +168,8 @@ export function settingsFromMap(map: Record<string, string>): Settings {
     links_opml: map.links_opml !== "off",
     links_blygger_org: map.links_blygger_org !== "off",
     links_blygger_com: map.links_blygger_com !== "off",
+    // Off by default (spec 0.4 §13.5, decision #86): publishing hopper feeds is opt-in.
+    hopper_feeds: map.hopper_feeds === "on",
     update_check: map.update_check !== "off",
     update_feed_url: map.update_feed_url ?? "",
     /** Cleared until the operator has seen the "alerts are on" notice once. */
@@ -232,30 +241,16 @@ export async function createFork(
 /**
  * The item's authored kind — 'fragment' or 'thread' — independent of the
  * transient 'withdrawn' state a live item.kind carries after withdrawal.
- * For a withdrawn item, derived from the last real (non-endcap) version's
- * transclusions column, per §3.1 republish rules.
+ * For a withdrawn item, use the previous publication's stored kind, with its
+ * legacy transclusions fallback, per §3.1 republish rules.
  */
 export async function authoredKind(db: D1Database, item: ItemRow): Promise<"fragment" | "thread"> {
   if (item.kind === "fragment" || item.kind === "thread") return item.kind;
   const prev = await db
-    .prepare("SELECT transclusions FROM versions WHERE item_id = ? AND version = ?")
+    .prepare("SELECT kind, transclusions FROM versions WHERE item_id = ? AND version = ?")
     .bind(item.id, item.version - 1)
-    .first<{ transclusions: string | null }>();
-  return prev?.transclusions ? "thread" : "fragment";
-}
-
-/**
- * Change a never-published draft's kind. Guarded by `version = 0` in the SQL
- * as well as by the caller, because this is the one field that stops being
- * editable the moment an item is published: from then on it is a wire field
- * readers already have, and a row of history that must keep agreeing with the
- * documents it describes.
- */
-export async function setDraftKind(db: D1Database, id: string, kind: "fragment" | "thread"): Promise<void> {
-  await db
-    .prepare("UPDATE items SET kind = ?, dirty = 1, updated = ? WHERE id = ? AND version = 0")
-    .bind(kind, nowIso(), id)
-    .run();
+    .first<Pick<VersionRow, "kind" | "transclusions">>();
+  return authoredVersionKind(prev, Boolean(prev?.transclusions));
 }
 
 /**
@@ -276,23 +271,27 @@ export function itemShowsResponses(item: ItemRow, settings: Settings): boolean {
 }
 
 /** Save the working copy. Does not touch `updated` for ever-published items — that field is publish-facing. */
-export async function saveWorkingCopy(db: D1Database, id: string, contentMd: string): Promise<void> {
-  await db
-    .prepare("UPDATE items SET content_md = ?, dirty = 1, updated = CASE WHEN version = 0 THEN ? ELSE updated END WHERE id = ?")
-    .bind(contentMd, nowIso(), id)
-    .run();
+/**
+ * Does saving `next` leave the working copy holding the published words? Only
+ * when comments are what changed: a note to self is not an unpublished change,
+ * and treating it as one would invite a new public version with the same words.
+ * The second case is a clean item back from a half-typed comment, whose unclosed
+ * opener hid the text after it. A version that disclosed generation is excluded
+ * for the reason in holdsPublishedWords.
+ */
+export async function keepsPublishedWords(db: D1Database, item: ItemRow, next: string): Promise<boolean> {
+  if (item.status !== "public" || item.version === 0) return false;
+  if (item.dirty === 0 && sameOutsideComments(item.content_md, next)) return true;
+  const comments = parseComments(next);
+  if (comments.errors.length || !comments.ranges.length) return false;
+  const published = await publishedVersion(db, item);
+  return !!published && published.content_md === authoredText(comments.text) && !published.generated_json;
 }
 
-/**
- * Set or clear the working copy's stub citation (§2.2). Kept separate from
- * saveWorkingCopy because the two are independent: retargeting a stub is not
- * an edit of the prose, and clearing it leaves the body exactly as written —
- * a former stub is just a thread that quotes something.
- */
-export async function setStubOf(db: D1Database, id: string, stub: StubOf | null): Promise<void> {
+export async function saveWorkingCopy(db: D1Database, id: string, contentMd: string): Promise<void> {
   await db
-    .prepare("UPDATE items SET stub_of = ?, dirty = 1 WHERE id = ?")
-    .bind(stub ? JSON.stringify(stub) : null, id)
+    .prepare("UPDATE items SET content_md = ?, dirty = 1, updated = CASE WHEN version = 0 THEN ? ELSE updated END, revision = revision + 1 WHERE id = ?")
+    .bind(contentMd, nowIso(), id)
     .run();
 }
 
@@ -319,20 +318,17 @@ export function getTkProvenance(item: ItemRow): (ScopeProvenance | null)[] {
   }
 }
 
-/** Record scope `index`'s provenance, resizing the cache to `scopeCount` (current scope count). */
-export async function setTkProvenance(
-  db: D1Database,
-  itemId: string,
-  index: number,
-  scopeCount: number,
-  provenance: ScopeProvenance,
-): Promise<void> {
-  const item = await getItem(db, itemId);
-  const arr = getTkProvenance(item!);
-  while (arr.length < scopeCount) arr.push(null);
-  arr.length = scopeCount;
-  arr[index] = provenance;
-  await db.prepare("UPDATE items SET tk_provenance_json = ? WHERE id = ?").bind(JSON.stringify(arr), itemId).run();
+/**
+ * The provenance cache lines up with every scope in the working copy, and
+ * publish() sees only those outside comments. A scope in a comment publishes
+ * nothing, so its record is dropped, not handed to the scope after it.
+ */
+function publishedProvenance(item: ItemRow, working: string, ranges: CommentRange[]): (ScopeProvenance | null)[] {
+  const cache = getTkProvenance(item);
+  if (!ranges.length) return cache;
+  const { scopes, errors } = parseScopes(working);
+  if (errors.length) throw new TkPublishError(errors);
+  return scopes.flatMap((scope, i) => (ranges.some((r) => scope.start >= r.start && scope.start < r.end) ? [] : [cache[i] ?? null]));
 }
 
 /**
@@ -356,7 +352,19 @@ export async function publish(db: D1Database, item: ItemRow, note: string | null
 
   // What gets published is authored text: XML-safe, no internal sentinels
   // (studio#15). The working copy keeps whatever was typed.
-  const source = authoredText(item.content_md);
+  // `@handle` is consumed here, on every write path (tn-6 section 5.2, #91): the
+  // working copy keeps it and `content_md` never carries it.
+  // Comments to self go first, before anything can act on their contents: no
+  // handle consumed, no directive resolved, no scope required to have output.
+  const working = authoredText(item.content_md);
+  const comments = parseComments(working);
+  if (comments.errors.length) throw new CommentPublishError(comments.errors);
+  if (comments.ranges.length && !comments.text.trim()) {
+    throw new CommentPublishError([{ at: 0, reason: "this holds only comments, so there is nothing to publish" }]);
+  }
+  const authored = comments.text;
+  const handles = await consumeHandles(db, authored);
+  const source = handles.text;
   const { scopes, errors: parseErrors } = parseScopes(source);
   const unresolved = unresolvedScopes(scopes);
   if (parseErrors.length || unresolved.length) {
@@ -367,14 +375,16 @@ export async function publish(db: D1Database, item: ItemRow, note: string | null
   }
 
   const { text: strippedMd, spans } = stripToOutput(source, scopes);
-  if (kind === "fragment" && strippedMd.length > FRAGMENT_MAX_CHARS) {
-    throw new FragmentTooLongError(strippedMd.length, FRAGMENT_MAX_CHARS);
+  // The cap measures the author's words, before a handle expands into a link.
+  const authoredLength = handles.cards.size ? stripToOutput(authored, parseScopes(authored).scopes).text.length : strippedMd.length;
+  if (kind === "fragment" && authoredLength > FRAGMENT_MAX_CHARS) {
+    throw new FragmentTooLongError(authoredLength, FRAGMENT_MAX_CHARS);
   }
 
   // An `impyrt` scope carries its provenance in the grammar (decision #37):
   // generated elsewhere, so no sources are declared and `model` appears only if
   // the author wrote it. Never `at` — when it was generated is not known here.
-  const cache = getTkProvenance(item);
+  const cache = publishedProvenance(item, working, comments.ranges);
   const provenanceCache: (ScopeProvenance | null)[] = scopes.map((s, i) =>
     s.imported ? { sources: [], ...(s.imported.model ? { model: s.imported.model } : {}) } : cache[i] ?? null,
   );
@@ -392,16 +402,15 @@ export async function publish(db: D1Database, item: ItemRow, note: string | null
   //
   // Run over the body *and* over each independently-rendered generated block,
   // because annotateGenerated has already lifted those blocks out of the body
-  // text: a link inside one would otherwise stay literal. Their raw text is
-  // gone by now, but the rendered HTML still contains the un-substituted
-  // `[[id]]` verbatim — no character of the grammar is HTML-special — so the
-  // same resolver works on either input. Token sequence is global, so the maps
-  // merge.
+  // text: a link inside one would otherwise stay literal. Each block is
+  // resolved over its own markdown and rendered again, never over its HTML,
+  // where a label has already been through markdown and escaping once.
+  // Token sequence is global, so the maps merge.
   const linkErrors: TransclusionRefError[] = [];
-  const links = await resolveInternalLinks(db, annotated.text, normalizedOrigin(origin));
+  const links = withMentionCards(await resolveInternalLinks(db, annotated.text, normalizedOrigin(origin)), handles.cards);
   linkErrors.push(...links.errors);
-  const { docs: blockLinks, errors: blockErrors } = await resolveBlockLinks(annotated.blockReplacements, (html) =>
-    resolveInternalLinks(db, html, normalizedOrigin(origin), undefined, htmlCodeRanges),
+  const { docs: blockLinks, errors: blockErrors } = await resolveBlockLinks(annotated, async (md) =>
+    withMentionCards(await resolveInternalLinks(db, md, normalizedOrigin(origin)), handles.cards),
   );
   linkErrors.push(...blockErrors);
   if (linkErrors.length) throw new TransclusionResolveError(linkErrors);
@@ -411,7 +420,7 @@ export async function publish(db: D1Database, item: ItemRow, note: string | null
   let contentHtml: string;
   let transclusionsJson: string | null = null;
   if (kind === "thread") {
-    const resolved = await resolveTransclusions(db, links.text, item.id);
+    const resolved = await resolveTransclusions(db, links.text, item.id, annotated);
     if (resolved.errors.length) throw new TransclusionResolveError(resolved.errors);
     contentHtml = spliceLinks(applyGeneratedWrappers(resolved.html, annotated));
     // §5.9 / decision #30: every **remote** entry carries its frozen human
@@ -459,15 +468,23 @@ export async function publish(db: D1Database, item: ItemRow, note: string | null
   const citeJson = agreed ? JSON.stringify(await composeStubCite(db, agreed, normalizedOrigin(origin), settings.site_title, now)) : null;
 
   const hash = await contentHash(strippedMd);
-  await db.batch([
+  // The attachments this version shows (§5.4, studio#7): appended ones, and
+  // inline ones its text places. Frozen with the version, so dropping one from
+  // the working copy changes the next version and never this one.
+  const shown = JSON.stringify(visibleMedia(await listMediaForItem(db, item.id), contentHtml).map((m) => m.id));
+  const committed = await db.batch([
     db.prepare(
-      "INSERT INTO versions (item_id, version, content_md, content_html, content_hash, published_at, note, transclusions, generated_json, stub_of, stub_cite, note_generated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    ).bind(item.id, version, strippedMd, contentHtml, hash, now, note, transclusionsJson, generatedJson, stubJson, citeJson, note && noteGenerated ? 1 : 0),
+      "INSERT INTO versions (item_id, version, content_md, content_html, content_hash, published_at, note, transclusions, generated_json, stub_of, stub_cite, note_generated, kind) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM items WHERE id = ? AND revision = ?",
+    ).bind(item.id, version, strippedMd, contentHtml, hash, now, note, transclusionsJson, generatedJson, stubJson, citeJson, note && noteGenerated ? 1 : 0, kind, item.id, item.revision),
+    // Rows still attached at the write, so a removal racing the publish wins.
+    db.prepare("INSERT INTO version_media (item_id, version, media_id) SELECT ?, ?, m.id FROM json_each(?) s JOIN media m ON m.id = s.value WHERE m.item_id = ? AND EXISTS (SELECT 1 FROM items WHERE id = ? AND revision = ?)")
+      .bind(item.id, version, shown, item.id, item.id, item.revision),
     // The agreed citation goes back into the working copy as well, or the copy
     // keeps citing the older version and differs from what it just published.
-    db.prepare("UPDATE items SET status = 'public', kind = ?, version = ?, dirty = 0, updated = ?, stub_of = ? WHERE id = ?")
-      .bind(kind, version, now, stubJson, item.id),
+    db.prepare("UPDATE items SET status = 'public', kind = ?, version = ?, dirty = 0, updated = ?, stub_of = ?, revision = revision + 1 WHERE id = ? AND revision = ?")
+      .bind(kind, version, now, stubJson, item.id, item.revision),
   ]);
+  if (!committed[2].meta.changes) throw new ItemRevisionConflict(item.id, item.revision);
   // The owner's private interaction log (src/interactions.ts): stubs, forks and
   // quotes of other blygs' items that this version newly makes.
   await recordPublishInteractions(db, item.id, version, normalizedOrigin(origin));
@@ -492,12 +509,13 @@ export async function withdraw(db: D1Database, item: ItemRow, note: string | nul
   const now = nowIso();
   const version = item.version + 1;
   const hash = await contentHash("");
-  await db.batch([
-    db.prepare("INSERT INTO versions (item_id, version, content_md, content_hash, published_at, note) VALUES (?, ?, '', ?, ?, ?)")
-      .bind(item.id, version, hash, now, note),
-    db.prepare("UPDATE items SET status = 'withdrawn', kind = 'withdrawn', version = ?, dirty = 1, updated = ? WHERE id = ?")
-      .bind(version, now, item.id),
+  const committed = await db.batch([
+    db.prepare("INSERT INTO versions (item_id, version, content_md, content_hash, published_at, note, kind) SELECT ?, ?, '', ?, ?, ?, 'withdrawn' FROM items WHERE id = ? AND revision = ?")
+      .bind(item.id, version, hash, now, note, item.id, item.revision),
+    db.prepare("UPDATE items SET status = 'withdrawn', kind = 'withdrawn', version = ?, dirty = 1, updated = ?, revision = revision + 1 WHERE id = ? AND revision = ?")
+      .bind(version, now, item.id, item.revision),
   ]);
+  if (!committed[1].meta.changes) throw new ItemRevisionConflict(item.id, item.revision);
   return version;
 }
 
@@ -505,11 +523,14 @@ export async function withdraw(db: D1Database, item: ItemRow, note: string | nul
 export async function discardDraft(db: D1Database, item: ItemRow): Promise<boolean> {
   // Authorize at the atomic write boundary. A publication after the caller's
   // read must preserve both the public item and its media.
+  const owner = 'item_id = ? AND EXISTS (SELECT 1 FROM items WHERE id = ? AND version = 0 AND revision = ?)';
+  const keep = `(${retainedMediaSql}) OR (${avatarMediaSql})`;
   const results = await db.batch([
-    db.prepare("DELETE FROM media WHERE item_id = ? AND EXISTS (SELECT 1 FROM items WHERE id = ? AND version = 0)").bind(item.id, item.id),
-    db.prepare("DELETE FROM items WHERE id = ? AND version = 0").bind(item.id),
+    db.prepare(`DELETE FROM media WHERE ${owner} AND NOT (${keep})`).bind(item.id, item.id, item.revision),
+    db.prepare(`UPDATE media SET item_id = NULL WHERE ${owner} AND (${keep})`).bind(item.id, item.id, item.revision),
+    db.prepare("DELETE FROM items WHERE id = ? AND version = 0 AND revision = ?").bind(item.id, item.revision),
   ]);
-  return results[1].meta.changes > 0;
+  return results[2].meta.changes > 0;
 }
 
 /** Thrown by restoreVersion() when the target version can't serve as a working copy. */
@@ -531,7 +552,8 @@ export class RestoreVersionError extends Error {}
  * exist.
  *
  * Restoring the **current** version is "discard changes", and there the
- * working copy becomes that version whole: its stub citation comes back too
+ * working copy becomes that version whole: its attachments and stub citation
+ * come back too
  * (publish version-agrees the citation, §2.2, so the published one can be
  * ahead of the working copy's), and the copy is clean again — unless the
  * version disclosed generated text, whose provenance a restore cannot carry
@@ -542,22 +564,41 @@ export class RestoreVersionError extends Error {}
 export async function restoreVersion(db: D1Database, item: ItemRow, version: number): Promise<void> {
   const row = await getVersion(db, item.id, version);
   if (!row) throw new RestoreVersionError(`item has no version ${version}`);
-  if (!row.content_md) {
+  if (versionState(row) === "withdrawn") {
     throw new RestoreVersionError(`v${version} is a withdrawal endcap and has no content to restore`);
   }
   const discard = version === item.version;
-  await db
-    .prepare("UPDATE items SET content_md = ?, tk_provenance_json = NULL, stub_of = CASE WHEN ? THEN ? ELSE stub_of END, dirty = ? WHERE id = ?")
-    .bind(row.content_md, discard ? 1 : 0, row.stub_of, discard && !row.generated_json ? 0 : 1, item.id)
-    .run();
+  // All three statements see the same source state in one transaction. Do not
+  // detach attachments if an edit or publication invalidated the caller's read.
+  const guard = "id = ? AND revision = ?";
+  const expected = [item.id, item.revision];
+  const results = await db.batch([
+    db.prepare(`UPDATE media SET item_id = NULL WHERE item_id = ? AND id NOT IN (SELECT media_id FROM version_media WHERE item_id = ? AND version = ?) AND EXISTS (SELECT 1 FROM items WHERE ${guard})`)
+      .bind(item.id, item.id, version, ...expected),
+    // A prior detach retains the media row and bytes for its published versions.
+    db.prepare(`UPDATE media SET item_id = ? WHERE id IN (SELECT media_id FROM version_media WHERE item_id = ? AND version = ?) AND EXISTS (SELECT 1 FROM items WHERE ${guard})`)
+      .bind(item.id, item.id, version, ...expected),
+    db.prepare(`UPDATE items SET content_md = ?, tk_provenance_json = NULL, stub_of = CASE WHEN ? THEN ? ELSE stub_of END, dirty = ?, revision = revision + 1 WHERE ${guard}`)
+      .bind(row.content_md, discard ? 1 : 0, row.stub_of, discard && !row.generated_json ? 0 : 1, ...expected),
+  ]);
+  if (!results[2].meta.changes) throw new ItemRevisionConflict(item.id, item.revision);
 }
 
 /** Irrevocably pin a version (§2.8). Idempotent; never unset. */
-export async function pinVersion(db: D1Database, itemId: string, version: number): Promise<void> {
-  await db
-    .prepare("UPDATE versions SET pinned = 1, pinned_at = COALESCE(pinned_at, ?) WHERE item_id = ? AND version = ?")
-    .bind(nowIso(), itemId, version)
-    .run();
+export async function pinVersion(db: D1Database, itemId: string, version: number, expectedRevision?: number): Promise<number> {
+  const item = await getItem(db, itemId);
+  if (!item) throw new ItemRevisionConflict(itemId, expectedRevision ?? 0);
+  assertItemRevision(item, expectedRevision ?? item.revision);
+  const row = await getVersion(db, itemId, version);
+  if (!row || row.pinned === 1) return item.revision;
+  const committed = await db.batch([
+    db.prepare("UPDATE versions SET pinned = 1, pinned_at = COALESCE(pinned_at, ?) WHERE item_id = ? AND version = ? AND EXISTS (SELECT 1 FROM items WHERE id = ? AND revision = ?)")
+      .bind(nowIso(), itemId, version, itemId, item.revision),
+    db.prepare("UPDATE items SET revision = revision + 1 WHERE id = ? AND revision = ?")
+      .bind(itemId, item.revision),
+  ]);
+  if (!committed[1].meta.changes) throw new ItemRevisionConflict(itemId, item.revision);
+  return item.revision + 1;
 }
 
 export async function getVersion(db: D1Database, itemId: string, version: number): Promise<VersionRow | null> {
@@ -648,24 +689,58 @@ export async function insertMedia(
   db: D1Database,
   row: Omit<MediaRow, "created">,
   unpublishedOnly = false,
+  sha256: string | null = null,
+  expectedRevision?: number,
 ): Promise<MediaRow | null> {
   const created = nowIso();
-  // Evaluate publication and insert in one statement. A publisher can run while
-  // the R2 upload awaits; a separate earlier read is not an authorization gate.
-  const result = await db
-    .prepare("INSERT INTO media (id, item_id, r2_key, mime, alt, created, inline) SELECT ?, ?, ?, ?, ?, ?, ? WHERE ? = 0 OR ? IS NULL OR EXISTS (SELECT 1 FROM items WHERE id = ? AND version = 0)")
-    .bind(row.id, row.item_id, row.r2_key, row.mime, row.alt, created, row.inline, unpublishedOnly ? 1 : 0, row.item_id, row.item_id)
-    .run();
-  return result.meta.changes ? { ...row, created } : null;
+  const item = row.item_id ? await getItem(db, row.item_id) : null;
+  if (row.item_id && !item) {
+    if (expectedRevision !== undefined) throw new ItemRevisionConflict(row.item_id, expectedRevision);
+    return null;
+  }
+  if (item) assertItemRevision(item, expectedRevision ?? item.revision);
+  const revision = item?.revision ?? 0;
+  // Membership and the owning item's revision commit in one transaction.
+  const committed = await db.batch([
+    db.prepare("INSERT INTO media (id, item_id, r2_key, mime, alt, created, inline, sha256) SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE ? IS NULL OR EXISTS (SELECT 1 FROM items WHERE id = ? AND revision = ? AND (? = 0 OR version = 0))")
+      .bind(row.id, row.item_id, row.r2_key, row.mime, row.alt, created, row.inline, sha256, row.item_id, row.item_id, revision, unpublishedOnly ? 1 : 0),
+    db.prepare("UPDATE items SET dirty = CASE WHEN status = 'public' THEN 1 ELSE dirty END, revision = revision + 1 WHERE id = ? AND revision = ? AND EXISTS (SELECT 1 FROM media WHERE id = ? AND item_id = ?)")
+      .bind(row.item_id, revision, row.id, row.item_id),
+  ]);
+  if (!committed[0].meta.changes) {
+    const current = item ? await getItem(db, item.id) : null;
+    if (item && current?.revision !== revision) throw new ItemRevisionConflict(item.id, revision);
+    return null;
+  }
+  return { ...row, created };
 }
 
-export async function getMedia(db: D1Database, id: string): Promise<MediaRow | null> {
-  return db.prepare("SELECT * FROM media WHERE id = ?").bind(id).first<MediaRow>();
+/** The item's earlier upload of the same file (bytes and type) in the same placement, if any (migration 0028, studio#7). */
+export async function findDuplicateMedia(db: D1Database, itemId: string, sha256: string, mime: string, inline: number): Promise<MediaRow | null> {
+  return db
+    .prepare("SELECT id, item_id, r2_key, mime, alt, created, inline FROM media WHERE item_id = ? AND sha256 = ? AND mime = ? AND inline = ? ORDER BY created ASC LIMIT 1")
+    .bind(itemId, sha256, mime, inline)
+    .first<MediaRow>();
 }
 
+export async function getMedia(db: D1Database, id: string): Promise<(MediaRow & { sha256: string | null }) | null> {
+  return db.prepare("SELECT * FROM media WHERE id = ?").bind(id).first<MediaRow & { sha256: string | null }>();
+}
+
+/** The attachments a published version shows (migration 0031), detached rows included: what that version's document and pages list. */
+export async function listVersionMedia(db: D1Database, itemId: string, version: number): Promise<MediaRow[]> {
+  return (
+    await db
+      .prepare("SELECT m.* FROM version_media vm JOIN media m ON m.id = vm.media_id WHERE vm.item_id = ? AND vm.version = ? ORDER BY m.created ASC, m.rowid ASC")
+      .bind(itemId, version)
+      .all<MediaRow>()
+  ).results;
+}
+
+/** The working copy's attachments: what the next version will show. */
 export async function listMediaForItem(db: D1Database, itemId: string): Promise<MediaRow[]> {
   return (
-    await db.prepare("SELECT * FROM media WHERE item_id = ? ORDER BY created ASC").bind(itemId).all<MediaRow>()
+    await db.prepare("SELECT * FROM media WHERE item_id = ? ORDER BY created ASC, rowid ASC").bind(itemId).all<MediaRow>()
   ).results;
 }
 

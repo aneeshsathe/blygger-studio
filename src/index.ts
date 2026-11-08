@@ -1,27 +1,33 @@
+import { retainedMediaSql, avatarMediaSql } from './media-retention.ts';
+import { authoredVersionKind } from './version-state.ts';
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { conditionalHtmlResponse, htmlCacheResponse, publicHtmlKey, publicHtmlRequest, publicHtmlRevision } from './html-cache.ts';
 import { readChanges } from './changes.ts';
 import { verifySession } from "./auth.ts";
 import { verifyBearer } from "./oauth.ts";
 import { requestError } from './request-error.ts';
+import { statusError } from './api-error.ts';
 import { fontCss } from "./fonts.ts";
 import { listHomeItems } from "./public-feed.ts";
 import { studioSpa } from "./spa.ts";
 import { authorizationApi } from './authorization-api.ts';
 import { oauthRoutes } from './oauth-routes.ts';
 import { serveMcp } from './mcp.ts';
-import { ownerApi } from "./owner-api.ts";
+import { conditionalResponse, EXPOSED_RESPONSE_HEADERS, setResponseHeaders, validatedResponse } from './http-response.ts';
+import { createOwnerApi } from "./owner-api.ts";
 // Studio is mounted at {mount}/studio and its assets share that range.
-// The owner API remains host-rooted at /api. Register both before the public
+// The API shares the deployment mount. Register both before the public
 // sub-app so public-page cache middleware cannot wrap private responses.
 
 import { type Context, Hono } from "hono";
 
 
 import { buildBlogrollOpml } from "./importer/opml.ts";
-import { publicHopperPage, type HopperItemView } from "./importer/pages.ts";
+import { loadHopperMembers, publicHopperPage } from "./importer/pages.ts";
+import { buildHopperFeedXml } from "./hopper-feed.ts";
+import { backfillImportedMentions } from "./importer/mention-index.ts";
 import { repairImportedUrls, runScheduledPoll } from "./importer/schedule.ts";
-import { getHopperBySlug, getImportedItem, getSubscription, listBlogrollSubscriptions, listHopperItems, OWN_SUBSCRIPTION } from "./importer/store.ts";
+import { getHopperBySlug, listBlogrollSubscriptions } from "./importer/store.ts";
 import { resolveFrontPage } from "./front-page.ts";
 import { authoredKind, getItem, getMedia, getSettings, getVersion, listPublic } from "./model.ts";
 import { archivePage, feedPage, generatedHighlightCss, permalinkPage, pinnedVersionPage, STYLE_CSS, themeCss, threadPage } from "./pages.ts";
@@ -35,7 +41,7 @@ import { drainOutbound } from "./mentions/send.ts";
 import { pruneFailedInbound } from "./mentions/store.ts";
 import type { Env, Settings } from "./types.ts";
 import { FEED_PAGE_SIZE, WEBMENTION_PATH } from "./types.ts";
-import { normalizeMount, studioPath } from "./util.ts";
+import { normalizeMount, deploymentPaths } from "./util.ts";
 
 const cors = (c: { header: (k: string, v: string) => void }) =>
   c.header("Access-Control-Allow-Origin", "*");
@@ -43,49 +49,100 @@ const cors = (c: { header: (k: string, v: string) => void }) =>
 /** Build the app for one normalized mount ("" = root, else "/path"). */
 export function makeApp(mount: string) {
   const app = new Hono<{ Bindings: Env }>({ strict: false });
+  const paths = deploymentPaths(mount);
+  const outerError = (path: string, status: number, message: string) => {
+    const privateRequest = path === paths.api || path.startsWith(paths.api + '/') ||
+      path.replace(/\/+$/, '') === paths.mcp;
+    return privateRequest ? statusError(status, message) : { error: message };
+  };
   app.onError((_error, c) => {
     // Authentication driver failures can contain SQL parameters and secrets.
     // Keep a bounded event rather than Hono's default raw Error/stack output.
     console.error('Worker request failed', requestError(_error, c));
-    return c.json({ error: 'internal server error' }, 500, { 'Cache-Control': 'no-store' });
+    return c.json(outerError(c.req.path, 500, 'internal server error'), 500, { 'Cache-Control': 'no-store' });
   });
   app.use('*', async (c, next) => {
-    const path = c.req.path, studio = studioPath(mount);
-    if (path === '/api' || path.startsWith('/api/') || path === studio || path.startsWith(studio + '/')) {
+    c.env = { ...c.env, MOUNT: mount };
+    const path = c.req.path, studio = paths.studio;
+    if (path === paths.api || path.startsWith(paths.api + '/') || path === studio || path.startsWith(studio + '/')) {
       const url = new URL(c.req.url);
       const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
-      if (url.protocol !== 'https:' && !loopback) return c.json({ error: 'HTTPS required' }, 400, { 'Cache-Control': 'no-store' });
+      if (url.protocol !== 'https:' && !loopback) return c.json(outerError(path, 400, 'HTTPS required'), 400, { 'Cache-Control': 'no-store' });
     }
     await next();
   });
 
-  // --- Studio: cookie auth, mount-relative (see header note). API: cookie auth, host-rooted. Registered first. ---
+  // Host-root /api alias for mounted nodes (ROADMAP row 64, studio#70). REST
+  // moved to {mount}/api in 0.49.2; the old address keeps answering for two
+  // releases so tools built against it can move. Discovery advertises only the
+  // mounted address; alias answers say so with Deprecation and a successor Link.
+  if (mount) {
+    const legacyApi = async (c: Context<{ Bindings: Env }>) => {
+      const url = new URL(c.req.url);
+      url.pathname = paths.api + url.pathname.slice('/api'.length);
+      const response = await app.fetch(new Request(url, c.req.raw), c.env, c.executionCtx);
+      const headers = new Headers(response.headers);
+      headers.set('Deprecation', 'true');
+      headers.append('Link', `<${url.origin}${paths.api}>; rel="successor-version"`);
+      return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+    };
+    app.all('/api', legacyApi);
+    app.all('/api/*', legacyApi);
+  }
 
-  app.route(studioPath(mount) + '/auth', oauthRoutes());
-  app.all(studioPath(mount) + '/mcp', c => serveMcp(c.req.raw, c.env, c.executionCtx));
-  app.use('/api/*', async (c, next) => {
+  // --- Private deployment routes precede public cache middleware. ---
+
+  app.route(paths.studio + '/auth', oauthRoutes());
+  app.all(paths.studio + '/mcp', c => serveMcp(c.req.raw, c.env, c.executionCtx));
+  app.use(paths.api + '/*', async (c, next) => {
     if (c.req.header('authorization') || c.req.method === 'OPTIONS') {
       c.header('Access-Control-Allow-Origin', '*');
       c.header('Access-Control-Allow-Methods', 'GET, HEAD, POST, PATCH, PUT, DELETE, OPTIONS');
-      c.header('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-      c.header('Access-Control-Expose-Headers', 'WWW-Authenticate, Location');
-      if (c.req.method === 'OPTIONS') return c.body(null, 204);
+      c.header('Access-Control-Allow-Headers', 'Authorization, Content-Type, If-None-Match');
+      c.header('Access-Control-Expose-Headers', EXPOSED_RESPONSE_HEADERS);
+      if (c.req.method === 'OPTIONS') return c.body(null, 204, { 'Cache-Control': 'no-store' });
     }
     await next();
   });
-  app.route('/api', authorizationApi);
-  app.route(studioPath(mount), studioSpa(mount));
+  app.route(paths.api, authorizationApi);
+  app.route(paths.studio, studioSpa(mount));
 
-  app.route("/api", ownerApi);
+  app.route(paths.api, createOwnerApi(undefined, undefined, paths.api));
 
   // --- Public surface: mount-relative — cache 60s; JSON/XML get permissive CORS. ---
 
   const pub = new Hono<{ Bindings: Env }>({ strict: false });
 
+  // Wire resources are readable by browser clients on other origins, including
+  // errors and explicit conditional requests. This excludes owner UI and MCP.
+  const wireRead = (path: string) => /\.(?:json|xml|opml)$/.test(path) || path.startsWith(mount + '/media/');
+  pub.use('*', async (c, next) => {
+    if (c.req.method === 'OPTIONS' && wireRead(c.req.path)) {
+      return c.body(null, 204, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+        'Access-Control-Allow-Headers': 'Authorization, If-None-Match',
+        'Access-Control-Expose-Headers': EXPOSED_RESPONSE_HEADERS,
+        'Cache-Control': 'no-store',
+      });
+    }
+    await next();
+    if (wireRead(c.req.path)) setResponseHeaders(c, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Expose-Headers': EXPOSED_RESPONSE_HEADERS,
+    });
+  });
   pub.use("*", async (c, next) => {
     await next();
-    if (c.res.ok && !c.res.headers.has("Cache-Control")) {
-      c.res.headers.set("Cache-Control", "public, max-age=60");
+    if (!c.res.headers.has('Cache-Control')) {
+      c.header('Cache-Control', c.res.ok ? 'public, max-age=60' : 'no-store');
+    }
+    const type = c.res.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase();
+    const text = type === 'application/json' || type === 'application/rss+xml' ||
+      type === 'text/x-opml' || type === 'text/css';
+    if (c.res.status === 200 && text && !/\b(?:private|no-store)\b/i.test(c.res.headers.get('Cache-Control') ?? '')) {
+      c.header('Cache-Control', 'no-cache');
+      c.res = await validatedResponse(c.req.raw, c.res);
     }
   });
 
@@ -152,28 +209,24 @@ export function makeApp(mount: string) {
   pub.get("/h/:slug", async (c) => {
     const hopper = await getHopperBySlug(c.env.DB, c.req.param("slug"));
     if (!hopper || hopper.public !== 1) return c.notFound();
-    const memberships = await listHopperItems(c.env.DB, hopper.id);
-    const subCache = new Map<string, Awaited<ReturnType<typeof getSubscription>>>();
-    const items: HopperItemView[] = [];
-    for (const m of memberships) {
-      // The owner's own items show once published, and not after withdrawal.
-      if (m.subscription_id === OWN_SUBSCRIPTION) {
-        const own = await getItem(c.env.DB, m.remote_id);
-        if (own?.status === "public") items.push({ own });
-        continue;
-      }
-      const row = await getImportedItem(c.env.DB, m.subscription_id, m.remote_id);
-      if (!row) continue;
-      let sub = subCache.get(m.subscription_id);
-      if (sub === undefined) {
-        sub = await getSubscription(c.env.DB, m.subscription_id);
-        subCache.set(m.subscription_id, sub);
-      }
-      if (!sub) continue;
-      items.push({ row, sub });
-    }
+    // The owner's own items show once published, and not after withdrawal.
+    const items = await loadHopperMembers(c.env.DB, hopper.id);
     const settings = await getSettings(c.env.DB);
     return c.html(await publicHopperPage(c.env.DB, settings, hopper, items, mount, siteOrigin(settings, c.req.url, mount)));
+  });
+
+  // A public hopper's own feed (src/hopper-feed.ts; spec 0.4 §16.12 rule 3),
+  // served only while `hopper_feeds` is on. Every other case is the same
+  // 404 as an unknown slug, so a private hopper leaks nothing, not even that
+  // it exists. The path is hopperFeedPath(); Hono needs it as a literal.
+  pub.get("/h/:slug/feed.xml", async (c) => {
+    const settings = await getSettings(c.env.DB);
+    if (!settings.hopper_feeds) return c.notFound();
+    const hopper = await getHopperBySlug(c.env.DB, c.req.param("slug"));
+    if (!hopper || hopper.public !== 1 || !hopper.slug) return c.notFound();
+    cors(c);
+    const xml = await buildHopperFeedXml(c.env.DB, settings, { ...hopper, slug: hopper.slug }, siteOrigin(settings, c.req.url, mount));
+    return c.body(xml, 200, { "Content-Type": "application/rss+xml; charset=utf-8" });
   });
 
   pub.get("/items/:file", async (c) => {
@@ -203,7 +256,7 @@ export function makeApp(mount: string) {
 
   /**
    * Webmention endpoint (§2.3.1, decision #28) — inside the origin surface,
-   * unlike host-rooted /studio and /api, because it is a protocol surface: a
+   * because it is a protocol surface: a
    * stranger's client finds it from the manifest or a page link, both of
    * which are origin-relative.
    *
@@ -240,6 +293,12 @@ export function makeApp(mount: string) {
     c.executionCtx.waitUntil(verifyMention(c.env.DB, mentionId, source, itemId, origin, mentionFetchFor(c.env)).catch(() => {}));
     return c.json({ ok: true, status: "accepted, pending verification" }, 202);
   });
+  pub.all('/webmention', async c => {
+    c.header('Cache-Control', 'no-store');
+    if (!(await getSettings(c.env.DB)).accept_mentions) return c.notFound();
+    c.header('Allow', 'POST');
+    return c.json({ error: 'method not allowed' }, 405);
+  });
 
   /** W3C discovery also allows the endpoint in a Link header, so item pages carry both. */
   const webmentionLink = (c: Context<{ Bindings: Env }>, settings: Settings) => {
@@ -261,7 +320,7 @@ export function makeApp(mount: string) {
   // 404 unless that exact version is pinned; 200 forever once it is,
   // surviving withdrawal. The authored kind of the *pinned version* decides
   // which route serves it (a withdrawn item's kind is 'withdrawn', but its
-  // pinned v1 was authored as fragment or thread — transclusions tells us).
+  // pinned v1 retains its authored kind, with a legacy transclusions fallback).
   const pinnedPage = (wantThread: boolean) => async (c: Context<{ Bindings: Env }>) => {
     const m = /^v(\d+)$/.exec(c.req.param("vseg") ?? "");
     if (!m) return c.notFound();
@@ -269,7 +328,7 @@ export function makeApp(mount: string) {
     if (!item || item.status === "draft") return c.notFound();
     const row = await getVersion(c.env.DB, item.id, Number(m[1]));
     if (!row || row.pinned !== 1) return c.notFound();
-    const isThread = row.transclusions !== null;
+    const isThread = authoredVersionKind(row) === "thread";
     if (isThread !== wantThread) return c.notFound();
     const settings = await getSettings(c.env.DB);
     return c.html(await pinnedVersionPage(c.env.DB, settings, item, row, isThread, mount, siteOrigin(settings, c.req.url, mount)));
@@ -299,21 +358,20 @@ export function makeApp(mount: string) {
     return latestItems(c, settings, true);
   });
 
-  pub.get("/media/:file", async (c) => {
-    const file = c.req.param("file");
-    const media = await getMedia(c.env.DB, file.split(".")[0]);
-    if (!media || media.r2_key !== `media/${file}`) return c.notFound();
-    // §5.4: a published media URL MUST always serve the same bytes, and §9
-    // withdrawal does not cascade. Public uses: the avatar, an attachment on an
-    // item ever published (attaching there needs publish scope), and anything
-    // a published version's text shows. Unused uploads stay owner-only.
-    // Indexed checks run first; the scan of every version is the last resort.
-    const publicUse = await c.env.DB.prepare(`SELECT 1 WHERE
-      EXISTS (SELECT 1 FROM settings WHERE key='avatar_media_id' AND value=?)
-      OR EXISTS (SELECT 1 FROM items WHERE id=? AND version>0 AND ?<>1)
-      OR EXISTS (SELECT 1 FROM versions WHERE item_id=? AND instr(content_html, ?) > 0)
-      OR EXISTS (SELECT 1 FROM versions WHERE instr(content_html, ?) > 0)`)
-      .bind(media.id, media.item_id, media.inline ?? 0, media.item_id, media.r2_key, media.r2_key).first();
+  const serveMedia = async (c: Context<{ Bindings: Env }>) => {
+    const file = c.req.param('file'), id = c.req.param('id');
+    if (!file) return c.notFound();
+    const media = await getMedia(c.env.DB, id ?? file.split('.')[0]);
+    const key = id ? `media/${id}/${file}` : `media/${file}`;
+    if (!media || media.r2_key !== key) return c.notFound();
+    const digest = id ? /^([a-f0-9]{64})\.[a-z]+$/.exec(file)?.[1] : undefined;
+    if (id && (!digest || digest !== media.sha256)) return c.notFound();
+    // An avatar or a not-yet-published attachment can become private/deletable.
+    // Only historical references justify an immutable public cache lifetime.
+    const usage = await c.env.DB.prepare(`SELECT (${retainedMediaSql}) AS retained,
+      (${avatarMediaSql}) OR EXISTS (SELECT 1 FROM items WHERE id = media.item_id AND version > 0 AND COALESCE(media.inline,0) <> 1) AS exposed
+      FROM media WHERE id = ?`).bind(media.id).first<{ retained: number; exposed: number }>();
+    const publicUse = Boolean(usage?.retained || usage?.exposed);
     if (!publicUse) {
       c.header('Cache-Control', 'no-store');
       const url = new URL(c.req.url);
@@ -324,15 +382,19 @@ export function makeApp(mount: string) {
     }
     const object = await c.env.MEDIA.get(media.r2_key);
     if (!object) return c.notFound();
-    return c.body(object.body as ReadableStream, 200, {
+    const response = c.body(object.body as ReadableStream, 200, {
       "Content-Type": media.mime,
       // Uploaded SVG can be opened as a document. Keep it inert and give it an
       // opaque origin so delegated uploads cannot inherit an owner's authority.
       "Content-Security-Policy": "sandbox; script-src 'none'",
-      "Cache-Control": publicUse ? "public, max-age=31536000, immutable" : "no-store",
+      "Cache-Control": publicUse ? digest && usage?.retained ? "public, max-age=31536000, immutable" : "public, no-cache" : "no-store",
+      "ETag": object.httpEtag,
       "X-Content-Type-Options": "nosniff",
     });
-  });
+    return conditionalResponse(c.req.raw, response);
+  };
+  pub.get('/media/:file', serveMedia);
+  pub.get('/media/:id/:file', serveMedia);
 
   if (mount === "") {
     app.route("/", pub);
@@ -407,6 +469,9 @@ export default {
     const at = new Date(controller.scheduledTime);
     if (at.getUTCHours() === 0 && at.getUTCMinutes() < 15) daily();
     ctx.waitUntil(runScheduledPoll(env.DB, platformFetchFor(env)));
+    ctx.waitUntil(backfillImportedMentions(env.DB).catch(() => {
+      console.warn('Imported mentions backfill failed');
+    }));
     // Outbound mentions retry here (§2.3.4): the publish path tries once
     // immediately, and a receiver that was down gets it on a later tick.
     ctx.waitUntil(drainOutbound(env.DB, mentionFetchFor(env)).catch(() => {}));

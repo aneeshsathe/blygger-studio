@@ -214,7 +214,7 @@ describe("definition of done (tk-core-plan.md §7)", () => {
     expect(item2.content_md).toContain("relativity, roughly");
 
     // Full owner loop confirms the publish endpoint itself carries the same behavior.
-    const republish = await apiJson(cookie, "POST", `/api/items/${threadItem.id}/publish`, {});
+    const republish = await apiJson(cookie, "POST", `/blyg/api/items/${threadItem.id}/publish`, {});
     // No working-copy changes since last publish — republish still succeeds (v3).
     expect(republish.status).toBe(200);
     expect(republish.json.version).toBe(3);
@@ -228,18 +228,18 @@ describe("composer TK affordances (session 18)", () => {
     // unresolved-scope rejection must not read as "your text vanished": the
     // draft holds it, and the client now navigates there instead of reloading.
     const cookie = await login();
-    const created = await apiJson(cookie, "POST", "/api/items", {
-      content_md: "[TK]say something about pelicans[/TK]",
+    const created = await apiJson(cookie, "POST", "/blyg/api/items", {
+      contentMd: "[TK]say something about pelicans[/TK]",
     });
     expect(created.status).toBe(201);
-    const publish = await apiJson(cookie, "POST", `/api/items/${created.json.id}/publish`, {});
+    const publish = await apiJson(cookie, "POST", `/blyg/api/items/${created.json.id}/publish`, {});
     expect(publish.status).toBe(400);
-    expect(publish.json.error).toMatch(/not publish-ready/);
+    expect(publish.json.message).toMatch(/not publish-ready/);
 
     // The draft still exists and still carries the scope, verbatim.
-    const draft = await apiJson(cookie, "GET", `/api/items/${created.json.id}`);
+    const draft = await apiJson(cookie, "GET", `/blyg/api/items/${created.json.id}`);
     expect(draft.status).toBe(200);
-    expect(draft.json.content_md).toBe("[TK]say something about pelicans[/TK]");
+    expect(draft.json.contentMd).toBe("[TK]say something about pelicans[/TK]");
   });
 });
 
@@ -250,9 +250,9 @@ describe("an own-line directive in TK output (decision #60)", () => {
     const cookie = await login();
     const quoted = await createAndPublish(cookie, "words someone else will echo");
     const md = `Intro.\n\n[TK]write a bridge[=]bridge line\n![[${quoted}]]\nafter[/TK]`;
-    const created = await apiJson(cookie, "POST", "/api/items", { content_md: md, kind: "thread" });
+    const created = await apiJson(cookie, "POST", "/blyg/api/items", { contentMd: md, kind: "thread" });
     expect(created.status).toBe(201);
-    const res = await apiJson(cookie, "POST", `/api/items/${created.json.id}/publish`, {});
+    const res = await apiJson(cookie, "POST", `/blyg/api/items/${created.json.id}/publish`, {});
     expect(res.status).toBe(200);
     expect(res.json.warning).toContain(`![[${quoted}]]`);
     const doc = await (await getPublic(`/blyg/items/${created.json.id}.json`)).json<any>();
@@ -263,9 +263,95 @@ describe("an own-line directive in TK output (decision #60)", () => {
     const cookie = await login();
     const quoted = await createAndPublish(cookie, "words quoted on purpose");
     const md = `[TK]open with ![[${quoted}]] then riff[=]x\n![[${quoted}]]\ny[/TK]`;
-    const created = await apiJson(cookie, "POST", "/api/items", { content_md: md, kind: "thread" });
-    const res = await apiJson(cookie, "POST", `/api/items/${created.json.id}/publish`, {});
+    const created = await apiJson(cookie, "POST", "/blyg/api/items", { contentMd: md, kind: "thread" });
+    const res = await apiJson(cookie, "POST", `/blyg/api/items/${created.json.id}/publish`, {});
     expect(res.status).toBe(200);
     expect(res.json.warning).toBeUndefined();
+  });
+
+  // #105: a block scope with provenance is lifted out of the body and rendered
+  // on its own, so the body's directive walk never saw its lines and the
+  // directive published as literal text — while the warning said it was quoted.
+  // Both paths must quote it, and the warning must be true in both.
+  const outputWithQuote = (quoted: string) => `Intro.\n\n[TK]write it[=]Mine.\n\n![[${quoted}]][/TK]\n\nOutro.`;
+
+  it("transcludes in a block scope with no provenance (hand-authored output)", async () => {
+    const cookie = await login();
+    const quoted = await createAndPublish(cookie, "small tools beat big tools");
+    const created = await apiJson(cookie, "POST", "/blyg/api/items", { contentMd: outputWithQuote(quoted), kind: "thread" });
+    const res = await apiJson(cookie, "POST", `/blyg/api/items/${created.json.id}/publish`, {});
+    expect(res.status).toBe(200);
+    expect(res.json.warning).toContain(`![[${quoted}]]`);
+    const doc = await (await getPublic(`/blyg/items/${created.json.id}.json`)).json<any>();
+    expect(doc.transclusions).toEqual([{ id: quoted, version: 1 }]);
+    expect(doc.generated ?? []).toEqual([]);
+    expect(doc.content_html).toContain(`<blockquote class="blyg-transclusion" data-blyg-id="${quoted}" data-blyg-version="1">`);
+    expect(doc.content_html).not.toContain("![[");
+  });
+
+  it("transcludes in a block scope with provenance, inside the div.blyg-tk-gen", async () => {
+    const cookie = await login();
+    const quoted = await createAndPublish(cookie, "small tools beat big tools");
+    const before = await createAndPublish(cookie, "a quote before the scope");
+    const after = await createAndPublish(cookie, "a quote after the scope");
+    const md = `![[${before}]]\n\n${outputWithQuote(quoted)}\n\n![[${after}]]`;
+    const item = await createDraft(env.DB, md, "thread");
+    await generateVia(item.id, 0, "placeholder");
+    // Put the author's output back, as an author editing generated text would;
+    // the scope's provenance is kept.
+    await saveWorkingCopy(env.DB, item.id, md);
+    const res = await apiJson(cookie, "POST", `/blyg/api/items/${item.id}/publish`, {});
+    expect(res.status).toBe(200);
+    expect(res.json.warning).toContain(`![[${quoted}]]`);
+    const doc = await (await getPublic(`/blyg/items/${item.id}.json`)).json<any>();
+    expect(doc.generated).toHaveLength(1);
+    // Document order: the quote inside the generated block sits between the two outside it.
+    expect(doc.transclusions).toEqual([
+      { id: before, version: 1 },
+      { id: quoted, version: 1 },
+      { id: after, version: 1 },
+    ]);
+    const html: string = doc.content_html;
+    expect(html).not.toContain("![[");
+    const gen = html.indexOf('<div class="blyg-tk-gen">');
+    const quote = html.indexOf(`<blockquote class="blyg-transclusion" data-blyg-id="${quoted}" data-blyg-version="1">`);
+    expect(gen).toBeGreaterThan(-1);
+    expect(quote).toBeGreaterThan(gen);
+    expect(html.slice(gen, quote)).toContain("<p>Mine.</p>");
+    expect(html.slice(gen, quote)).not.toContain("</div>");
+    expect(html.slice(quote)).toMatch(/small tools beat big tools[\s\S]*<\/blockquote>\s*<\/div>/);
+    expect(html).toMatch(/<p>Intro\.<\/p>\n<div class="blyg-tk-gen">/);
+  });
+
+  it("the thread preview quotes it too (the preview highlights every block scope)", async () => {
+    const cookie = await login();
+    const quoted = await createAndPublish(cookie, "small tools beat big tools");
+    const res = await apiJson(cookie, "POST", "/blyg/api/preview", { contentMd: outputWithQuote(quoted), kind: "thread" });
+    expect(res.status).toBe(200);
+    expect(res.json.transclusions).toEqual([{ id: quoted, version: 1 }]);
+    expect(res.json.html).toMatch(/<div class="blyg-tk-gen"><p>Mine\.<\/p>[\s\S]*<blockquote class="blyg-transclusion"[\s\S]*<\/blockquote>\s*<\/div>/);
+    expect(res.json.html).not.toContain("![[");
+  });
+
+  it("the thread preview sanitizes a quote baked inside a generated block", async () => {
+    const cookie = await login();
+    const quoted = await createAndPublish(cookie, "small tools beat big tools");
+    // Bytes the preview must not display raw, as an imported target's could be.
+    await env.DB.prepare("UPDATE versions SET content_html = ? WHERE item_id = ?")
+      .bind('<p>small tools<img src="x" onerror="alert(1)"><script>alert(2)</script></p>', quoted)
+      .run();
+    const res = await apiJson(cookie, "POST", "/blyg/api/preview", { contentMd: outputWithQuote(quoted), kind: "thread" });
+    expect(res.status).toBe(200);
+    expect(res.json.html).toContain(`data-blyg-id="${quoted}"`);
+    expect(res.json.html).toContain("small tools");
+    expect(res.json.html).not.toMatch(/onerror|<script/i);
+  });
+
+  it("fails publish when a provenanced block's own-line directive does not resolve", async () => {
+    const md = `[TK]write it[=]Mine.\n\n![[zzzzzzzzzzzzzzzzzzzzzzzzzz]][/TK]`;
+    const item = await createDraft(env.DB, md, "thread");
+    await generateVia(item.id, 0, "placeholder");
+    await saveWorkingCopy(env.DB, item.id, md);
+    await expect(publish(env.DB, (await getItem(env.DB, item.id))!, null)).rejects.toThrow(TransclusionResolveError);
   });
 });

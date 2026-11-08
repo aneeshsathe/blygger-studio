@@ -6,7 +6,7 @@ import { answerSheet } from './sheets.ts';
 // when a write fails. Both projects share the fixture (e2e-server.ts), so the
 // test clears the source's read state first and again at the end.
 const NATIVE = '00000000000000000000000001';
-const RETAINED = '00000000000000000000000002';
+const RETAINED = '00000000000000000000000004';
 async function login(page: Page) {
   await page.goto('/studio/login');
   await page.locator('[name=password]').fill('test-password');
@@ -22,14 +22,14 @@ const api = (page: Page, method: string, path: string, body?: unknown) =>
     { method, path, body },
   );
 const clearAll = (page: Page) =>
-  api(page, 'POST', '/reading/unread', { items: [NATIVE, RETAINED].map((remote_id) => ({ sub: 'parity-native', remote_id })) });
+  api(page, 'POST', '/reading/unread', { items: [NATIVE, RETAINED].map((remote_id) => ({ sub: 'parity-native', remoteId: remote_id })) });
 async function serverRead(page: Page) {
   const { json } = await api(page, 'GET', '/reading?sub=parity-native&limit=50');
-  expect(json.read_state_clear).toBe(true);
+  expect(json.readStateClear).toBe(true);
   return Object.fromEntries((json.items as { imported: { remoteId: string; readVersion: number | null } }[]).map((e) => [e.imported.remoteId, e.imported.readVersion]));
 }
 const native = (page: Page) => page.locator('.reading-entry').filter({ hasText: 'Native title' });
-const retained = (page: Page) => page.locator('.reading-entry').filter({ hasText: 'Pinned retained text.' });
+const retained = (page: Page) => page.locator('.reading-entry').filter({ hasText: 'Second live text.' });
 async function readMenu(page: Page, row: 'select…' | 'mark all read…') {
   await page.getByRole('button', { name: 'read state', exact: true }).click();
   await page.getByRole('dialog', { name: 'read state' }).getByRole('button', { name: row, exact: true }).click();
@@ -58,7 +58,7 @@ test('select → mark read / mark unread changes the rows and the server', async
     const body = (await batch).postDataJSON();
     expect(body.items).toHaveLength(2);
     // The studio acts online: its reads carry no read_at, so they always apply.
-    for (const item of body.items) expect(item).not.toHaveProperty('read_at');
+    for (const item of body.items) expect(item).not.toHaveProperty("readAt");
     // Select mode ends; both rows read, dots gone.
     await expect(bar).toHaveCount(0);
     for (const entry of [native(page), retained(page)]) {
@@ -139,7 +139,7 @@ test('a failed write rolls the rows back and says so', async ({ page }) => {
     const held = new Promise<void>((resolve) => { release = resolve; });
     await page.route('**/api/reading/read', async (route) => {
       await held;
-      await route.fulfill({ status: 503, json: { error: 'read state write failed' } });
+      await route.fulfill({ status: 503, json: { code: 'internal', message: 'read state write failed' } });
     });
     await readMenu(page, 'select…');
     await native(page).getByRole('checkbox').check();

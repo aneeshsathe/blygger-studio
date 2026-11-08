@@ -23,6 +23,7 @@ const { BLYG_EXTENSIONS: _override, ...shippedEnv } = process.env;
 execFileSync("node", ["--import", "tsx", "scripts/build-extensions.ts"], { stdio: "inherit", env: { ...shippedEnv, BLYG_EXTENSIONS_SHIPPED_ONLY: "1" } });
 execFileSync("node", ["--import", "tsx", "scripts/build-spa.ts"], { stdio: "inherit" });
 await build({ entryPoints: ["src/index.ts"], outfile: join(worker, "worker.js"), bundle: true, platform: "neutral", conditions: ["workerd"], external: ["cloudflare:*", "node:*"], mainFields: ["module", "main"], format: "esm", target: "es2022", loader: { ".txt": "text" } });
+await build({ entryPoints: ["scripts/normalize-import-dates.ts"], outfile: join(worker, "normalize-import-dates.mjs"), bundle: true, platform: "node", format: "esm", target: "node22" });
 // Use the committed generic template, never a contributor's local deployment config.
 const config = execFileSync("git", ["show", "HEAD:wrangler.jsonc"], { encoding: "utf8" });
 writeFileSync(join(worker, "wrangler.jsonc"), config.replace('"main": "src/index.ts"', '"main": "worker.js",\n  "no_bundle": true'));

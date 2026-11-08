@@ -4,7 +4,7 @@
 // (or binding) each provider needs, and where it is called, is the manifest's.
 import manifest from "../../build/models.json";
 
-export type ProviderApi = "anthropic-messages" | "openai-responses" | "gemini-generate" | "workers-ai" | "openai-chat";
+export type ProviderApi = "anthropic-messages" | "openai-responses" | "gemini-generate" | "workers-ai" | "openai-chat" | "systemone";
 
 export interface ProviderSpec {
   label: string;
@@ -17,7 +17,10 @@ export interface ProviderSpec {
   key_secret?: string;
   /** `workers-ai` only: the Worker binding to call (default "AI"). */
   binding?: string;
-  /** `openai-chat` only: the base URL; requests go to `{base_url}/chat/completions`. */
+  /**
+   * `openai-chat`: the base URL; requests go to `{base_url}/chat/completions`.
+   * `systemone`: optional, default `https://api.typesafe.ai/v1`; requests go to `{base_url}/systemone`.
+   */
   base_url?: string;
   /** Extra request-body members sent with every call to this provider. */
   params?: Record<string, unknown>;
@@ -30,6 +33,12 @@ export interface ModelSpec {
   note?: string;
   /** Extra request-body members for this model, merged over its provider's `params`. */
   params?: Record<string, unknown>;
+  /**
+   * "decision" marks a decision model (Clef, Jev): it answers typed questions
+   * with probabilities and generates no text, so it is offered only for the
+   * change classifier, and a text model is never offered for the classifier.
+   */
+  kind?: "decision";
 }
 export interface Manifest {
   providers: Record<string, ProviderSpec>;
@@ -52,6 +61,18 @@ export function providerFor(modelId: string, m: Manifest = MODELS): { key: strin
     if ((spec.prefixes ?? []).some((p) => modelId.startsWith(p))) return { key, spec, model: null };
   }
   return null;
+}
+
+/**
+ * Whether a model id names a decision model: listed with `kind: "decision"`,
+ * or served by a `systemone` provider (every System One model is one). An
+ * unlisted `@cf/…` id is a text model; a decision model on Workers AI has to be
+ * listed so its kind is known.
+ */
+export function isDecisionModel(modelId: string, m: Manifest = MODELS): boolean {
+  const provider = providerFor(modelId, m);
+  if (!provider) return false;
+  return provider.model?.kind === "decision" || provider.spec.api === "systemone";
 }
 
 /** The binding a `workers-ai` provider calls. */

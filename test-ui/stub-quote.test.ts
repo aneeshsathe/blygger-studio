@@ -20,9 +20,16 @@ test('choosing again replaces the passage rather than adding a second one', () =
   expect(withStubQuote(partial, ID, 'new passage')).toBe(`Lead-in.\n\n![[${ID}]]\n> new passage\n\nAfter.`);
 });
 
-test('an unmarked line right under the quote is the author\'s, and stays', () => {
-  const md = `![[${ID}]]\n> old\nmy words`;
+test('an unmarked line after an empty `>` line is the author\'s, and stays', () => {
+  const md = `![[${ID}]]\n> old\n>\nmy words`;
   expect(withStubQuote(md, ID, null)).toBe(`![[${ID}]]\nmy words`);
+});
+
+test('a lazy continuation line is part of the quote, as publish reads it (§10.1, #76)', () => {
+  const md = `![[${ID}]]\n> old passage\nstill the passage\n\nMy reply.`;
+  expect(attachedQuote(md.split('\n'), 0)).toEqual({ quoteMd: 'old passage\nstill the passage', next: 3 });
+  expect(withStubQuote(md, ID, 'new')).toBe(`![[${ID}]]\n> new\n\nMy reply.`);
+  expect(withStubQuote(md, ID, null)).toBe(`![[${ID}]]\n\nMy reply.`);
 });
 
 test('the browser\'s selection is normalized so publish\'s check sees the same text', () => {
@@ -55,4 +62,26 @@ test('a second passage is added as its own quote, not over the first (a running 
   // A caret inside a quote never splits it; one at the start appends at the end.
   expect(addStubQuote(md, ID, 'x', md.indexOf('first passage'))).toBe(`![[${ID}]]\n> first passage\n\n![[${ID}]]\n> x\n\nMy first point.\n\nMy closing point.`);
   expect(addStubQuote(md, ID, 'x', 0)).toBe(`${md}\n\n![[${ID}]]\n> x\n\n`);
+});
+
+test('a caret inside a quote with lazy continuation lines steps past the whole quote (#106 review)', async () => {
+  const { addStubQuote, passageCount } = await import('../src/ui/stub-quote.ts');
+  const md = `![[${ID}]]\n> Stigmergy is what a protocol\nlooks like from inside\n\nMine.`;
+  const expected = `![[${ID}]]\n> Stigmergy is what a protocol\nlooks like from inside\n\n![[${ID}]]\n> hello\n\nMine.`;
+  // From the marked line, the lazy line, and the directive itself.
+  expect(addStubQuote(md, ID, 'hello', md.indexOf('Stigmergy'))).toBe(expected);
+  expect(addStubQuote(md, ID, 'hello', md.indexOf('looks like'))).toBe(expected);
+  expect(addStubQuote(md, ID, 'hello', 3)).toBe(expected);
+  expect(passageCount(expected, ID)).toBe(2);
+});
+
+test('a selection in the nth quote rewrites that quote only, and a whole quote can be added to select from', async () => {
+  const { addStubQuote, quoteCount } = await import('../src/ui/stub-quote.ts');
+  const md = `![[${ID}]]\n> first passage\n\nMy point.\n\n![[${ID}]]\n\nMy end.`;
+  expect(quoteCount(md, ID)).toBe(2);
+  expect(quoteCount('```\n![[' + ID + ']]\n```\n', ID)).toBe(0);
+  expect(withStubQuote(md, ID, 'second', 1)).toBe(`![[${ID}]]\n> first passage\n\nMy point.\n\n![[${ID}]]\n> second\n\nMy end.`);
+  expect(withStubQuote(md, ID, null, 0)).toBe(`![[${ID}]]\n\nMy point.\n\n![[${ID}]]\n\nMy end.`);
+  // Another quote to choose from arrives whole, after the caret's block.
+  expect(addStubQuote(`![[${ID}]]\n> a\n\nMine.`, ID, null, 0)).toBe(`![[${ID}]]\n> a\n\nMine.\n\n![[${ID}]]\n\n`);
 });

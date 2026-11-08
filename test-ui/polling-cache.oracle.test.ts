@@ -12,12 +12,11 @@ import { QueryClient, type QueryFunction } from '@tanstack/query-core';
 import { createCollection, createLiveQueryCollection, and, gte, lt } from '@tanstack/react-db';
 import { queryCollectionOptions, parseLoadSubsetOptions } from '@tanstack/query-db-collection';
 import { readIfChanged, type CachedResponse } from '../src/ui/revision-query.ts';
-import { Polling } from '../src/ui/polling.ts';
 import { StudioQueryReference, type OracleToken } from '../test/polling-cache-oracle-model.ts';
 import { campaign, atCheckpoint } from '../test/oracle-campaign.ts';
 import { withOracleCleanup } from '../test/oracle-cleanup.ts';
 
-const token = (revision = 0, epoch = 'e'): OracleToken => ({ epoch, domains: { items: revision, reading: revision, subscriptions: revision, hoppers: revision, signals: revision, settings: revision, feed: revision } });
+const token = (revision = 0, epoch = 'e'): OracleToken => ({ epoch, domains: { items: revision, reading: revision, subscriptions: revision, hoppers: revision, signals: revision, settings: revision, feed: revision, mentions: revision, responses: revision, interactions: revision, browse: revision } });
 const makeClient = () => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
 function deferred() { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done; }); return { promise, resolve }; }
 function rowsCollection(client: QueryClient, read: QueryFunction<OracleToken>, load: QueryFunction<{ id: string; revision: number }[]>) {
@@ -64,6 +63,24 @@ describe('Studio query-cache oracle', () => {
       atCheckpoint('Studio failed-query retry', () => expect(client.getQueryData(['items'])).toBe(old)); expect(collection.get('a')!.revision).toBe(0);
       fail = false; await collection.utils.refetch({ throwOnError: true });
       atCheckpoint('Studio failed-query retry', () => { expect(collection.get('a')!.revision).toBe(1); expect(load).toHaveBeenCalledTimes(3); });
+    }, [() => collection.cleanup(), async () => { client.clear(); }]);
+  });
+  it('a response joining two domains reloads when either moves and not when another does', async () => {
+    const client = makeClient(); let source = token();
+    const load = vi.fn(async () => [{ id: 'a', revision: source.domains.mentions + source.domains.reading }]);
+    const collection = createCollection(queryCollectionOptions({
+      queryKey: ['mention-sources'], queryClient: client, getKey: (row: { id: string; revision: number }) => row.id,
+      queryFn: context => readIfChanged(context, ['mentions', 'reading'], async () => source, load),
+      select: (response: CachedResponse<{ id: string; revision: number }[]>) => response.data,
+    }));
+    const bump = (domain: keyof OracleToken['domains']) => { source = { ...source, domains: { ...source.domains, [domain]: source.domains[domain] + 1 } }; };
+    await withOracleCleanup(async () => {
+      await collection.preload();
+      for (const [domain, loads] of [['responses', 1], ['items', 1], ['mentions', 2], ['reading', 3], ['subscriptions', 3]] as const) {
+        bump(domain); await collection.utils.refetch({ throwOnError: true });
+        atCheckpoint('Studio unchanged query work', () => expect(load, domain).toHaveBeenCalledTimes(loads));
+      }
+      expect(collection.get('a')!.revision).toBe(2);
     }, [() => collection.cleanup(), async () => { client.clear(); }]);
   });
   it('failed revision reads retain rows and cannot reuse a stale changes-query result', async () => {
@@ -123,7 +140,7 @@ describe('Studio query-cache oracle', () => {
       queryKey: ['items'], queryClient: client, getKey: (row: { id: string; text: string }) => row.id,
       queryFn: context => readIfChanged(context, 'items', async () => source, load),
       select: (response: CachedResponse<{ id: string; text: string }[]>) => response.data,
-      onUpdate: async () => { await release.promise; text = 'local edit'; source = token(2); },
+      onUpdate: async ({ collection }) => { await release.promise; text = 'local edit'; source = token(2); await collection.utils.refetch({ throwOnError: true }); },
     }));
     await withOracleCleanup(async () => {
       await collection.preload(); const mutation = collection.update('a', draft => { draft.text = 'local edit'; });
@@ -131,7 +148,7 @@ describe('Studio query-cache oracle', () => {
       expect(client.getQueryData<CachedResponse<{ text: string }[]>>(['items'])!.data[0].text).toBe('remote change');
       expect(collection.get('a')!.text).toBe('local edit'); const before = load.mock.calls.length;
       await collection.utils.refetch({ throwOnError: true }); expect(load).toHaveBeenCalledTimes(before);
-      release.resolve(); await mutation.isPersisted.promise; expect(collection.get('a')!.text).toBe('local edit');
+      release.resolve(); await mutation.when('settled'); expect(collection.get('a')!.text).toBe('local edit');
       expect(client.getQueryData<CachedResponse<unknown>>(['items'])!.generation.revision).toBe(2);
     }, [async () => { release.resolve(); await collection.cleanup(); }, async () => { client.clear(); }]);
   });
@@ -187,13 +204,13 @@ describe('Studio query-cache oracle', () => {
       queryKey: ['items'], queryClient: client, getKey: (row: { id: string; revision: number }) => row.id,
       queryFn: context => readIfChanged(context, 'items', read, async () => [{ id: 'a', revision }]),
       select: (response: CachedResponse<{ id: string; revision: number }[]>) => response.data,
-      onUpdate: async () => { revision = 1; },
+      onUpdate: async ({ collection }) => { revision = 1; await collection.utils.refetch({ throwOnError: true }); },
     }));
     await collection.preload(); hold = true;
     const earlier = collection.utils.refetch({ throwOnError: true }).catch(() => undefined);
     await withOracleCleanup(async () => {
       await entered.promise; const mutation = collection.update('a', draft => { draft.revision = 1; });
-      await mutation.isPersisted.promise;
+      await mutation.when('settled');
       atCheckpoint('Studio post-write fresh check', () => {
         expect(reads).toBe(3); expect(collection.get('a')!.revision).toBe(1);
         expect(client.getQueryData<CachedResponse<unknown>>(['items'])!.generation.revision).toBe(1);
@@ -202,22 +219,16 @@ describe('Studio query-cache oracle', () => {
       expect(collection.get('a')!.revision).toBe(1);
     }, [async () => { release.resolve(); await earlier; await collection.cleanup(); }, async () => { client.clear(); }]);
   });
-  it('diagnostic-only changes do not fetch Reading and timed reads still run', async () => {
-    const client = makeClient(); let source = token(); const load = vi.fn(async () => 0), timed = vi.fn(async () => {});
+  it('subscription diagnostics do not fetch Reading when its revision is unchanged', async () => {
+    const client = makeClient(); let source = token();
+    const load = vi.fn(async () => 0);
     const queryFn = (context: Parameters<QueryFunction>[0]) => readIfChanged(context, 'reading', async () => source, load);
-    const poll = new Polling(() => true, error => { throw error; });
-    poll.watch('reading:all:0', () => client.fetchQuery({ queryKey: ['reading', 'all', 0], queryFn, staleTime: 0 })); poll.watch('updates', timed);
-    await poll.refresh(); source = { ...source, domains: { ...source.domains, subscriptions: 1 } }; await poll.refresh();
-    expect(load).toHaveBeenCalledTimes(1); expect(timed).toHaveBeenCalledTimes(2); client.clear();
-  });
-  it('a stalled view does not stop another query or a timed read from polling', async () => {
-    const release = deferred(); let healthy = 0, timed = 0;
-    const poll = new Polling(() => true, error => { throw error; });
-    poll.watch('items', async () => { await release.promise; }); poll.watch('settings', async () => { healthy++; }); poll.watch('updates', async () => { timed++; });
-    const first = poll.refresh(); await new Promise(resolve => setTimeout(resolve, 0)); const second = poll.refresh();
-    await withOracleCleanup(async () => {
-      await new Promise(resolve => setTimeout(resolve, 0)); expect([healthy, timed]).toEqual([2, 2]);
-    }, [async () => { release.resolve(); await Promise.all([first, second]); }]);
+    try {
+      await client.fetchQuery({ queryKey: ['reading', 'all', 0], queryFn, staleTime: 0 });
+      source = { ...source, domains: { ...source.domains, subscriptions: 1 } };
+      await client.fetchQuery({ queryKey: ['reading', 'all', 0], queryFn, staleTime: 0 });
+      expect(load).toHaveBeenCalledTimes(1);
+    } finally { client.clear(); }
   });
   it('the independent checker rejects a token newer than its fetched source data', () => {
     const reference = new StudioQueryReference();

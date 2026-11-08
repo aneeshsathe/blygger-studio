@@ -11,17 +11,26 @@
  *    entryActions() or onSelect() is caught and logged.
  *
  * Kept free of the data layer (data.ts, components.tsx) so the UI test suite
- * can render it without a browser; reading.tsx supplies the enabled list.
+ * can render it without a browser; reading.tsx and authoring.tsx supply the
+ * enabled list.
  */
 import type { ErrorInfo, ReactNode } from 'react';
 import { Component } from 'react';
-import type { EntryAction, EntryContext, StudioExtension } from './extension-api.ts';
+import type { DraftCounterContext, EntryAction, EntryContext, StudioExtension } from './extension-api.ts';
 import type { MenuRow } from './sheets.tsx';
 
 /** The compiled-in extensions this node has enabled, in compiled order. */
 export function enabledExtensions(compiled: readonly StudioExtension[], enabled: readonly string[] | undefined) {
   if (!enabled?.length) return [];
   return compiled.filter((extension) => enabled.includes(extension.name));
+}
+
+/**
+ * The one enabled extension page in the main menu: the first in compiled order that asks.
+ * One, because a phone's tab bar has room for one more tab and no more.
+ */
+export function mainMenuPage(extensions: readonly StudioExtension[]) {
+  return extensions.find((extension) => extension.page?.mainMenu);
 }
 
 function report(name: string, slot: string, error: unknown) {
@@ -53,6 +62,26 @@ export function EntryBylineSlot({ extensions, context }: { extensions: readonly 
         return (
           <ExtensionBoundary key={extension.name} name={extension.name} slot="entryByline">
             <Byline context={context(extension)} />
+          </ExtensionBoundary>
+        );
+      })}
+    </>
+  );
+}
+
+/** Beside the character count: each enabled extension's addition, set as a counter, each in its own boundary. */
+export function DraftCounterSlot({ extensions, context }: { extensions: readonly StudioExtension[]; context: DraftCounterContext }) {
+  const filling = extensions.filter((extension) => extension.draftCounter);
+  if (!filling.length) return null;
+  return (
+    <>
+      {filling.map((extension) => {
+        const Counter = extension.draftCounter!;
+        return (
+          <ExtensionBoundary key={extension.name} name={extension.name} slot="draftCounter">
+            <span className="counter counter-slot">
+              <Counter context={context} />
+            </span>
           </ExtensionBoundary>
         );
       })}

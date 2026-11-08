@@ -40,8 +40,8 @@ beforeEach(async () => {
   // and reset only tables owned by this oracle, before running a new history.
   for (const sql of triggerDefinitions) await env.DB.prepare(sql.replace('CREATE TRIGGER ', 'CREATE TRIGGER IF NOT EXISTS ')).run();
   await env.DB.prepare('INSERT OR IGNORE INTO change_state(id) VALUES(1)').run();
-  await env.DB.prepare("UPDATE change_state SET epoch=lower(hex(randomblob(16))),items=0,reading=0,subscriptions=0,hoppers=0,signals=0,settings=0,feed=0 WHERE id=1").run();
-  await env.DB.batch(['versions','media','items','settings','hopper_items','signals','read_state','imported_items','subscriptions','hoppers'].map(table => env.DB.prepare(`DELETE FROM ${table}`)));
+  await env.DB.prepare("UPDATE change_state SET epoch=lower(hex(randomblob(16))),items=0,reading=0,subscriptions=0,hoppers=0,signals=0,settings=0,feed=0,mentions=0,responses=0,interactions=0,browse=0 WHERE id=1").run();
+  await env.DB.batch(['versions','media','items','settings','hopper_items','signals','read_state','imported_items','subscriptions','hoppers','mentions_in','mentions_out','interactions','browse_log'].map(table => env.DB.prepare(`DELETE FROM ${table}`)));
   await clearArtifacts();
 });
 afterEach(() => vi.useRealTimers());
@@ -52,7 +52,7 @@ async function request(bindings: Env = env, headers: HeadersInit = {}, method = 
 }
 async function changes(cookie: string): Promise<OracleToken> {
   const ctx = createExecutionContext();
-  const response = await app.fetch(new Request(`${BASE}/api/changes`, { headers: { cookie } }), env, ctx);
+  const response = await app.fetch(new Request(`${BASE}/blyg/api/changes`, { headers: { cookie } }), env, ctx);
   await waitOnExecutionContext(ctx);
   expect(response.status).toBe(200);
   return response.json();
@@ -155,7 +155,7 @@ describe('trigger revision oracle', () => {
       const ctx = createExecutionContext(); const response = await app.fetch(new Request(BASE + path, { headers: { cookie } }), env, ctx);
       expect(response.status).toBe(200); const data = await response.json(); await waitOnExecutionContext(ctx); return data;
     }
-    const paths = ['/api/reading', '/api/hoppers/dependency-hopper'];
+    const paths = ['/blyg/api/reading', '/blyg/api/hoppers/dependency-hopper/memberships'];
     const before = await Promise.all(paths.map(read)), counters = await changes(cookie);
     await env.DB.prepare("UPDATE imported_items SET content_html='<p>After</p>' WHERE subscription_id='dependency-source'").run();
     const after = await Promise.all(paths.map(read)), changed = await changes(cookie);
@@ -176,24 +176,66 @@ describe('trigger revision oracle', () => {
       const response = await app.fetch(new Request(BASE + path, { method, headers: { cookie, ...(body ? { 'content-type': 'application/json', origin: BASE } : {}) }, body: body ? JSON.stringify(body) : undefined }), env, ctx);
       expect(response.status).toBe(200); const data = await response.json(); await waitOnExecutionContext(ctx); return data;
     }
-    const before = await call('GET', '/api/reading'), counters = await changes(cookie);
-    await call('PUT', '/api/reading/read-source/r/read', { version: 2 });
-    const after = await call('GET', '/api/reading'), changed = await changes(cookie);
+    const before = await call('GET', '/blyg/api/reading'), counters = await changes(cookie);
+    await call('PUT', '/blyg/api/reading/read-source/r/read', { version: 2 });
+    const after = await call('GET', '/blyg/api/reading'), changed = await changes(cookie);
     // Observed through the fresh response, not the production classifier.
     expect(after).not.toEqual(before);
     atCheckpoint('trigger exact domain effects', () => expect(changedDomains(counters, changed)).toEqual(['reading']));
-    await call('PUT', '/api/reading/read-source/r/read', { version: 1 });
-    expect(await call('GET', '/api/reading')).toEqual(after);
+    await call('PUT', '/blyg/api/reading/read-source/r/read', { version: 1 });
+    expect(await call('GET', '/blyg/api/reading')).toEqual(after);
     expect(await changes(cookie)).toEqual(changed);
     // Clearing (0026) changes the DTO and its domain; a read from before the
     // clear is refused by the tombstone and changes neither.
-    await call('DELETE', '/api/reading/read-source/r/read');
-    const cleared = await call('GET', '/api/reading'), clearedChanges = await changes(cookie);
+    await call('DELETE', '/blyg/api/reading/read-source/r/read');
+    const cleared = await call('GET', '/blyg/api/reading'), clearedChanges = await changes(cookie);
     expect(cleared).not.toEqual(after);
     atCheckpoint('trigger exact domain effects', () => expect(changedDomains(changed, clearedChanges)).toEqual(['reading']));
-    await call('PUT', '/api/reading/read-source/r/read', { version: 2, read_at: '2000-01-01T00:00:00Z' });
-    expect(await call('GET', '/api/reading')).toEqual(cleared);
+    await call('PUT', '/blyg/api/reading/read-source/r/read', { version: 2, readAt: '2000-01-01T00:00:00Z' });
+    expect(await call('GET', '/blyg/api/reading')).toEqual(cleared);
     expect(await changes(cookie)).toEqual(clearedChanges);
+  });
+  it('mention status transitions move exactly the domains whose responses they change', async () => {
+    const cookie = await login(); await seed();
+    await env.DB.prepare("UPDATE items SET responses_override=1 WHERE id='cache-item'").run();
+    async function read(path: string, headers: HeadersInit = { cookie }) {
+      const ctx = createExecutionContext(); const response = await app.fetch(new Request(BASE + path, { headers }), env, ctx);
+      expect(response.status).toBe(200); const body = await response.text(); await waitOnExecutionContext(ctx); return body;
+    }
+    // The Studio's inbound list, and the public page's responses section as a reader receives it.
+    const studio = () => read('/blyg/api/mentions?direction=inbound');
+    const page = async () => (await read('/blyg/f/cache-item/', {})).match(/<section[^>]*responses[\s\S]*?<\/section>/)?.[0] ?? '';
+    const verify = "status='verified',relation='stub',source_origin='https://responder.example/',source_id='r',source_kind='thread',source_version=1,source_page='t/r/',source_author_json='{\"name\":\"Witness\"}',verified_at='2026-10-18T00:00:00Z'";
+    // Receiver writes, in the order a claim's life takes them. Expected domains
+    // follow from the observed responses below, not from the trigger text.
+    const steps: [string, string, OracleDomain[]][] = [
+      ['claim', "INSERT INTO mentions_in(id,source,target,target_item_id,status,first_seen,last_seen) VALUES('w','https://responder.example/t/r/','https://us/f/cache-item/','cache-item','pending','t','t')", []],
+      ['verification fails', "UPDATE mentions_in SET status='failed',error='no link' WHERE id='w'", []],
+      ['claimed again', "UPDATE mentions_in SET status='pending',error=NULL,attempts=1,last_seen='t2' WHERE id='w'", []],
+      ['verified', `UPDATE mentions_in SET ${verify} WHERE id='w'`, ['mentions', 'responses']],
+      ['hidden', "UPDATE mentions_in SET hidden=1 WHERE id='w'", ['mentions', 'responses']],
+      ['hidden, claimed again', "UPDATE mentions_in SET status='pending',attempts=2,last_seen='t3' WHERE id='w'", ['mentions']],
+      ['hidden, verified', `UPDATE mentions_in SET ${verify} WHERE id='w'`, ['mentions']],
+      ['hidden, withdrawn at source', "UPDATE mentions_in SET status='gone',error='withdrawn' WHERE id='w'", ['mentions']],
+      ['gone, claimed again', "UPDATE mentions_in SET status='pending',attempts=3,last_seen='t4' WHERE id='w'", ['mentions']],
+      ['shown while pending', "UPDATE mentions_in SET hidden=0 WHERE id='w'", []],
+      ['shown, verified', `UPDATE mentions_in SET ${verify} WHERE id='w'`, ['mentions', 'responses']],
+      ['pruned', "DELETE FROM mentions_in WHERE id='w'", ['mentions', 'responses']],
+      ['failed claim pruned', "INSERT INTO mentions_in(id,source,target,target_item_id,status,first_seen,last_seen) VALUES('f','https://spam.example/','https://us/f/cache-item/','cache-item','failed','t','t')", []],
+      ['failed claim pruned', "DELETE FROM mentions_in WHERE id='f'", []],
+    ];
+    for (const [name, sql, domains] of steps) {
+      const before = { studio: await studio(), page: await page(), changes: await changes(cookie) };
+      await env.DB.prepare(sql).run();
+      const after = { studio: await studio(), page: await page(), changes: await changes(cookie) };
+      const observed: OracleDomain[] = [];
+      if (after.studio !== before.studio) observed.push('mentions');
+      if (after.page !== before.page) observed.push('responses');
+      // A step with no observable change must not have been written as one.
+      expect(observed, name).toEqual(domains);
+      atCheckpoint('trigger exact domain effects', () => expect(changedDomains(before.changes, after.changes), name).toEqual(domains));
+    }
+    expect(await page()).toBe('');
   });
   it('the timed update-state read crosses its exact daily deadline without source changes', async () => {
     vi.useFakeTimers({ toFake: ['Date'] }); const start = Date.parse('2026-10-01T12:00:00Z'); vi.setSystemTime(start);
@@ -204,7 +246,7 @@ describe('trigger revision oracle', () => {
     ]);
     const baseline = await changes(cookie);
     async function readUpdate() {
-      const ctx = createExecutionContext(); const response = await app.fetch(new Request(`${BASE}/api/update-state`, { headers: { cookie } }), env, ctx);
+      const ctx = createExecutionContext(); const response = await app.fetch(new Request(`${BASE}/blyg/api/update-state`, { headers: { cookie } }), env, ctx);
       expect(response.status).toBe(200); await response.text(); await waitOnExecutionContext(ctx);
     }
     vi.setSystemTime(start + 24 * 60 * 60 * 1000 - 1); await readUpdate(); expect(await changes(cookie)).toEqual(baseline);
@@ -268,7 +310,7 @@ describe('trigger revision oracle', () => {
   });
   it('denies unauthenticated change reads', async () => {
     const ctx = createExecutionContext();
-    const response = await app.fetch(new Request(`${BASE}/api/changes`), env, ctx);
+    const response = await app.fetch(new Request(`${BASE}/blyg/api/changes`), env, ctx);
     expect(response.status).toBe(401);
     expect(response.headers.get('cache-control')).toBe('no-store');
     await waitOnExecutionContext(ctx);
@@ -316,7 +358,7 @@ describe('trigger revision oracle', () => {
     expect((await env.DB.prepare("SELECT value FROM settings WHERE key='site_title'").first<{ value: string }>())!.value).toBe('A');
   });
   it('rejects missing, extra and stale domain answers at the public checkpoint', () => {
-    const baseline: OracleToken = { epoch: 'e', domains: { items: 0, reading: 0, subscriptions: 0, hoppers: 0, signals: 0, settings: 0, feed: 0 } };
+    const baseline: OracleToken = { epoch: 'e', domains: { items: 0, reading: 0, subscriptions: 0, hoppers: 0, signals: 0, settings: 0, feed: 0, mentions: 0, responses: 0, interactions: 0, browse: 0 } };
     for (const wrong of [[], ['subscriptions', 'feed'], ['reading']]) {
       expect(() => atCheckpoint('trigger exact domain effects', () => expect(wrong).toEqual(changedDomains(baseline, { ...baseline, domains: { ...baseline.domains, subscriptions: 1 } })))).toThrow('trigger exact domain effects');
     }

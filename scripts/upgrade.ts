@@ -190,6 +190,9 @@ if (newMigrations.length) {
   }
 }
 
+console.log("\n— normalizing stored imported dates");
+if (run("node", ["--import", "tsx", "scripts/normalize-import-dates.ts", "--remote"]).status !== 0) die("date normalization failed. Nothing deployed. Finish pending writes, then run: node --import tsx scripts/normalize-import-dates.ts --remote");
+
 console.log("\n— checking the merge result before it goes anywhere near your blyg");
 if (run("npm", ["run", "build"]).status !== 0) die("SDK build failed after merge. Nothing deployed.");
 if (run("npx", ["tsc", "--noEmit"]).status !== 0) die("typecheck failed after merge. Nothing deployed.");

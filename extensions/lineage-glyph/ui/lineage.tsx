@@ -103,6 +103,8 @@ export interface Handler {
   run?: () => void;
   /** Why the action is not available for this node. */
   unavailable?: string;
+  /** What differs from the description above for this node (an own post). */
+  note?: string;
 }
 export type Handlers = Partial<Record<ActionKey, Handler>>;
 
@@ -352,6 +354,7 @@ function Explain({
         </dl>
       </details>
       {handler?.unavailable ? <p className="lg-hint lg-unavailable">{handler.unavailable}</p> : null}
+      {handler?.note ? <p className="lg-hint lg-note">{handler.note}</p> : null}
       <Button className="btn btn-primary lg-do" disabled={!handler?.run} onClick={onDo} data-action={`lineage-${action}`}>
         {p.label}
       </Button>

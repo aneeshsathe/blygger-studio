@@ -18,6 +18,13 @@ export const layerFor = (weight: number) => Math.min(LAYERS.length - 1, Math.flo
  * How many items a new version climbs past. One for now. This is the stub for
  * changelog-driven climbing: a major revision, judged from the note or from
  * the size of the change, would climb further.
+ *
+ * Not decided yet, and to be decided with Venkat: a reader-side classification
+ * could plug in here. The change classifier (src/change-class.ts) labels only
+ * our own versions, and only in studio-private storage and note text; the wire
+ * carries no category (#19 / TN-1). Classifying an imported version locally,
+ * from the two versions this node holds, would keep that stance (#77: the
+ * reader derives, the wire does not mark) and could feed this number.
  */
 export function climbFor(_version: FeedVersion): number {
   return 1;

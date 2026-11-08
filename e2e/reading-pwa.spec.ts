@@ -50,7 +50,7 @@ test('the sources list groups sources, hoppers and subscriptions, and opens a ti
   await expect(page.locator('.list-h > span:first-child')).toHaveText(['sources', /^hoppers · \d+$/, /^subscriptions · 2$/]);
   const sources = page.getByRole('list', { name: 'sources' });
   await expect(sources.locator('.ft')).toHaveText(['all', 'my blyg']);
-  const total = (await api(page, 'GET', '/reading?limit=1')).json.counts;
+  const total = (await api(page, 'GET', '/reading/summary')).json.counts;
   await expect(sources.locator('.fn')).toHaveText([String(total.all), String(total.own)]);
   await expect(page.getByRole('list', { name: 'hoppers' })).toContainText('Frozen hopper');
   await expect(page.getByRole('link', { name: 'manage', exact: true })).toHaveAttribute('href', '/studio/hoppers');
@@ -111,7 +111,7 @@ test('every reading card shows its source URL, opening in a new tab, as the ⋯ 
 test('subscribing to a source already subscribed shows the refusal in the sheet', async ({ page }) => {
   await login(page); await page.goto('/studio/reading');
   await page.route('**/api/subscriptions', route => route.request().method() === 'POST'
-    ? route.fulfill({ status: 409, json: { error: 'already subscribed to Small Hours' } })
+    ? route.fulfill({ status: 409, json: { code: 'conflict', message: 'already subscribed to Small Hours' } })
     : route.continue());
   await page.getByRole('button', { name: 'subscribe', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'subscribe' });
@@ -130,7 +130,8 @@ test('confirm subscribe shows progress and closes the sheet on the reply', async
     if (route.request().method() !== 'POST') return route.continue();
     if (!route.request().postDataJSON().confirm) return route.fulfill({ json: { needsConfirm: true, kind: 'blyg', title: 'Small Hours' } });
     await held;
-    return route.fulfill({ status: 201, json: existing });
+    // A feed, so the sheet closes on the reply; a blyg goes on to the address book offer (contacts.spec.ts).
+    return route.fulfill({ status: 201, json: { ...existing, kind: 'rss' } });
   });
   await page.getByRole('button', { name: 'subscribe', exact: true }).click();
   const sheet = page.getByRole('dialog', { name: 'subscribe' });
@@ -157,10 +158,10 @@ test('the source inspector toggles the blogroll, pauses and resumes, and confirm
   await expect(blogroll).not.toBeChecked();
   await blogroll.check();
   await expect(page.locator('.toast')).toHaveText('added to blogroll');
-  await expect.poll(async () => (await api(page, 'GET', '/subscriptions/parity-rss')).json.in_blogroll).toBe(true);
+  await expect.poll(async () => (await api(page, 'GET', '/subscriptions/parity-rss')).json.inBlogroll).toBe(true);
   await expect(page.locator('.list-h').last()).toContainText('1 in blogroll');
   await blogroll.uncheck();
-  await expect.poll(async () => (await api(page, 'GET', '/subscriptions/parity-rss')).json.in_blogroll).toBe(false);
+  await expect.poll(async () => (await api(page, 'GET', '/subscriptions/parity-rss')).json.inBlogroll).toBe(false);
   // pause, then resume
   await inspector.getByRole('button', { name: 'pause', exact: true }).click();
   await expect(inspector).toHaveCount(0);
@@ -257,7 +258,7 @@ test('+ add to hopper… offers the hoppers and a new one, and adds the entry', 
   await answerSheet(page, { name: 'Name the new hopper:', text: name });
   await expect(page.locator('.toast')).toHaveText(`added to ${name}`);
   const hopper = (await api(page, 'GET', '/hoppers?limit=100')).json.items.find((h: { name: string }) => h.name === name);
-  expect((await api(page, 'GET', `/hoppers/${hopper.id}`)).json.memberships).toEqual([expect.objectContaining({ subscription_id: 'parity-native', remote_id: NATIVE })]);
+  expect((await api(page, 'GET', `/hoppers/${hopper.id}/memberships`)).json.items).toEqual([expect.objectContaining({ subscriptionId: 'parity-native', remoteId: NATIVE })]);
   // The new hopper is offered next time; choosing it again is harmless.
   await entry.getByRole('button', { name: 'add to hopper', exact: true }).click();
   await sheet.getByRole('button', { name, exact: true }).click();
@@ -265,7 +266,7 @@ test('+ add to hopper… offers the hoppers and a new one, and adds the entry', 
   await api(page, 'DELETE', `/hoppers/${hopper.id}`);
 });
 
-test('a stub opens quoting the whole post, explains itself until dismissed, and quotes a passage chosen in the editor', async ({ page }) => {
+test('a stub opens quoting the whole post, explains itself until dismissed, and quotes a passage selected in the preview', async ({ page }) => {
   await login(page); await page.goto('/studio/reading?sub=parity-native');
   // Select-to-quote left the reading view (session 37): selecting text offers nothing.
   await nativeEntry(page).locator('.content').evaluate(node => {
@@ -288,38 +289,37 @@ test('a stub opens quoting the whole post, explains itself until dismissed, and 
   await expect(help).toHaveCount(0);
   await expect(page.locator('.stub-hint')).toContainText('Quoting the whole post');
 
-  await page.getByRole('button', { name: 'quote a passage instead', exact: true }).click();
-  const post = page.locator('.stub-post');
+  // The passage is chosen in the editor's own preview; there is no second copy of the post.
+  await expect(page.locator('.stub-chooser, .stub-post')).toHaveCount(0);
+  await page.getByRole('button', { name: 'select a passage in the preview', exact: true }).click();
+  // Top-level quotes only: the source post itself quotes another.
+  const post = page.locator('#preview-body blockquote.blyg-transclusion:not(blockquote.blyg-transclusion blockquote.blyg-transclusion)');
   await expect(post).toContainText('Frozen');
   const pill = page.getByRole('button', { name: '❝ quote only this', exact: true });
   await expect(pill).toHaveCount(0);
-  await post.evaluate(node => {
+  const select = (word: string) => post.last().evaluate((node, word) => {
     const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
     let text = walker.nextNode();
-    while (text && !text.textContent!.includes('Frozen')) text = walker.nextNode();
-    const at = text!.textContent!.indexOf('Frozen');
-    const range = document.createRange(); range.setStart(text!, at); range.setEnd(text!, at + 'Frozen'.length);
+    while (text && !text.textContent!.includes(word)) text = walker.nextNode();
+    const at = text!.textContent!.indexOf(word);
+    const range = document.createRange(); range.setStart(text!, at); range.setEnd(text!, at + word.length);
     const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
-  });
+  }, word);
+  await select('Frozen');
   await pill.click();
   await expect(page.locator('#md-input')).toHaveValue(`![[${NATIVE}]]\n> Frozen\n\n`);
   await expect(page.locator('.stub-hint')).toContainText('Quoting a passage');
   await expect(page.locator('#preview-body .blyg-partial')).toContainText('Frozen');
 
-  // A second passage is added after the cursor, not over the first: a running commentary.
+  // A second passage is its own quote after the cursor, not over the first: a running commentary.
   await page.locator('#md-input').fill(`![[${NATIVE}]]\n> Frozen\n\nMy point.`);
   await page.locator('#md-input').evaluate((el: HTMLTextAreaElement) => { el.selectionStart = el.selectionEnd = el.value.length; });
   await page.getByRole('button', { name: 'quote another passage', exact: true }).click();
-  await expect(post).toContainText('source text');
-  await post.evaluate(node => {
-    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
-    let text = walker.nextNode();
-    while (text && !text.textContent!.includes('source text')) text = walker.nextNode();
-    const at = text!.textContent!.indexOf('source text');
-    const range = document.createRange(); range.setStart(text!, at); range.setEnd(text!, at + 'source text'.length);
-    const selection = window.getSelection()!; selection.removeAllRanges(); selection.addRange(range);
-  });
-  await page.getByRole('button', { name: '❝ add as another quote', exact: true }).click();
+  await expect(page.locator('#md-input')).toHaveValue(`![[${NATIVE}]]\n> Frozen\n\nMy point.\n\n![[${NATIVE}]]\n\n`);
+  await expect(post).toHaveCount(2);
+  await expect(post.last()).toContainText('source text');
+  await select('source text');
+  await pill.click();
   await expect(page.locator('#md-input')).toHaveValue(`![[${NATIVE}]]\n> Frozen\n\nMy point.\n\n![[${NATIVE}]]\n> source text\n\n`);
   await expect(page.locator('.stub-hint')).toContainText('Quoting 2 passages');
   await expect(page.getByRole('button', { name: 'quote whole post', exact: true })).toHaveCount(0);
@@ -383,6 +383,6 @@ test('swipes: a source ← opens its inspector, an entry → thumbs it, and the 
   // ← on an entry is stub ↗.
   const created = page.waitForResponse(response => response.url().endsWith('/api/items') && response.request().method() === 'POST');
   await swipe(page, entry.locator('.byline'), -140);
-  expect((await created).request().postDataJSON()).toEqual({ mode: 'response', source: { subscription_id: 'parity-native', remote_id: NATIVE } });
+  expect((await created).request().postDataJSON()).toEqual({ mode: 'response', source: { subscriptionId: 'parity-native', remoteId: NATIVE } });
   await expect(page).toHaveURL(/\/edit\//);
 });

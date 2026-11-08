@@ -2,7 +2,7 @@
 // foreign documents. Raw rows remain unchanged; sanitize every receiving render.
 import { decodeHTMLAttribute } from 'entities';
 
-const TAGS = new Set('a abbr address article aside b bdi bdo blockquote br caption cite code col colgroup dd del details dfn div dl dt em figcaption figure footer h1 h2 h3 h4 h5 h6 header hr i img ins kbd li main mark nav ol p pre q rp rt ruby s samp section small span strong sub summary sup table tbody td th thead time tr u ul var wbr'.split(' '));
+const TAGS = new Set('a abbr address article aside b bdi bdo blockquote br caption cite code col colgroup data dd del details dfn div dl dt em figcaption figure footer h1 h2 h3 h4 h5 h6 header hr i img ins kbd li main mark nav ol p pre q rp rt ruby s samp section small span strong sub summary sup table tbody td th thead time tr u ul var wbr'.split(' '));
 // Unlisted tags are unwrapped so their text and listed children survive
 // (<picture> around an <img>, <font>, <video> fallback text). These are dropped
 // whole instead: active or foreign content, and every raw-text or RCDATA
@@ -30,6 +30,8 @@ export async function sanitizeHtml(html: string): Promise<string> {
           if (!safeUrl(value, false)) el.removeAttribute(name);
         } else if (key === 'src' && el.tagName === 'img') {
           if (!safeUrl(value, true)) el.removeAttribute(name);
+        } else if (key === 'value' && el.tagName === 'data') {
+          // A mention's alternate identifiers (tn-6 section 5.3): inert text, never fetched.
         } else if (!ATTRIBUTES.has(key) && !key.startsWith('data-blyg-')) {
           // Exclude handlers, style, namespace URLs, animation, srcdoc and named
           // DOM properties rather than growing a list of known attack spellings.

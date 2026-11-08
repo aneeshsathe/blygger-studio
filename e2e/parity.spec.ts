@@ -16,10 +16,16 @@ async function login(page: Page) {
 test('reading preserves retained snapshots and restricts legacy actions', async ({ page }) => {
   await login(page); await page.goto('/studio/reading?sub=parity-native');
   await expect(page.locator('.reading-entry')).toHaveCount(2);
+  // A withdrawn post is background: not in the feed, and kept (with its pinned snapshot) under Background.
+  await expect(page.locator('.reading-entry').filter({ hasText: 'Pinned retained text.' })).toHaveCount(0);
+  const feed = page.url();
+  await page.goto('/studio/reading?sub=parity-native&lens=background');
   const retained = page.locator('.reading-entry').filter({ hasText: 'Pinned retained text.' });
+  await expect(page.locator('.reading-entry')).toHaveCount(1);
   await expect(retained).toContainText('retained pinned v1');
   await expect((await entryMenu(page, retained)).getByRole('button', { name: 'copy [[id]]', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
+  await page.goto(feed);
   const native = page.locator('.reading-entry').filter({ hasText: 'Native title' });
   await expect(native.locator('.entry-title a')).toHaveAttribute('href', 'https://source.example/native');
   await expect(native).toContainText('Frozen quote from a prior version.');
@@ -39,6 +45,8 @@ test('reading preserves retained snapshots and restricts legacy actions', async 
 });
 test('hopper uses stored HTML instead of re-previewing remote markdown', async ({ page }) => {
   await login(page);
+  // Finish leaving Compose before observing requests from the hopper document.
+  await page.goto('about:blank');
   const previews: string[] = [];
   page.on('request', request => { if (new URL(request.url()).pathname === '/api/preview') previews.push(request.url()); });
   await page.goto('/studio/hoppers/parity-hopper');
@@ -48,16 +56,17 @@ test('hopper uses stored HTML instead of re-previewing remote markdown', async (
 for (const kind of ['fragment', 'thread'] as const) test(`${kind} discard changes restores the working copy without rewinding publication`, async ({ page }) => {
   await login(page);
   const id = await page.evaluate(async kind => {
-    const item = await (await fetch('/api/items', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, content_md: 'published text' }) })).json();
-    await fetch(`/api/items/${item.id}/publish`, { method: 'POST' });
-    await fetch(`/api/items/${item.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content_md: 'unpublished edit' }) });
+    const item = await (await fetch('/api/items', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind, contentMd: 'published text' }) })).json();
+    const published = await (await fetch(`/api/items/${item.id}/publish`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ expectedRevision: item.revision }) })).json();
+    await fetch(`/api/items/${item.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contentMd: 'unpublished edit', expectedRevision: published.revision }) });
     return item.id as string;
   }, kind);
   await page.goto(`/studio/edit/${id}`);
   await editorMenu(page, 'discard changes');
   await answerSheet(page, { name: /^Discard unpublished changes and go back to the published v1\?/ });
   await expect(page.locator('#md-input')).toHaveValue('published text');
-  expect(await page.evaluate(async id => (await fetch(`/api/items/${id}`)).json(), id)).toMatchObject({ version: 1, dirty: false, content_md: 'published text' }); // clean since session 46: discard restores the published version whole
+  expect(await page.evaluate(async id => (await fetch(`/api/items/${id}`)).json(), id)).toMatchObject({ version: 1, dirty: false, contentMd: 'published text' }); // clean since session 46: discard restores the published version whole
+  await openCard(page, 'history');
   await expect(page.locator('[data-action=view-version]')).toHaveCount(1);
 });
 test('quick edit retains markdown and persists without leaving compose', async ({ page }) => {
@@ -83,10 +92,10 @@ test('syntax links stay inside the Studio and paging rejects out-of-range bookma
   await expect(page.locator('.reading-entry').first()).toBeVisible();
 });
 
-for (const [path, current] of [['', 'compose'], ['/reading', 'reading'], ['/hoppers', 'hoppers'], ['/mentions', 'mentions'], ['/updates', 'updates'], ['/more', 'more'], ['/settings', 'more'], ['/syntax', 'more'], ['/subs', 'reading'], ['/hoppers/parity-hopper', 'hoppers']] as const) test(`navigation tab bar remains stable on ${path || 'compose'}`, async ({ page }) => {
+for (const [path, current] of [['', 'compose'], ['/reading', 'reading'], ['/hoppers', 'hoppers'], ['/mentions', 'responses'], ['/updates', 'updates'], ['/more', 'more'], ['/settings', 'more'], ['/syntax', 'more'], ['/subs', 'reading'], ['/hoppers/parity-hopper', 'hoppers']] as const) test(`navigation tab bar remains stable on ${path || 'compose'}`, async ({ page }) => {
   await login(page); await page.goto(`/studio${path}`);
   const tabs = page.getByRole('navigation', { name: 'studio' }).getByRole('link');
-  await expect(tabs.locator('.tl')).toHaveText(['reading', 'compose', 'hoppers', 'mentions', 'updates', 'more']);
+  await expect(tabs.locator('.tl')).toHaveText(['reading', 'compose', 'hoppers', 'responses', 'updates', 'more']);
   await expect(tabs.nth(1)).toHaveAttribute('href', '/studio/');
   await expect(tabs.nth(4)).toHaveAttribute('href', '/studio/updates');
   await expect(tabs.nth(5)).toHaveAttribute('href', '/studio/more');
@@ -119,12 +128,12 @@ test('the tab bar navigates between screens without a document load', async ({ p
   await tabs.getByRole('link', { name: 'hoppers', exact: true }).click();
   await expect(page).toHaveURL(/\/studio\/hoppers$/);
   await expect(page.locator('.hopper-row').first()).toBeVisible();
-  await tabs.getByRole('link', { name: 'mentions', exact: true }).click();
+  await tabs.getByRole('link', { name: 'responses', exact: true }).click();
   await expect(page.locator('.mention-group').first()).toBeVisible();
   await tabs.getByRole('link', { name: 'more', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'more', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'settings', exact: true }).click();
-  await expect(page.locator('#site_title')).toBeVisible();
+  await expect(page.locator('#siteTitle')).toBeVisible();
   await expect(tabs.locator('a[aria-current=page]')).toHaveAccessibleName('more');
   await tabs.getByRole('link', { name: 'compose', exact: true }).click();
   await expect(page.locator('#composer-text')).toBeVisible();
@@ -148,14 +157,14 @@ test('palette pages all candidates and applies bracket grammar in each composer'
   const token = `${test.info().project.name}-palettetoken`;
   await page.evaluate(async token => {
     for (let i = 0; i < 23; i++) {
-      const item = await (await fetch('/api/items', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content_md: `${token} ${i}` }) })).json();
-      await fetch(`/api/items/${item.id}/publish`, { method: 'POST' });
+      const item = await (await fetch('/api/items', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ contentMd: `${token} ${i}` }) })).json();
+      await fetch(`/api/items/${item.id}/publish`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ expectedRevision: item.revision }) });
     }
   }, token);
   await page.reload();
   await page.locator('#composer-text').fill(`[[${token}`);
   await expect(page.getByRole('listbox', { name: 'items' }).getByRole('option')).toHaveCount(20);
-  await page.getByRole('button', { name: 'load more (20 of 23)' }).click();
+  await page.getByRole('button', { name: 'load more', exact: true }).click();
   await expect(page.getByRole('listbox', { name: 'items' }).getByRole('option')).toHaveCount(23);
   await page.getByRole('listbox', { name: 'items' }).getByRole('option').last().click();
   await expect(page.locator('#composer-text')).toHaveValue(/^\[\[[0-9a-z]{26} \| “[^\]]+”\]\]$/); // the long form (#70)
@@ -213,12 +222,12 @@ test('reading copy actions sit in the ⋯ sheet beside copy url, never beside st
   await expect(entry.locator('.entry-bar')).not.toContainText('copy [[id]]');
   await expect(entry.locator('.entry-bar')).not.toContainText(/respond|reply|answer/);
   const menu = await entryMenu(page, entry);
-  await expect(menu.getByRole('button')).toHaveText([/link post ↗$/, /fork$/, /copy \[\[id\]\]$/, /copy url$/, /share…$/, /source\.example.*↗/, /history$/]);
+  await expect(menu.getByRole('button')).toHaveText([/link post ↗$/, /fork$/, /copy \[\[id\]\]$/, /copy url$/, /share…$/, /source\.example.*↗/, /history$/, /add author to address book$/]);
   await expect(menu).not.toContainText(/stub|quote|respond|reply|answer/);
   const created = page.waitForResponse(response => response.url().endsWith('/api/items') && response.request().method() === 'POST');
   await menu.getByRole('button', { name: 'link post ↗', exact: true }).click();
   const response = await created;
-  expect(response.request().postDataJSON()).toEqual({ kind: 'fragment', content_md: '[[00000000000000000000000001]]\n\n' });
+  expect(response.request().postDataJSON()).toEqual({ kind: 'fragment', contentMd: '[[00000000000000000000000001]]\n\n' });
   const id = (await response.json()).id;
   await expect(page.locator('#md-input')).toHaveValue('[[00000000000000000000000001]]\n\n');
   await page.reload(); await expect(page.locator('#md-input')).toHaveValue('[[00000000000000000000000001]]\n\n');
@@ -228,15 +237,15 @@ test('reading copy actions sit in the ⋯ sheet beside copy url, never beside st
 test('settings keep timezone, receive policy, themes and update preferences', async ({ page }) => {
   await login(page); await page.goto('/studio/settings');
   await page.locator('#timezone').selectOption('America/Denver');
-  await page.locator('#accept_mentions').uncheck();
-  await page.locator('#update_check').uncheck();
+  await page.locator('#acceptMentions').uncheck();
+  await page.locator('#updateCheck').uncheck();
   await page.locator('.theme-opt').filter({ hasText: 'Paper' }).click();
   await page.getByRole('button', { name: 'save settings', exact: true }).click();
   await expect(page.getByRole('status')).toHaveText('saved');
   await page.reload();
   await expect(page.locator('#timezone')).toHaveValue('America/Denver');
-  await expect(page.locator('#accept_mentions')).not.toBeChecked();
-  await expect(page.locator('#update_check')).not.toBeChecked();
+  await expect(page.locator('#acceptMentions')).not.toBeChecked();
+  await expect(page.locator('#updateCheck')).not.toBeChecked();
   await expect(page.locator('[name=theme][value=paper]')).toBeChecked();
 });
 
@@ -245,7 +254,10 @@ test('mentions group verified pointers, retain hidden rows and show source guida
   const group = page.locator('.mention-group').filter({ hasText: 'Mention target fixture' });
   await expect(group).toContainText('2 responses');
   await expect(group.locator('.rel')).toHaveText(['stub', 'stub']);
+  // Source cards are acquired as each row approaches the viewport.
+  await group.locator('.mention-row').first().scrollIntoViewIfNeeded();
   await expect(group.getByRole('button', { name: 'stub back ↗', exact: true })).toHaveCount(1);
+  await group.locator('.mention-row').last().scrollIntoViewIfNeeded();
   await expect(group).toContainText('subscribe to https://stranger.example/ to stub back');
   await expect(group).not.toContainText('Frozen source text');
   await expect(group.locator('.hidden-row')).toContainText('Source author');
@@ -270,7 +282,7 @@ test('subscription changes roll back on failure and stay durable on success', as
   await inspect();
   await expect(inspector).toContainText('https://source.example/');
   await page.keyboard.press('Escape');
-  await page.route('**/api/subscriptions/parity-native', route => route.request().method() === 'PATCH' ? route.fulfill({ status: 503, json: { error: 'subscription write failed' } }) : route.continue());
+  await page.route('**/api/subscriptions/parity-native', route => route.request().method() === 'PATCH' ? route.fulfill({ status: 503, json: { code: 'internal', message: 'subscription write failed' } }) : route.continue());
   await inspect(); await inspector.getByRole('button', { name: 'pause', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('subscription write failed');
   await expect(row.locator('.fs')).not.toHaveText('paused');
@@ -301,9 +313,9 @@ test('hopper creation, rename and public slug work through the API', async ({ pa
 });
 
 test('update notice acknowledgement survives reload and the upgrade banner obeys preferences', async ({ page }) => {
-  await page.route('**/api/update-state', route => route.fulfill({ json: { update_latest_seen: '99.0.0' } }));
+  await page.route('**/api/update-state', route => route.fulfill({ json: { updateLatestSeen: '99.0.0' } }));
   await login(page);
-  await page.evaluate(async () => { await fetch('/api/settings', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ update_check: true, update_notice_ack: false }) }); });
+  await page.evaluate(async () => { await fetch('/api/settings', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ updateCheck: true, updateNoticeAck: false }) }); });
   await page.reload();
   // Behind: a compact badge in the top bar leads to the notices on more.
   await page.locator('#update-badge').click();
@@ -315,14 +327,14 @@ test('update notice acknowledgement survives reload and the upgrade banner obeys
   await page.getByRole('button', { name: 'got it', exact: true }).click();
   await expect(page.locator('#update-notice')).toHaveCount(0);
   await page.getByRole('link', { name: 'settings', exact: true }).click();
-  await page.locator('#site_title').fill('Notice acknowledgement stays saved');
+  await page.locator('#siteTitle').fill('Notice acknowledgement stays saved');
   await page.getByRole('button', { name: 'save settings', exact: true }).click();
   await expect(page.getByRole('status')).toHaveText('saved');
   await page.goto('/studio/more'); await expect(page.locator('#update-behind')).toBeVisible();
   await expect(page.locator('#update-notice')).toHaveCount(0);
   await page.reload(); await expect(page.locator('#update-behind')).toBeVisible();
   await expect(page.locator('#update-notice')).toHaveCount(0);
-  await page.evaluate(async () => { await fetch('/api/settings', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ update_check: false }) }); });
+  await page.evaluate(async () => { await fetch('/api/settings', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ updateCheck: false }) }); });
   await page.reload(); await expect(page.getByRole('heading', { name: 'more', exact: true })).toBeVisible();
   await expect(page.locator('.update-banner')).toHaveCount(0);
   await expect(page.locator('#update-badge')).toHaveCount(0);
@@ -343,8 +355,8 @@ test('fork picker refreshes pinned versions after a client navigation', async ({
   await expect(page).toHaveURL(editor);
   await page.locator('#md-input').fill('Second pinned text');
   await page.locator('#publish-btn').click();
-  await expect(page.locator('[data-action=view-version]')).toHaveCount(2);
   await openCard(page, 'history');
+  await expect(page.locator('[data-action=view-version]')).toHaveCount(2);
   await page.locator('[data-action=pin]').click();
   await answerSheet(page, { name: /^Pin v2\?/ });
   await page.getByRole('link', { name: 'fork', exact: true }).first().click();
@@ -358,22 +370,23 @@ test('palette keeps results on failure and rejects late results for an old query
   const gate = new Promise<void>(resolve => { release = resolve; });
   let delayed!: () => void;
   const started = new Promise<void>(resolve => { delayed = resolve; });
+  const hit = (id: string, excerpt: string) => ({ id, excerpt, label: excerpt, version: 1, updated: '2026-10-31', badge: 'fragment', source: 'mine', kind: 'fragment', subscriptionId: null, sourceTitle: null });
   await page.route('**/api/search?**', async route => {
     const query = new URL(route.request().url()).searchParams;
-    if (query.get('q') === 'oldquery' && query.get('offset') === '20') {
-      if (reject) return route.fulfill({ status: 503, json: { error: 'search unavailable' } });
+    if (query.get('q') === 'oldquery' && query.get('cursor') === 'old-more') {
+      if (reject) return route.fulfill({ status: 503, json: { code: 'internal', message: 'search unavailable' } });
       delayed(); await gate;
-      await route.fulfill({ json: { items: [{ id: 'old-late', excerpt: 'Late old result' }], total: 21, offset: 20, limit: 20 } }).catch(() => {});
+      await route.fulfill({ json: { items: [hit('old-late', 'Late old result')], page: { limit: 20, nextCursor: null } } }).catch(() => {});
     } else if (query.get('q') === 'oldquery') {
-      await route.fulfill({ json: { items: Array.from({ length: 20 }, (_, i) => ({ id: `old-${i}`, excerpt: `Old result ${i}` })), total: 21, offset: 0, limit: 20 } });
+      await route.fulfill({ json: { items: Array.from({ length: 20 }, (_, i) => hit(`old-${i}`, `Old result ${i}`)), page: { limit: 20, nextCursor: 'old-more' } } });
     } else {
-      await route.fulfill({ json: { items: [{ id: 'new', excerpt: 'New result only' }], total: 1, offset: 0, limit: 20 } });
+      await route.fulfill({ json: { items: [hit('new', 'New result only')], page: { limit: 20, nextCursor: null } } });
     }
   });
   await page.locator('#composer-text').fill('[[oldquery');
   await expect(page.getByRole('listbox', { name: 'items' }).getByRole('option')).toHaveCount(20);
-  await page.getByRole('button', { name: 'load more (20 of 21)' }).click();
-  await expect(page.getByRole('alert')).toContainText('search unavailable');
+  await page.getByRole('button', { name: 'load more', exact: true }).click();
+  await expect(page.locator('.picker').getByRole('alert')).toContainText('search unavailable');
   await expect(page.getByRole('listbox', { name: 'items' }).getByRole('option')).toHaveCount(20);
   reject = false;
   await page.getByRole('button', { name: 'retry search', exact: true }).click();
@@ -399,4 +412,3 @@ test('whole-fragment TK wrapping keeps text and publication warnings remain visi
   await page.locator('#publish-btn').click();
   await expect(page.locator('.publish-warning')).toHaveText('Mention delivery is waiting for a site URL.');
 });
-

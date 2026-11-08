@@ -2,9 +2,9 @@
 
 Studio is the reference client: it shows each protocol construct in its plainest form, and it stays plain so that other clients do not read its interface as the expected design. Extensions are how an interface experiment runs on a real node without becoming that reference. The first one is the lineage glyph from #35.
 
-An extension is first-party TypeScript in this repository. An operator compiles it into their build, and the owner turns it on in Settings. With nothing turned on, the Studio is the reference Studio, byte for byte.
+Extensions are one of three places a mod can live; [`mods.md`](mods.md) says which to try first and what the Studio will add for a mod. An extension is first-party TypeScript in this repository. An operator compiles it into their build, and the owner turns it on in Settings. With nothing turned on, the Studio is the reference Studio, byte for byte.
 
-> **Proposed: third-party extensions through a registry.** [docs/extension-registry.md](extension-registry.md) describes a registry of browser-only extensions that live outside this repository. It is a proposal awaiting Venkat's ruling. An operator would vendor an extension's pinned, hash-checked source into their own build with `npm run ext:add`, and no Studio would ever load anything at run time. Everything below describes first-party extensions.
+> **Extensions from other repositories.** An operator can vendor a browser-only extension that lives in someone else's repository into their own build with `npm run ext:add`, pinned to a full commit and hash-checked by every build. No Studio loads anything at run time, and the program hosts no index of extensions. See [`extension-vendoring.md`](extension-vendoring.md). Everything below describes extensions in this repository, and holds for vendored ones too.
 
 ## Extensions in this repository
 
@@ -14,7 +14,9 @@ An extension is first-party TypeScript in this repository. An operator compiles 
 | `feed-example` | Adds a "Pinned first" home page order: pinned items at the top, most pins first, then the rest newest first. Server only (`feeds.ts`, `server.ts`); the template to copy for a feed order of your own. |
 | `inspect` | Adds "inspect" to each reading entry's ⋯ sheet: the record this Studio holds for it, and its JSON. Browser only; shipped in `extensions.json`. |
 | `lineage-glyph` | The lineage glyph, hex view and action ring from #35. A glyph in each reading byline counts what a post draws on and what draws on it here. It opens a hex view of one hop of ancestors and descendants, where each corner previews what stub, quote a passage, fork, link post, history and open would make, and a second press runs that action. The actions are the Studio's own (or drafts and navigation through the extension context), so they write through the owner's session like the ⋯ sheet does. Its server routes are owner reads: `GET /api/ext/lineage-glyph/lineage` and `/summaries`. `scripts/lineage-demo.ts` runs a seeded local node with it enabled. |
+| `menu-example` | A page with an entry in the main menu, and nothing else. The template to copy for one. |
 | `reading-time` | An estimated reading time and word count at the end of each reading entry's byline. Browser only; shipped in `extensions.json`. |
+| `word-count` | Each reading entry's word count at the end of its byline and beside the character count in the composer (counted in the browser) and the full editor (re-read after each autosave), published and in draft (the working copy as publish would bake it now), and for a thread whose outline links (list items that are just an `[[id]]` link, as a table of contents is written) form a strict tree of your own items (published or draft), the words in the whole document under it. Inline links (navigation, citations) are never followed; transclusions are already in a thread's own count. Its server route is an owner read: `GET /api/ext/word-count/counts`. |
 
 ## What an extension can do
 
@@ -22,8 +24,10 @@ An extension is first-party TypeScript in this repository. An operator compiles 
 | --- | --- | --- |
 | Reading byline | Something at the end of each reading entry's byline, such as a badge or a button | `entryByline` (a component) |
 | Reading actions | Rows after the Studio's own in an entry's ⋯ sheet | `entryActions(context)` |
-| Sheets | A sheet of its own, opened from either slot above | `context.openSheet(render)` |
+| Draft counter | Something beside the character count, in the composer and the full editor | `draftCounter` (a component) |
+| Sheets | A sheet of its own, opened from a reading byline or reading actions | `context.openSheet(render)` |
 | A page | A screen at `/studio/ext/<name>`, linked from More | `page` |
+| A main-menu entry | Links that page from the main menu instead, above compose. The menu holds one: the first enabled extension in compiled order that asks. Any other stays in More | `page.mainMenu` (an icon); the label is `page.title` |
 | Owner reads | `GET /api/ext/<name>/…` routes, in the documented contract and the SDK | `extensions/<name>/contract.ts` + `server.ts` |
 | Feed orders | An order for the public home page, chosen in Settings → home page | `feeds` in `server.ts` (see "Feed orders" below) |
 
@@ -35,17 +39,19 @@ A slot receives a narrow context ([`src/ui/extension-api.ts`](../src/ui/extensio
 - `actions`: the Studio's own handlers for this entry (`stub`, `fork`, `linkPost`, `history`, `open`), present only where the Studio offers them. An extension can present the existing actions differently without reimplementing them.
 - `openSheet(render)`: open a sheet that the extension owns, under the entry.
 
+The draft counter slot gets the verbs (`client`, `openDraft`, `navigate`, `run`), `text` (as it stands now, saved or not) and, in the full editor, `item`: its `id`, `kind`, `status`, `version` and `revision`. `revision` moves each time autosave reaches the server, so a slot that shows something derived from the working copy re-reads on it. The composer passes no `item`, because its text may have no server copy.
+
 Extensions do not get the router, the query cache, the data collections or any other Studio module. An extension's UI may import only `src/ui/extension-api.ts` (which also re-exports the Studio's `Sheet`, `Button`, `toast` and `confirm`), React, the SDK (`sdk/dist/browser.js`) and files in its own directory. `test-ui/extensions.test.ts` enforces this rule.
 
 Each slot renders inside an error boundary. If an extension throws, that slot renders nothing until the page reloads, and the console names the extension. A throwing `entryActions()` or row handler is caught the same way. The rest of the Studio carries on.
 
 ## What is not offered, on purpose
 
-- **Runtime loading.** No extension is fetched, evaluated or configured by URL at run time. The Studio runs with the owner's session cookie, so any script that runs there can act as the owner: publish, mint tokens, read drafts. Remote code in that session would be a credential-theft surface. Only code compiled into the build runs, and every extension is code in this repository that the operator chose to compile in. The proposed [registry](extension-registry.md) keeps this rule: it vendors source at build time and never loads anything at run time.
+- **Runtime loading.** No extension is fetched, evaluated or configured by URL at run time. The Studio runs with the owner's session cookie, so any script that runs there can act as the owner: publish, mint tokens, read drafts. Remote code in that session would be a credential-theft surface. Only code compiled into the build runs, and every extension is code the operator chose to compile in, from this repository or vendored at a pinned commit. [Vendoring](extension-vendoring.md) keeps this rule: it copies pinned source into the build on the operator's machine and never loads anything at run time.
 - **Writes.** Extension routes are GETs under `/api/ext/<name>/`. The permission model classifies them as `owner:read`, and a route registered with any other method or prefix is refused when the Worker starts. An extension that wants to change something uses the existing contract through `client`, under the same scopes as any client.
 - **The wire.** An extension does not reach `blyg.json`, public pages, feeds, `content_html` or mentions. It is studio furniture for one owner. The one exception is order: a feed order may decide the sequence of the home page's cards, and nothing else (session 46; see "Feed orders").
 - **Changing the Studio's own controls.** No slot rewrites, hides or annotates a built-in button, row or label. #35 needed this (hover previews on `stub ↗`, tips on ⋯ rows), and it was left out because it would make the base UI's markup depend on extension code. See the open questions in the extension PR.
-- **Other screens.** The slots are on the reading view only, plus an extension's own page. New slots should be added when an extension needs them, not before.
+- **Other screens.** The slots are on the reading view and beside the composer's and full editor's character count, plus an extension's own page. New slots should be added when an extension needs them, not before.
 
 ## Writing one
 
@@ -85,10 +91,11 @@ extensions/
    };
    // server.ts
    import type { ServerExtension } from '../../src/extensions/server.ts';
+   import { success } from '../../src/operation-types.ts';
    import { routes } from './contract.ts';
    export const server: ServerExtension = {
      name: 'my-thing',
-     routes: (router) => router.get(routes.extMyThingSummary, async (c) => c.json({ count: 0 }, 200)),
+     routes: (router) => router.get(routes.extMyThingSummary, async () => success({ count: 0 })),
    };
    ```
 
@@ -141,9 +148,18 @@ Turning an extension off removes its slots, its page and its routes immediately.
 
 ## Security model, in one place
 
-- The code is in the repository and passes the same review and CI as the rest of the Studio. Nothing loads at run time.
+- The code is in the repository and passes the same review and CI as the rest of the Studio. Nothing loads at run time. A [vendored](extension-vendoring.md) extension is not: its review is the operator's, at the commit they pinned, and the build refuses it if it was edited after vendoring.
 - An extension is compiled in only when the operator chooses it, and it runs only on a node whose owner has enabled it.
 - Server routes run behind the owner API's middleware: owner session or bearer token, `owner:read` scope, the cross-origin refusal for cookie requests, and the owner and grant work budgets. On top of that, a prefix gate returns 404 when the extension is disabled. These checks are in `test/extensions.test.ts`, and the permission oracles list every extension operation.
 - Extension routes are reads only. They are registered under the extension's own prefix, or not at all.
 - "Reads only" is a property of an extension's *server routes*, not of its UI. In the browser an extension gets the SDK client carrying the owner's session, so its code can call any owner operation, writes included: publish, discard, mint tokens. Nothing at run time stops it. What makes that acceptable is the first two points: an extension is reviewed code the operator chose to compile in. Review an extension's UI as you would any Studio screen that writes.
 - An extension's UI sees a narrow context and imports only the extension surface. Any URL an extension takes from someone else's document and turns into an `href` must pass `isFollowableUrl` (http, https or mailto), the same rule the Studio applies. Lineage-glyph does this on its server.
+
+Server read handlers receive `(context, input)`. The context supplies the node
+environment, verified access, deployment URL, compiled extensions, and a `defer`
+function for background work. Input has validated `path`, `query`, and `body`
+fields. Return `success(value)` or a typed `failure(kind, details)`. Handlers do
+not receive Hono contexts or return HTTP responses. REST and MCP invoke the same
+operation runner, which owns scopes, live feature checks, and work admission.
+
+All REST addresses in this guide use `/api` as shorthand for `{mount}/api`. Generated operation paths are relative to the complete API base. Mounted nodes do not provide a host-root API alias.

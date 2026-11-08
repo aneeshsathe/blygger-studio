@@ -1,50 +1,10 @@
-// Every imported item, keyset-paged, with authoring-grade fields (studio#11
-// item 2): the feed a non-browser reader (Blygger Desktop) syncs from. GET
-// /reading is the Studio's merged timeline: own and imported entries,
-// sanitized HTML only, offset-paged. This is the other shape: imported only,
-// newest observed first, with the markdown, author, signal, hopper membership,
-// lineage and the origin's transclusions per row, so a client needs no
-// per-row GET /imports/{sub}/{id}.
-//
-// The order is (observed_at, subscription_id, remote_id) descending. One poll
-// run stamps one observed_at on everything it imports, so a backfill is one
-// large tie and an offset or a bare timestamp cannot resume inside it. The
-// cursor names the last row returned and the next page starts strictly after
-// it, so rows observed later (a poll between two page requests) land ahead of
-// the walk and never shift it: no drops, no repeats.
+// Imported authoring feed, with bounded generation-bound keyset pages.
+import { cursorPage } from "./cursor-page.ts";
 import { sanitizeHtml } from "./importer/sanitize.ts";
 import { sourceTitleAndUrl } from "./importer/util.ts";
 import type { ImportedItemRow } from "./types.ts";
 
 export const IMPORTED_READING_DEFAULT = 50;
-export const IMPORTED_READING_MAX = 100;
-/** A cursor longer than this is not one we issued. */
-export const READING_CURSOR_MAX = 2048;
-
-export interface ReadingCursor { observedAt: string; sub: string; remoteId: string }
-
-/** Opaque to clients: base64url of JSON [observed_at, subscription_id, remote_id]. */
-export function encodeReadingCursor(c: ReadingCursor): string {
-  const bytes = new TextEncoder().encode(JSON.stringify([c.observedAt, c.sub, c.remoteId]));
-  let bin = "";
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-/** null for anything this server did not issue: wrong alphabet, bad base64, bad JSON, wrong shape. */
-export function decodeReadingCursor(raw: string): ReadingCursor | null {
-  if (!raw || raw.length > READING_CURSOR_MAX || !/^[A-Za-z0-9_-]+$/.test(raw)) return null;
-  try {
-    const bin = atob(raw.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (raw.length % 4)) % 4));
-    const value = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(Uint8Array.from(bin, (ch) => ch.charCodeAt(0)))) as unknown;
-    if (!Array.isArray(value) || value.length !== 3 || !value.every((part) => typeof part === "string" && part.length > 0)) return null;
-    const [observedAt, sub, remoteId] = value as string[];
-    return { observedAt, sub, remoteId };
-  } catch {
-    return null;
-  }
-}
-
 type Row = ImportedItemRow & { subscription_title: string; origin: string; thumb: number | null; hoppers_json: string; read_version: number | null };
 
 // Hopper ids sorted so the array is stable between polls. read_state is the
@@ -57,7 +17,6 @@ const SELECT = `
   JOIN subscriptions s ON s.id = i.subscription_id
   LEFT JOIN signals g ON g.subscription_id = i.subscription_id AND g.remote_id = i.remote_id
   LEFT JOIN read_state rs ON rs.subscription_id = i.subscription_id AND rs.remote_id = i.remote_id`;
-const ORDER = "ORDER BY i.observed_at DESC, i.subscription_id DESC, i.remote_id DESC";
 
 /** Stored remote JSON, verbatim; null when absent, malformed or not of the expected kind. */
 function parsed<T>(raw: string | null, accept: (value: unknown) => value is T): T | null {
@@ -103,18 +62,11 @@ async function entry(row: Row) {
   };
 }
 
-/** One page after `cursor` (or from the newest). The cursor was validated by the contract. */
+/** Projection stays inside the cursor's generation guard, including remote metadata joins. */
 export async function importedReading(db: D1Database, cursor: string | undefined, limit: number) {
-  const after = cursor ? decodeReadingCursor(cursor) : null;
-  const stmt = after
-    ? db.prepare(`${SELECT} WHERE (i.observed_at, i.subscription_id, i.remote_id) < (?, ?, ?) ${ORDER} LIMIT ?`).bind(after.observedAt, after.sub, after.remoteId, limit + 1)
-    : db.prepare(`${SELECT} ${ORDER} LIMIT ?`).bind(limit + 1);
-  const rows = (await stmt.all<Row>()).results;
-  const page = rows.slice(0, limit);
-  const last = page[page.length - 1];
-  return {
-    items: await Promise.all(page.map(entry)),
-    next: rows.length > limit && last ? encodeReadingCursor({ observedAt: last.observed_at, sub: last.subscription_id, remoteId: last.remote_id }) : null,
-    limit,
-  };
+  return cursorPage<Row, Awaited<ReturnType<typeof entry>>>(db, { cursor, limit }, {
+    name: 'reading-imported', domains: ['reading', 'subscriptions', 'signals', 'hoppers'], sql: SELECT,
+    order: [{ column: 'observed_at', direction: 'desc' }, { column: 'subscription_id', direction: 'desc' }, { column: 'remote_id', direction: 'desc' }],
+    project: rows => Promise.all(rows.map(entry)),
+  });
 }

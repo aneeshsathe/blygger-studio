@@ -1,32 +1,50 @@
 // D1 access for the subscribe side (migration 0004) — the importer-side
 // counterpart to ../model.ts, which owns the publish side's items/versions.
 
+import { syncImportedMentions } from "./mention-index.ts";
 import type { Surface } from "../surface.ts";
 import type { HopperItemRow, HopperRow, ImportedItemRow, SignalRow, SubscriptionRow } from "../types.ts";
-import { newId, nowIso } from "../util.ts";
+import { newId, nowIso, toIsoUtc } from "../util.ts";
 import type { LocalState, TransitionEffect } from "./transition.ts";
 
 const FLAG_LOG_CAP = 20;
 
 export async function createSubscription(
   db: D1Database,
-  row: { kind: "blyg" | "rss"; origin: string; feedUrl: string; title: string; titleAuto?: boolean; surface?: Surface | null },
+  row: { kind: "blyg" | "rss"; origin: string; feedUrl: string; title: string; titleAuto?: boolean; surface?: Surface | null; hopperFeed?: string },
 ): Promise<SubscriptionRow> {
   const id = newId();
   const created = nowIso();
   await db
     .prepare(
-      "INSERT INTO subscriptions (id, kind, origin, feed_url, title, status, fail_count, in_blogroll, flags, created, title_auto, surface) VALUES (?, ?, ?, ?, ?, 'active', 0, 0, '[]', ?, ?, ?)",
+      "INSERT INTO subscriptions (id, kind, origin, feed_url, title, status, fail_count, in_blogroll, flags, created, title_auto, surface, hopper_feed) VALUES (?, ?, ?, ?, ?, 'active', 0, 0, '[]', ?, ?, ?, ?)",
     )
-    .bind(id, row.kind, row.origin, row.feedUrl, row.title, created, row.titleAuto === false ? 0 : 1, row.surface ? JSON.stringify(row.surface) : null)
+    .bind(id, row.kind, row.origin, row.feedUrl, row.title, created, row.titleAuto === false ? 0 : 1, row.surface ? JSON.stringify(row.surface) : null, row.hopperFeed ?? null)
     .run();
   return (await getSubscription(db, id))!;
 }
 
-/** An existing subscription to the same source: same origin, or the same feed reached another way. */
+/**
+ * The subscription to one hopper: identity is the pair
+ * (identity origin, hopper feed's resolved absolute URL), unique by
+ * migration 0038 (spec 0.4 §16.12 rule 5). A plain L0
+ * subscription already polling that feed URL is the same source too.
+ */
+export async function findHopperSubscription(db: D1Database, origin: string, hopperFeed: string): Promise<SubscriptionRow | null> {
+  return db
+    .prepare("SELECT * FROM subscriptions WHERE (origin = ? AND hopper_feed = ?) OR (hopper_feed IS NULL AND feed_url = ?) LIMIT 1")
+    .bind(origin, hopperFeed, hopperFeed)
+    .first<SubscriptionRow>();
+}
+
+/**
+ * An existing subscription to the same source: same origin, or the same feed
+ * reached another way. A hopper subscription to the same origin is a list at
+ * it, not the blyg (§12.2), so it never blocks one.
+ */
 export async function findSubscription(db: D1Database, origin: string, feedUrl: string): Promise<SubscriptionRow | null> {
   return db
-    .prepare("SELECT * FROM subscriptions WHERE origin = ? OR feed_url = ? OR origin = ? LIMIT 1")
+    .prepare("SELECT * FROM subscriptions WHERE hopper_feed IS NULL AND (origin = ? OR feed_url = ? OR origin = ?) LIMIT 1")
     .bind(origin, feedUrl, feedUrl)
     .first<SubscriptionRow>();
 }
@@ -50,11 +68,15 @@ export async function listSubscriptions(db: D1Database): Promise<SubscriptionRow
   return (await db.prepare("SELECT * FROM subscriptions ORDER BY created ASC").all<SubscriptionRow>()).results;
 }
 
-/** Subscriptions flagged for the public blogroll (§2.2), active only. */
+/**
+ * Subscriptions flagged for the public blogroll (§2.2), active only. Never a
+ * hopper subscription: the blogroll lists blygs and feeds one follows, and a
+ * hopper is a list at a blyg, not a second outline for it (§16.12 rule 5).
+ */
 export async function listBlogrollSubscriptions(db: D1Database): Promise<SubscriptionRow[]> {
   return (
     await db
-      .prepare("SELECT * FROM subscriptions WHERE in_blogroll = 1 AND status != 'paused' ORDER BY title ASC")
+      .prepare("SELECT * FROM subscriptions WHERE in_blogroll = 1 AND status != 'paused' AND hopper_feed IS NULL ORDER BY title ASC")
       .all<SubscriptionRow>()
   ).results;
 }
@@ -64,6 +86,7 @@ export async function deleteSubscription(db: D1Database, id: string): Promise<vo
   await db.batch([
     db.prepare("DELETE FROM hopper_items WHERE subscription_id = ?").bind(id),
     db.prepare("DELETE FROM signals WHERE subscription_id = ?").bind(id),
+    db.prepare("DELETE FROM imported_mentions WHERE subscription_id = ?").bind(id),
     db.prepare("DELETE FROM imported_items WHERE subscription_id = ?").bind(id),
     db.prepare("DELETE FROM subscriptions WHERE id = ?").bind(id),
   ]);
@@ -192,6 +215,22 @@ export async function applyEffect(
   observedAt: string,
   opts: { l0?: boolean; retainPinnedVersion?: number } = {},
 ): Promise<void> {
+  await writeEffect(db, subscriptionId, remoteId, effect, observedAt, opts);
+  if (opts.l0) return;
+  if ("doc" in effect) await syncImportedMentions(db, subscriptionId, remoteId, effect.doc.content_html);
+  else if (effect.type === "record-tombstone" || effect.type === "rollup-null") await syncImportedMentions(db, subscriptionId, remoteId, null);
+}
+
+async function writeEffect(
+  db: D1Database,
+  subscriptionId: string,
+  remoteId: string,
+  effect: TransitionEffect,
+  observedAt: string,
+  opts: { l0?: boolean; retainPinnedVersion?: number },
+): Promise<void> {
+  // Store foreign dates in UTC so SQL pages and Reading's display clamp agree.
+  // Observation times come from our clock; adopt-stealth keeps stored dates.
   const l0 = opts.l0 ? 1 : 0;
   switch (effect.type) {
     case "import": {
@@ -203,7 +242,7 @@ export async function applyEffect(
            VALUES (?, ?, ?, 'current', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)`,
         )
         .bind(
-          subscriptionId, remoteId, d.kind, d.version, d.created, d.updated, observedAt,
+          subscriptionId, remoteId, d.kind, d.version, toIsoUtc(d.created) ?? null, toIsoUtc(d.updated) ?? null, observedAt,
           d.content_md, d.content_html, d.content_hash,
           JSON.stringify(d.author ?? null), JSON.stringify(d.media ?? []),
           d.transclusions ? JSON.stringify(d.transclusions) : null, l0,
@@ -227,7 +266,7 @@ export async function applyEffect(
              content_md = '', content_html = '', content_hash = NULL, author_json = NULL, media_json = NULL, transclusions_json = NULL,
              pinned_version_retained = NULL, stub_of_json = NULL, forked_from_json = NULL, generated_json = NULL`,
         )
-        .bind(subscriptionId, remoteId, effect.version, effect.updated, observedAt, l0)
+        .bind(subscriptionId, remoteId, effect.version, toIsoUtc(effect.updated) ?? null, observedAt, l0)
         .run();
       return;
     }
@@ -241,7 +280,7 @@ export async function applyEffect(
            WHERE subscription_id = ? AND remote_id = ?`,
         )
         .bind(
-          d.kind, d.version, d.updated, observedAt,
+          d.kind, d.version, toIsoUtc(d.updated) ?? null, observedAt,
           d.content_md, d.content_html, d.content_hash,
           JSON.stringify(d.author ?? null), JSON.stringify(d.media ?? []),
           d.transclusions ? JSON.stringify(d.transclusions) : null,
@@ -257,7 +296,7 @@ export async function applyEffect(
           .prepare(
             "UPDATE imported_items SET state = 'tombstone', version = ?, updated = ?, observed_at = ?, pinned_version_retained = ? WHERE subscription_id = ? AND remote_id = ?",
           )
-          .bind(effect.version, effect.updated, observedAt, opts.retainPinnedVersion, subscriptionId, remoteId)
+          .bind(effect.version, toIsoUtc(effect.updated) ?? null, observedAt, opts.retainPinnedVersion, subscriptionId, remoteId)
           .run();
         return;
       }
@@ -268,7 +307,7 @@ export async function applyEffect(
            stub_of_json = NULL, forked_from_json = NULL, generated_json = NULL
            WHERE subscription_id = ? AND remote_id = ?`,
         )
-        .bind(effect.version, effect.updated, observedAt, subscriptionId, remoteId)
+        .bind(effect.version, toIsoUtc(effect.updated) ?? null, observedAt, subscriptionId, remoteId)
         .run();
       return;
     }
@@ -282,7 +321,7 @@ export async function applyEffect(
            WHERE subscription_id = ? AND remote_id = ?`,
         )
         .bind(
-          d.kind, d.version, d.updated, observedAt,
+          d.kind, d.version, toIsoUtc(d.updated) ?? null, observedAt,
           d.content_md, d.content_html, d.content_hash,
           JSON.stringify(d.author ?? null), JSON.stringify(d.media ?? []),
           d.transclusions ? JSON.stringify(d.transclusions) : null,
@@ -315,23 +354,43 @@ export async function applyEffect(
   }
 }
 
+/**
+ * Drop a subscription's imported rows whose ids are not in `keep`, returning
+ * how many went. Used for hopper subscriptions (§16.12 rule 6), whose feed is
+ * the whole list: absence is withdrawal. An empty `keep` drops everything.
+ * The reader's own hopper memberships and signals on a dropped row go with it,
+ * as deleteSubscription cascades them; read state goes by trigger (0026).
+ */
+export async function dropImportedItemsExcept(db: D1Database, subscriptionId: string, keep: string[]): Promise<number> {
+  const keepJson = JSON.stringify(keep);
+  const gone = "subscription_id = ? AND remote_id NOT IN (SELECT value FROM json_each(?))";
+  const [, , , res] = await db.batch([
+    db.prepare(`DELETE FROM hopper_items WHERE ${gone}`).bind(subscriptionId, keepJson),
+    db.prepare(`DELETE FROM signals WHERE ${gone}`).bind(subscriptionId, keepJson),
+    db.prepare(`DELETE FROM imported_mentions WHERE ${gone}`).bind(subscriptionId, keepJson),
+    db.prepare(`DELETE FROM imported_items WHERE ${gone}`).bind(subscriptionId, keepJson),
+  ]);
+  return res.meta.changes ?? 0;
+}
+
 /** Insert-or-update an L0 (legacy RSS) synthetic item (§3.5) — always kind='fragment', state='current', l0=1. */
+
 export async function upsertL0Item(
   db: D1Database,
   subscriptionId: string,
   remoteId: string,
-  row: { version: number; created: string; updated: string; observedAt: string; contentMd: string; contentHtml: string; contentHash: string },
+  row: { version: number; created: string; updated: string; observedAt: string; contentMd: string; contentHtml: string; contentHash: string; authorJson?: string | null },
 ): Promise<void> {
   await db
     .prepare(
       `INSERT INTO imported_items
        (subscription_id, remote_id, kind, state, version, created, updated, observed_at, content_md, content_html, content_hash, author_json, media_json, transclusions_json, l0, pinned_version_retained)
-       VALUES (?, ?, 'fragment', 'current', ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 1, NULL)
+       VALUES (?, ?, 'fragment', 'current', ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 1, NULL)
        ON CONFLICT (subscription_id, remote_id) DO UPDATE SET
          version = excluded.version, updated = excluded.updated, observed_at = excluded.observed_at,
-         content_md = excluded.content_md, content_html = excluded.content_html, content_hash = excluded.content_hash`,
+         content_md = excluded.content_md, content_html = excluded.content_html, content_hash = excluded.content_hash, author_json = excluded.author_json`,
     )
-    .bind(subscriptionId, remoteId, row.version, row.created, row.updated, row.observedAt, row.contentMd, row.contentHtml, row.contentHash)
+    .bind(subscriptionId, remoteId, row.version, toIsoUtc(row.created) ?? null, toIsoUtc(row.updated) ?? null, row.observedAt, row.contentMd, row.contentHtml, row.contentHash, row.authorJson ?? null)
     .run();
 }
 
@@ -350,7 +409,7 @@ export async function repairL0ItemDates(
 ): Promise<void> {
   await db
     .prepare("UPDATE imported_items SET created = ?, updated = ? WHERE subscription_id = ? AND remote_id = ?")
-    .bind(dates.created, dates.updated, subscriptionId, remoteId)
+    .bind(toIsoUtc(dates.created) ?? null, toIsoUtc(dates.updated) ?? null, subscriptionId, remoteId)
     .run();
 }
 

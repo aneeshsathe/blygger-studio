@@ -10,6 +10,14 @@ describe("sanitizeHtml()", () => {
     expect(out).toContain("<p>hi</p>");
   });
 
+  it("keeps a mention's <data value> identifiers and only value on data (tn-6 section 5.3)", async () => {
+    const out = await sanitizeHtml('<span class="h-card"><a class="u-url" href="https://a.example/">@<span class="p-name">A</span></a><data class="u-url" value="did:plc:abc" onclick="x()"></data></span><input value="kept-not"><p value="no">t</p>');
+    expect(out).toContain('<data class="u-url" value="did:plc:abc"></data>');
+    expect(out).not.toContain("onclick");
+    expect(out).not.toContain("kept-not");
+    expect(out).toContain("<p>t</p>");
+  });
+
   it("strips inline event-handler attributes", async () => {
     const out = await sanitizeHtml('<img src="x.png" onerror="alert(1)">');
     expect(out).not.toContain("onerror");

@@ -11,14 +11,16 @@ export interface Provider {
   params?: Record<string, unknown>;
   prefixes?: string[];
 }
-export interface Model { id: string; provider: string; label: string; note?: string; params?: Record<string, unknown> }
+export interface Model { id: string; provider: string; label: string; note?: string; params?: Record<string, unknown>; kind?: "decision" }
 export interface Manifest { providers: Record<string, Provider>; models: Model[] }
 export interface Local { providers?: Record<string, Partial<Provider>>; models?: Model[]; remove?: string[] }
 
 /** Every request shape src/ai/provider.ts can speak. */
-export const APIS = ["anthropic-messages", "openai-responses", "gemini-generate", "workers-ai", "openai-chat"] as const;
+export const APIS = ["anthropic-messages", "openai-responses", "gemini-generate", "workers-ai", "openai-chat", "systemone"] as const;
 /** The apis that take an operator-supplied endpoint or binding, and so `params`. */
 const CHAT_APIS = new Set(["workers-ai", "openai-chat"]);
+/** The apis that can serve a decision model (Clef on Workers AI, Jev on System One). */
+const DECISION_APIS = new Set(["workers-ai", "systemone"]);
 /** Worker secrets that are never an AI key: naming one would send it to a provider. */
 const RESERVED_SECRETS = new Set(["OWNER_PASSWORD", "COOKIE_SECRET"]);
 const ENV_NAME = /^[A-Z_][A-Z0-9_]*$/;
@@ -40,8 +42,14 @@ export function providerProblems(key: string, p: Provider): string[] {
   if (p.api === "openai-chat") {
     const problem = baseUrlProblem(p.base_url);
     if (problem) out.push(`${at}: ${problem}`);
+  } else if (p.api === "systemone") {
+    // TypeSafe's System One API (decision models): a fixed default endpoint,
+    // which an operator may point at a proxy or gateway instead.
+    const problem = p.base_url === undefined ? null : typeof p.base_url === "string" && p.base_url ? baseUrlProblem(p.base_url) : "base_url must be a non-empty URL when given";
+    if (problem) out.push(`${at}: ${problem}`);
+    if (!p.key_secret) out.push(`${at} needs a key_secret`);
   } else {
-    if (p.base_url !== undefined) out.push(`${at}: base_url is only for an openai-chat provider`);
+    if (p.base_url !== undefined) out.push(`${at}: base_url is only for an openai-chat or systemone provider`);
     if (p.api !== "workers-ai" && !p.key_secret) out.push(`${at} needs a key_secret`);
   }
   if (p.params !== undefined && (!isObject(p.params) || !CHAT_APIS.has(p.api))) out.push(`${at}: params must be an object, and only workers-ai and openai-chat providers take them`);
@@ -83,6 +91,8 @@ export function mergeManifest(base: Manifest, local: Local | null): Manifest {
   for (const m of models) {
     if (!m.id || !m.label || !providers[m.provider]) problems.push(`model "${m.id}" needs a label and a known provider (got "${m.provider}")`);
     else if (m.params !== undefined && (!isObject(m.params) || !CHAT_APIS.has(providers[m.provider].api))) problems.push(`model "${m.id}": params must be an object, and only models of workers-ai and openai-chat providers take them`);
+    else if (m.kind !== undefined && m.kind !== "decision") problems.push(`model "${m.id}": kind must be "decision" or absent (got "${m.kind}")`);
+    else if (m.kind === "decision" && !DECISION_APIS.has(providers[m.provider].api)) problems.push(`model "${m.id}": a decision model runs on a workers-ai or systemone provider`);
   }
   if (problems.length) throw new Error(problems.join("\n"));
   return { providers, models };

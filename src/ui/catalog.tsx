@@ -1,6 +1,9 @@
+import { withoutComments } from '../comments.ts';
+import { blygContactSeed, ContactOffer, type ContactSeed } from './contacts.tsx';
+import { createSubscription, createHopper, removeHopperItem, createItem } from './server-mutations.ts';
 import { previewFromHtml } from '../preview.ts';
-import { useMemo, useState } from 'react';
-import { useLiveQuery } from '@tanstack/react-db';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLiveQuery, useLiveInfiniteQuery, eq, inArray } from '@tanstack/react-db';
 import { Link, useNavigate } from '@tanstack/react-router';
 import type { Mention } from '../../sdk/dist/browser.js';
 import { BlyggerApi, unwrap } from '../../sdk/dist/browser.js';
@@ -11,21 +14,19 @@ import {
   hoppers,
   items,
   createDraftAction,
-  changed,
-  hopperDetail,
+  hopperInfo,
+  hopperMemberships,
   hopperPreview,
   inbound,
   outbound,
+  mentionGroupItemsView,
+  mentionSummary,
   mentionSource,
-  mentionSources,
-  refreshItems,
-  refreshHoppers,
 } from './data.ts';
 import {
   Button,
   Failure,
   Html,
-  usePoll,
   mount,
   publicPath,
   useChrome,
@@ -58,30 +59,44 @@ function useAction() {
   };
 }
 /** Subscribe to a blyg or a feed: the body of reading's ＋ sheet. */
-export function AddFeedForm({ onSubscribed }: { onSubscribed?: () => void }) {
+/** `onSubscribed(told)`: told is true when the sheet has already said so, in its offer step. */
+export function AddFeedForm({ onSubscribed, initialUrl = '' }: { onSubscribed?: (told: boolean) => void; initialUrl?: string }) {
   const action = useAction();
-  const [url, setUrl] = useState('');
+  const [url, setUrl] = useState(initialUrl);
   const [confirmation, setConfirmation] = useState<{
     title: string;
+    kind?: string;
+    blygTitle?: string;
     siteMismatch?: {
       asserted: string;
       actual: string;
     };
   }>();
-  const add = async (confirm = false) => {
-    const result = await unwrap(
-      BlyggerApi.createSubscription({ client, body: { url, confirm } }),
-    );
+  const [offer, setOffer] = useState<{ title: string; seed: ContactSeed }>();
+  const add = async (confirm = false, wholeBlyg = false) => {
+    const result = await createSubscription({ url, confirm, ...(wholeBlyg ? { wholeBlyg: true } : {}) });
     if ('needsConfirm' in result) setConfirmation(result);
     else {
       setConfirmation(undefined);
       setUrl('');
       // The backfill runs on the server after this reply; polling brings its
       // items in, so the sheet need not wait on the refetch.
-      void changed('subscriptions', 'reading');
-      onSubscribed?.();
+      // One blyg, subscribed by hand: bulk imports never come through this form.
+      // The sheet stays open and becomes the offer, so nothing appears after it closes.
+      const seed = result.kind === 'blyg' && !result.hopperFeedUrl ? await blygContactSeed(result).catch(() => null) : null;
+      if (seed) setOffer({ title: result.title, seed });
+      else onSubscribed?.(false);
     }
   };
+  if (offer) {
+    return (
+      <div id="add-sub-offer">
+        <p className="add-sub-done">Subscribed to {offer.title}.</p>
+        <p><strong>Add this blyg to your address book?</strong></p>
+        <ContactOffer seed={offer.seed} done={() => onSubscribed?.(true)} />
+      </div>
+    );
+  }
   return (
     <>
       <Failure error={action.error} />
@@ -122,6 +137,13 @@ export function AddFeedForm({ onSubscribed }: { onSubscribed?: () => void }) {
           <p>
             <strong>Subscribe to {confirmation.title}?</strong>
           </p>
+          {confirmation.kind === 'hopper' ? (
+            <p className="hint">
+              One public collection on {confirmation.blygTitle ?? 'this blyg'}:
+              its entries are excerpts and links, and leave when the curator
+              removes them.
+            </p>
+          ) : null}
           {confirmation.siteMismatch ? (
             <p className="mismatch">
               Site mismatch: {confirmation.siteMismatch.asserted} /{' '}
@@ -136,6 +158,15 @@ export function AddFeedForm({ onSubscribed }: { onSubscribed?: () => void }) {
             >
               {action.busy ? 'subscribing…' : 'confirm subscribe'}
             </Button>
+            {confirmation.kind === 'hopper' ? (
+              <Button
+                className="btn"
+                disabled={action.busy}
+                onClick={() => void action.run(() => add(true, true))}
+              >
+                subscribe to the whole blyg instead
+              </Button>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -148,14 +179,10 @@ export function HoppersPage() {
     useLiveQuery({
       query: (q) => q.from({ hopper: hoppers }),
     }).data ?? [];
-  usePoll('hoppers', refreshHoppers);
   const action = useAction();
   const [name, setName] = useState('');
   const create = async () => {
-    const hopper = await unwrap(
-      BlyggerApi.createHopper({ client, body: { name } }),
-    );
-    hoppers.utils.writeUpsert(hopper);
+    await createHopper(name);
     setName('');
   };
   return (
@@ -195,7 +222,6 @@ export function HoppersPage() {
 }
 function HopperCard({ id, name }: { id: string; name: string }) {
   const collection = useMemo(() => hopperPreview(id), [id]);
-  usePoll('hoppers', refreshHoppers);
   const row = useLiveQuery({ query: (q) => q.from({ hopper: collection }) })
     .data?.[0];
   const sources =
@@ -214,18 +240,18 @@ function HopperCard({ id, name }: { id: string; name: string }) {
       {row ? (
         <>
           <p className="muted small hopper-meta">
-            {row.total} items · {row.source_count} sources ·{' '}
+            {row.total} items · {row.sourceCount} sources ·{' '}
             {row.hopper.public ? 'public' : 'private'}
           </p>
           {row.items.map((item) => {
-            const preview = previewFromHtml(item.content_html);
+            const preview = previewFromHtml(item.contentHtml);
             const source = sources.find(
-              (source) => source.id === item.subscription_id,
+              (source) => source.id === item.subscriptionId,
             );
             return (
               <p
                 className="hopper-prev hopper-preview"
-                key={JSON.stringify([item.subscription_id, item.remote_id])}
+                key={JSON.stringify([item.subscriptionId, item.remoteId])}
               >
                 {preview.title ? <strong>{preview.title} · </strong> : null}
                 {preview.body}
@@ -235,8 +261,8 @@ function HopperCard({ id, name }: { id: string; name: string }) {
               </p>
             );
           })}
-          {row.total > 3 ? (
-            <p className="tiny muted hopper-more">+{row.total - 3} more</p>
+          {row.total > row.items.length ? (
+            <p className="tiny muted hopper-more">+{row.total - row.items.length} more</p>
           ) : null}
         </>
       ) : (
@@ -247,14 +273,14 @@ function HopperCard({ id, name }: { id: string; name: string }) {
 }
 export function HopperPage({ id }: { id: string }) {
   useChrome({ framed: false });
-  const collection = useMemo(() => hopperDetail(id), [id]);
+  const collection = useMemo(() => hopperInfo(id), [id]);
   const result = useLiveQuery({
     query: (q) => q.from({ hopper: collection }),
   });
   const row = result.data?.[0];
-  usePoll('hoppers', refreshHoppers);
-  const ownRows =
-    useLiveQuery({ query: (q) => q.from({ item: items }) }).data ?? [];
+  const memberships = useLiveInfiniteQuery(q => q.from({ member: hopperMemberships }).where(({ member }) => eq(member.hopperId, id)).orderBy(({ member }) => member.rank, 'asc'), { pageSize: 25 });
+  const ownIds = memberships.data.filter(member => member.subscriptionId === '~own').map(member => member.remoteId);
+  const ownRows = useLiveQuery(q => q.from({ item: items }).where(({ item }) => inArray(item.id, ownIds))).data ?? [];
   const action = useAction();
   const navigate = useNavigate();
   const settings = useSettings();
@@ -267,12 +293,10 @@ export function HopperPage({ id }: { id: string }) {
     {result.isReady ? 'Hopper not found.' : 'Loading hopper…'}
   </p>;
   const update = async (body: { name?: string; public?: boolean; description?: string }) => {
-    await unwrap(BlyggerApi.updateHopper({ client, path: { id }, body }));
-    await changed('hoppers', 'hopper', 'hopper-preview');
+    await hoppers.update(id, row => { Object.assign(row, body); }).when('settled');
   };
   const remove = async () => {
-    await unwrap(BlyggerApi.deleteHopper({ client, path: { id } }));
-    await changed('hoppers');
+    await hoppers.delete(id).when('settled');
     await navigate({ to: '/hoppers' });
   };
   const added = (iso: string) => {
@@ -354,7 +378,7 @@ export function HopperPage({ id }: { id: string }) {
             </a>
           </p>
         ) : null}
-        {row.hopper.slug_frozen ? (
+        {row.hopper.slugFrozen ? (
           <p className="hint">
             The public URL stays fixed when you rename this hopper.
           </p>
@@ -366,23 +390,17 @@ export function HopperPage({ id }: { id: string }) {
       </div>
       <div className="section-h">
         <span>
-          {row.total} items from {row.source_count} sources
+          {row.total} items from {row.sourceCount} sources
         </span>
       </div>
-      {row.memberships.map((member) => {
-        const key = JSON.stringify([member.subscription_id, member.remote_id]);
+      {memberships.data.map((member) => {
+        const key = JSON.stringify([member.subscriptionId, member.remoteId]);
         const removeButton = (
           <Button
             className="btn btn-ghost btn-mini"
             onClick={() =>
               void action.run(async () => {
-                await unwrap(
-                  BlyggerApi.removeHopperItem({
-                    client,
-                    path: { id, sub: member.subscription_id, remoteId: member.remote_id },
-                  }),
-                );
-                await changed('hopper', 'hoppers', 'hopper-preview');
+                await removeHopperItem({ id, sub: member.subscriptionId, remoteId: member.remoteId });
               })
             }
           >
@@ -390,22 +408,22 @@ export function HopperPage({ id }: { id: string }) {
           </Button>
         );
         // One of the owner's own items (session 47; store.ts OWN_SUBSCRIPTION).
-        if (member.subscription_id === '~own') {
-          const own = ownRows.find((row) => row.id === member.remote_id);
+        if (member.subscriptionId === '~own') {
+          const own = ownRows.find((row) => row.id === member.remoteId);
           return (
-            <article className="entry reading-entry" key={key} data-own={member.remote_id}>
+            <article className="entry reading-entry" key={key} data-own={member.remoteId}>
               <div className="entry-in">
                 <p className="byline">
                   {own ? <span className="badge">{own.kind}</span> : null}
                   <span className="src">
                     {!own ? 'deleted' : own.status === 'public' ? 'yours' : own.status === 'draft' ? 'your draft, not shown publicly' : 'yours, withdrawn'}
                   </span>
-                  <span>· added {added(member.added_at)}</span>
+                  <span>· added {added(member.addedAt)}</span>
                 </p>
                 {own ? (
                   <div className="entry-body content">
                     <p>
-                      <strong>{itemTitle(own.content_md)}</strong>
+                      <strong>{itemTitle(own.contentMd)}</strong>
                     </p>
                   </div>
                 ) : null}
@@ -422,13 +440,9 @@ export function HopperPage({ id }: { id: string }) {
             </article>
           );
         }
-        const item = row.items.find(
-          (item) =>
-            item.subscription_id === member.subscription_id &&
-            item.remote_id === member.remote_id,
-        );
+        const item = member.item;
         const source = sources.find(
-          (source) => source.id === member.subscription_id,
+          (source) => source.id === member.subscriptionId,
         );
         return (
           <article className="entry reading-entry" key={key}>
@@ -445,25 +459,25 @@ export function HopperPage({ id }: { id: string }) {
                     {source.title || source.origin}
                   </a>
                 ) : (
-                  <span className="src">{member.subscription_id}</span>
+                  <span className="src">{member.subscriptionId}</span>
                 )}
-                <span>· added {added(member.added_at)}</span>
+                <span>· added {added(member.addedAt)}</span>
               </p>
               {item?.state === 'tombstone' ? (
                 <p className="tomb">
                   withdrawn by origin
-                  {item.pinned_version_retained != null
-                    ? ` · retained pinned v${item.pinned_version_retained}`
+                  {item.pinnedVersionRetained != null
+                    ? ` · retained pinned v${item.pinnedVersionRetained}`
                     : ''}
                 </p>
               ) : null}
               <div className="entry-body content">
-                <Html html={item?.content_html || ''} />
+                <Html html={item?.contentHtml || ''} />
               </div>
               <SourceLink
                 url={
                   item && source
-                    ? sourceTitleAndUrl({ ...item, l0: item.l0 ? 1 : 0 }, source.origin).url
+                    ? sourceTitleAndUrl({ l0: item.l0 ? 1 : 0, kind: item.kind, remote_id: item.remoteId, content_html: item.contentHtml, page: item.page }, source.origin).url
                     : undefined
                 }
               />
@@ -476,19 +490,13 @@ export function HopperPage({ id }: { id: string }) {
                   data-action="stub"
                   onClick={() =>
                     void action.run(async () => {
-                      const draft = await unwrap(
-                        BlyggerApi.createItem({
-                          client,
-                          body: {
-                            mode: 'response',
-                            source: {
-                              subscription_id: member.subscription_id,
-                              remote_id: member.remote_id,
-                            },
-                          },
-                        }),
-                      );
-                      await changed('items');
+                      const draft = await createItem({
+                        mode: 'response',
+                        source: {
+                          subscriptionId: member.subscriptionId,
+                          remoteId: member.remoteId,
+                        },
+                      });
                       await navigate({
                         to: '/edit/$id',
                         params: { id: draft.id },
@@ -504,6 +512,7 @@ export function HopperPage({ id }: { id: string }) {
           </article>
         );
       })}
+      {memberships.hasNextPage ? <Button disabled={memberships.isFetchingNextPage} onClick={() => void memberships.fetchNextPage()}>load more members</Button> : null}
       <p>
         <Button
           className="btn btn-danger"
@@ -527,33 +536,41 @@ export function HopperPage({ id }: { id: string }) {
 function MentionRow({ mention }: { mention: Mention }) {
   const action = useAction(),
     navigate = useNavigate();
-  const collection = useMemo(() => mentionSource(mention.id), [mention.id]);
-  const source = useLiveQuery({ query: (q) => q.from({ source: collection }) })
-    .data?.[0];
-  usePoll('mention-sources', mentionSources.utils.refetch);
-  let author = mention.source_origin || mention.source;
-  try {
-    const name = JSON.parse(mention.source_author_json || '{}')?.name;
-    if (typeof name === 'string' && name) author = name;
-  } catch {
-    /* Old stored metadata can be invalid. */
-  }
+  const element = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
   const gone = mention.status === 'gone';
+  useEffect(() => {
+    if (!element.current) return;
+    if (typeof IntersectionObserver === 'undefined') { setVisible(true); return; }
+    const observer = new IntersectionObserver(entries => {
+      setVisible(entries.some(entry => entry.isIntersecting));
+    }, { rootMargin: '100px' });
+    observer.observe(element.current);
+    return () => observer.disconnect();
+  }, []);
+  const collection = useMemo(() => mentionSource(mention.id), [mention.id]);
+  const sourceResult = useLiveQuery({ query: (q) => visible && !gone && mention.sourceId
+    ? q.from({ source: collection }).findOne() : undefined });
+  const source = sourceResult.data;
+  let author = mention.sourceOrigin || mention.source;
+  const name = mention.sourceAuthor?.name;
+  if (typeof name === 'string' && name) author = name;
   return (
     <div
+      ref={element}
       className={`mention-row ${mention.hidden ? 'hidden-row' : ''} ${gone ? 'gone' : ''}`}
     >
       <span className="rel">{mention.relation || 'mention'}</span> ·{' '}
       <a
         className="who"
-        href={mention.source_page || mention.source}
+        href={mention.sourcePage || mention.source}
         target="_blank"
         rel="noreferrer"
       >
         {author}
       </a>{' '}
       <span className="muted">
-        · v{mention.source_version ?? '?'} · first seen {mention.first_seen}
+        · v{mention.sourceVersion ?? '?'} · first seen {mention.firstSeen}
         {gone ? ' · no longer verifies' : ''}
       </span>
       {gone ? null : (
@@ -562,44 +579,36 @@ function MentionRow({ mention }: { mention: Mention }) {
             className="btn btn-ghost btn-mini"
             onClick={() =>
               void action.run(async () => {
-                await unwrap(
-                  BlyggerApi.updateMention({
-                    client,
-                    path: { id: mention.id },
-                    body: { hidden: !mention.hidden },
-                  }),
-                );
-                await changed('mentions-in');
+                await inbound.update(mention.id, row => { row.hidden = !row.hidden; }).when('settled');
               })
             }
           >
             {mention.hidden ? 'show on page' : 'hide from page'}
           </Button>
-          {mention.source_id && source?.holder ? (
+          {mention.sourceId && !source ? (
+            <span className="small muted">
+              {visible && (sourceResult.isReady || sourceResult.isLoadingError || sourceResult.isSyncError)
+                ? 'Source details unavailable.' : 'Checking source…'}
+            </span>
+          ) : mention.sourceId && source?.holder ? (
             <Button
               className="btn btn-ghost btn-mini"
               onClick={() =>
                 void action.run(async () => {
-                  const draft = await unwrap(
-                    BlyggerApi.createItem({
-                      client,
-                      body: {
-                        mode: 'response',
-                        source: {
-                          subscription_id: source.holder!,
-                          remote_id: mention.source_id!,
-                        },
-                      },
-                    }),
-                  );
-                  await changed('items');
+                  const draft = await createItem({
+                    mode: 'response',
+                    source: {
+                      subscriptionId: source.holder!,
+                      remoteId: mention.sourceId!,
+                    },
+                  });
                   await navigate({ to: '/edit/$id', params: { id: draft.id } });
                 })
               }
             >
               stub back ↗
             </Button>
-          ) : mention.source_id ? (
+          ) : mention.sourceId ? (
             source?.subscription ? (
               // Subscribed: its inspector (ⓘ on the timeline) has resync.
               <Link
@@ -616,7 +625,7 @@ function MentionRow({ mention }: { mention: Mention }) {
                 to="/reading"
                 search={{}}
               >
-                subscribe to {mention.source_origin} to stub back
+                subscribe to {mention.sourceOrigin} to stub back
               </Link>
             )
           ) : null}
@@ -626,13 +635,14 @@ function MentionRow({ mention }: { mention: Mention }) {
     </div>
   );
 }
-function ResponseVisibility({ id, mode, defaultShowing, disabled }: {
+function ResponseVisibility({ id, revision, mode, defaultShowing, disabled }: {
   id: string;
+  revision: number;
   mode: 'default' | 'show' | 'hide';
   defaultShowing: boolean;
   disabled: boolean;
 }) {
-  const write = useMemo(() => createDraftAction(id), [id]);
+  const write = useMemo(() => createDraftAction(id, revision), [id, revision]);
   const action = useAction();
   return (
     <>
@@ -678,31 +688,18 @@ function ResponseVisibility({ id, mode, defaultShowing, disabled }: {
 }
 export function MentionsPage() {
   useChrome({ framed: false });
-  const incoming =
-    useLiveQuery({ query: (q) => q.from({ mention: inbound }) }).data ?? [];
-  const outgoing =
-    useLiveQuery({ query: (q) => q.from({ mention: outbound }) }).data ?? [];
-  const owned =
-    useLiveQuery({ query: (q) => q.from({ item: items }) }).data ?? [];
   const settings = useSettings();
+  const summary = useLiveQuery({ query: q => q.from({ summary: mentionSummary }).findOne() });
   const [direction, setDirection] = useState<'inbound' | 'outbound'>(
     'inbound',
   );
-  usePoll('mentions-in', inbound.utils.refetch);
-  usePoll('mentions-out', outbound.utils.refetch);
-  usePoll('items', refreshItems);
-  const groups = new Map<string, Mention[]>();
-  for (const mention of incoming) {
-    const rows = groups.get(mention.target_item_id) || [];
-    rows.push(mention);
-    groups.set(mention.target_item_id, rows);
-  }
   return (
     <>
-      <h2 className="view-h">mentions</h2>
+      <h2 className="view-h">responses</h2>
       <p className="view-sub mentions-note">
         Verified responses from other blygs.
       </p>
+      <MentionReadFailure result={summary} />
       <div className="segmented" role="group" aria-label="direction">
         {(['inbound', 'outbound'] as const).map((value) => (
           <Button
@@ -713,113 +710,131 @@ export function MentionsPage() {
           >
             {value}
             <span className="n">
-              {value === 'inbound' ? incoming.length : outgoing.length}
+              {summary.data?.[value] ?? 0}
             </span>
           </Button>
         ))}
       </div>
-      {direction === 'inbound' ? (
-        <>
-          {[...groups].map(([id, rows]) => {
-            const item = owned.find((item) => item.id === id),
-              mode = item?.responses || 'default';
-            const showing =
-              mode === 'show' ||
-              (mode === 'default' && settings?.show_responses_default);
-            const visible = rows.filter(
-              (row) => row.status === 'verified' && !row.hidden,
-            ).length;
-            return (
-              <section className="card mention-group" key={id}>
-                <h3 className="card-h">
-                  {/* The responses are shown on the public page, so that is
-                      where the heading goes; editing is a side link. */}
-                  {item?.status === 'public' ? (
-                    <a href={publicPath(item)} target="_blank" rel="noreferrer">
-                      {item.content_md.slice(0, 60) || id.slice(0, 8)} ↗
-                    </a>
-                  ) : (
-                    item?.content_md.slice(0, 60) || id.slice(0, 8)
-                  )}{' '}
-                  <Link className="muted small" to="/edit/$id" params={{ id }}>
-                    edit
-                  </Link>
-                </h3>
-                <p className="muted small group-meta">
-                  {rows.length} responses · {showing ? visible : 0} on the page
-                  now
-                </p>
-                <ResponseVisibility id={id} mode={mode} defaultShowing={!!settings?.show_responses_default} disabled={!item} />
-                <p className="muted small">
-                  The public page can take about a minute to reflect a change
-                  here: it is cached at the edge.
-                </p>
-                {rows.map((mention) => (
-                  <MentionRow key={mention.id} mention={mention} />
-                ))}
-              </section>
-            );
-          })}
-          {!incoming.length ? (
-            <div className="empty">
-              <span className="em" aria-hidden="true">
-                ↩
-              </span>
-              No verified mentions.
-            </div>
-          ) : null}
-        </>
-      ) : (
-        <>
-          {!settings?.site_url ? (
-            <div className="banner banner-warn mentions-note" role="note">
-              <span className="mark" aria-hidden="true">
-                !
-              </span>
-              <div className="body">
-                No site URL is set. Set it in{' '}
-                <Link to="/settings">settings</Link> before relying on outbound
-                delivery.
+      {direction === 'inbound'
+        ? <InboundMentions defaultShowing={!!settings?.showResponsesDefault} />
+        : <OutboundMentions hasSiteUrl={!!settings?.siteUrl} />}
+    </>
+  );
+}
+
+type MentionReadResult = {
+  isLoadingError: boolean;
+  isSyncError: boolean;
+  isCrashed: boolean;
+  collection?: { reload(): Promise<void> };
+};
+function MentionReadFailure({ result }: { result: MentionReadResult }) {
+  if (!result.isLoadingError && !result.isSyncError && !result.isCrashed) return null;
+  return <>
+    <Failure error={new Error('Could not load responses.')} />
+    {!result.isCrashed && result.collection ? <Button className="btn btn-ghost btn-mini" onClick={() => void result.collection?.reload().catch(() => {})}>retry reads</Button> : null}
+  </>;
+}
+
+function InboundMentions({ defaultShowing }: { defaultShowing: boolean }) {
+  const groups = useLiveInfiniteQuery(mentionGroupItemsView, { pageSize: 10 });
+  return <>
+    <MentionReadFailure result={groups} />
+    {groups.isLoading ? <p className="h-hint">Loading responses…</p> : null}
+    {groups.data.map(row => <MentionGroup key={row.group.targetItemId} row={row} defaultShowing={defaultShowing} />)}
+    {!groups.isLoading && !groups.isLoadingError && !groups.isCrashed && !groups.data.length ? (
+      <div className="empty">
+        <span className="em" aria-hidden="true">↩</span>
+        No verified responses.
+      </div>
+    ) : null}
+    {groups.hasNextPage ? <Button disabled={groups.isFetchingNextPage} onClick={() => void groups.fetchNextPage().catch(() => {})}>load more groups</Button> : null}
+  </>;
+}
+
+function MentionGroup({ row: { group, item }, defaultShowing }: {
+  row: (typeof mentionGroupItemsView.toArray)[number];
+  defaultShowing: boolean;
+}) {
+  const id = group.targetItemId;
+  const receipts = useLiveInfiniteQuery(q => q.from({ mention: inbound })
+    .where(({ mention }) => eq(mention.targetItemId, id))
+    .orderBy(({ mention }) => mention.orderKey, { direction: 'asc', stringSort: 'lexical' }), { pageSize: 10 });
+  const mode = item?.responses ?? 'default';
+  const showing = mode === 'show' || mode === 'default' && defaultShowing;
+  const visible = showing ? group.visible : 0;
+  return (
+    <section className="card mention-group">
+      <h3 className="card-h">
+        {/* The public page shows the responses; editing is a side link. */}
+        {item?.status === 'public' ? (
+          <a href={publicPath(item)} target="_blank" rel="noreferrer">
+            {withoutComments(item.contentMd).slice(0, 60) || id.slice(0, 8)} ↗
+          </a>
+        ) : (item && withoutComments(item.contentMd).slice(0, 60)) || id.slice(0, 8)}{' '}
+        <Link className="muted small" to="/edit/$id" params={{ id }}>edit</Link>
+      </h3>
+      <p className="muted small group-meta">
+        {group.total} responses · {visible} on the page now
+      </p>
+      <ResponseVisibility id={id} revision={item?.revision ?? 0} mode={mode} defaultShowing={defaultShowing} disabled={!item} />
+      <MentionReadFailure result={receipts} />
+      {receipts.isLoading ? <p className="h-hint">Loading responses…</p> : null}
+      {receipts.data.map(mention => <MentionRow key={mention.id} mention={mention} />)}
+      {receipts.hasNextPage ? <Button className="btn btn-ghost btn-mini" disabled={receipts.isFetchingNextPage} onClick={() => void receipts.fetchNextPage().catch(() => {})}>load more mentions</Button> : null}
+    </section>
+  );
+}
+
+function OutboundMentions({ hasSiteUrl }: { hasSiteUrl: boolean }) {
+  const outgoing = useLiveInfiniteQuery(q => q.from({ mention: outbound })
+    .orderBy(({ mention }) => mention.orderKey, { direction: 'asc', stringSort: 'lexical' }), { pageSize: 25 });
+  return (
+    <>
+      <MentionReadFailure result={outgoing} />
+      {!hasSiteUrl ? (
+        <div className="banner banner-warn mentions-note" role="note">
+          <span className="mark" aria-hidden="true">!</span>
+          <div className="body">
+            No site URL is set. Set it in{' '}
+            <Link to="/settings">settings</Link> before relying on outbound
+            delivery.
+          </div>
+        </div>
+      ) : null}
+      {outgoing.isLoading ? <p className="h-hint">Loading responses…</p> : null}
+      {outgoing.data.length ? (
+        <div className="card">
+          {outgoing.data.map((mention) => (
+            <div className="out-row" key={mention.id}>
+              <span
+                className={`badge ${
+                  mention.status === 'sent'
+                    ? 'badge-ok'
+                    : mention.status === 'pending'
+                      ? 'badge-warn'
+                      : ''
+                }`}
+              >
+                {mention.status.replaceAll('_', ' ')}
+              </span>{' '}
+              <Link to="/edit/$id" params={{ id: mention.itemId }}>
+                v{mention.version} of {mention.itemId.slice(0, 8)}…
+              </Link>
+              <div className="small muted">
+                →{' '}
+                <a className="target" href={mention.target}>{mention.target}</a>{' '}
+                · {mention.attempts} attempts
+                {mention.nextAttemptAt && mention.status === 'pending'
+                  ? ` · retrying after ${mention.nextAttemptAt}`
+                  : ''}
               </div>
+              {mention.lastError ? <div className="small err">{mention.lastError}</div> : null}
             </div>
-          ) : null}
-          {outgoing.length ? (
-            <div className="card">
-              {outgoing.map((mention) => (
-                <div className="out-row" key={mention.id}>
-                  <span
-                    className={`badge ${
-                      mention.status === 'sent'
-                        ? 'badge-ok'
-                        : mention.status === 'pending'
-                          ? 'badge-warn'
-                          : ''
-                    }`}
-                  >
-                    {mention.status.replaceAll('_', ' ')}
-                  </span>{' '}
-                  <Link to="/edit/$id" params={{ id: mention.item_id }}>
-                    v{mention.version} of {mention.item_id.slice(0, 8)}…
-                  </Link>
-                  <div className="small muted">
-                    →{' '}
-                    <a className="target" href={mention.target}>
-                      {mention.target}
-                    </a>{' '}
-                    · {mention.attempts} attempts
-                    {mention.next_attempt_at && mention.status === 'pending'
-                      ? ` · retrying after ${mention.next_attempt_at}`
-                      : ''}
-                  </div>
-                  {mention.last_error ? (
-                    <div className="small err">{mention.last_error}</div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </>
-      )}
+          ))}
+        </div>
+      ) : null}
+      {outgoing.hasNextPage ? <Button disabled={outgoing.isFetchingNextPage} onClick={() => void outgoing.fetchNextPage().catch(() => {})}>load more outbound mentions</Button> : null}
     </>
   );
 }
@@ -853,20 +868,14 @@ export function ForkPage({
                 disabled={action.busy}
                 onClick={() =>
                   void action.run(async () => {
-                    const draft = await unwrap(
-                      BlyggerApi.createItem({
-                        client,
-                        body: {
-                          mode: 'fork',
-                          source: {
-                            origin: options.origin,
-                            id,
-                            version: version.version,
-                          },
-                        },
-                      }),
-                    );
-                    items.utils.writeUpsert(draft);
+                    const draft = await createItem({
+                      mode: 'fork',
+                      source: {
+                        origin: options.origin,
+                        id,
+                        version: version.version,
+                      },
+                    });
                     await navigate({
                       to: '/edit/$id',
                       params: { id: draft.id },

@@ -12,7 +12,8 @@ import {
 } from '@tanstack/react-router';
 import { Layout, basepath } from './components.tsx';
 import { Compose, EditorPage } from './authoring.tsx';
-import { ReadingPage } from './reading.tsx';
+import { ReadingArticle, ReadingPage, loadArticleEntry } from './reading.tsx';
+import { PeekPage, loadPeek } from './peek.tsx';
 import { AuthorizationsPage } from './authorizations.tsx';
 import { SettingsPage } from './settings.tsx';
 import {
@@ -24,18 +25,24 @@ import {
 } from './catalog.tsx';
 import {
   itemDetail,
-  hopperDetail,
+  hopperInfo,
   readingView,
   readingKey,
+  readingSummaryView,
   LENSES,
   type Lens,
   queryClient,
   listViews,
   preloadView,
   preloadDetail,
+  preloadHopperPreviews,
+  preloadHopperInfos,
+  preloadHopperManagement,
+  preloadMentions,
+  preloadStaleThreads,
+  preloadSignals,
 } from './data.ts';
 import { Button } from './components.tsx';
-import type { CachedResponse } from './revision-query.ts';
 import { SyntaxPage } from './syntax.tsx';
 import { MorePage } from './more.tsx';
 import { UpdatesPage } from './updates.tsx';
@@ -44,11 +51,16 @@ import { SheetHost } from './sheets.tsx';
 import { ExtensionPage } from './extension-page.tsx';
 import { SetupPage } from './setup.tsx';
 import { applyCachedTheme } from './theme.ts';
+import { applyCachedTitle } from './tab.ts';
 // Paint the last theme this device saw before the first render; settings
 // repaint it once they load (see theme.ts).
 applyCachedTheme();
+applyCachedTitle();
 const rootRoute = createRootRoute({
-  loader: () => preloadView(listViews.settings),
+  loader: () => Promise.all([
+    preloadView(listViews.settings),
+    preloadView(listViews.updates),
+  ]),
   pendingComponent: () => <p>Loading Studio…</p>,
   errorComponent: ({ error }) => (
     <div role="alert">
@@ -76,8 +88,10 @@ const rootRoute = createRootRoute({
 const compose = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
+  validateSearch: (search: Record<string, unknown>): { q?: string } =>
+    typeof search.q === 'string' && search.q ? { q: search.q } : {},
   loader: () => preloadView(listViews.items),
-  component: Compose,
+  component: () => <Compose {...compose.useSearch()} />,
 });
 function readingOffset(search: Record<string, unknown>) {
   if (
@@ -101,7 +115,13 @@ function readingOffset(search: Record<string, unknown>) {
  * ?sub=X one source's timeline and ?hopper=H a hopper's. A bookmark that pages
  * without naming a source (?page=2, ?offset=25) still means "all".
  */
-function readingSearch(search: Record<string, unknown>): {
+function readingSearch(search: Record<string, unknown>): ReturnType<typeof readingLocation> & { q?: string } {
+  // ?q= is a search over the picker's scope (docs/search.md); it rides along
+  // with any view so clearing it returns to where the reader was.
+  const view = readingLocation(search);
+  return typeof search.q === 'string' && search.q ? { ...view, q: search.q } : view;
+}
+function readingLocation(search: Record<string, unknown>): {
   sub?: string;
   hopper?: string;
   offset?: number;
@@ -135,33 +155,35 @@ const reading = createRoute({
   loader: async ({ deps }) => {
     if (deps.hopper) {
       await Promise.all([
-        preloadDetail(hopperDetail(deps.hopper), 'Hopper'),
+        preloadDetail(hopperInfo(deps.hopper), 'Hopper'),
+        preloadView(readingSummaryView(readingKey('hopper:' + deps.hopper, deps.lens))),
+        ...(deps.lens === 'smart' ? [] : [preloadView(readingView(readingKey('hopper:' + deps.hopper, deps.lens), deps.offset))]),
         preloadView(listViews.subscriptions),
         preloadView(listViews.hoppers),
         preloadView(listViews.signals),
       ]);
+      const summary = readingSummaryView(readingKey('hopper:' + deps.hopper, deps.lens)).toArray[0];
+      if (deps.offset > 0 && summary && deps.offset >= summary.total) throw redirect({ to: '/reading', search: { hopper: deps.hopper, offset: 0, ...(deps.lens ? { lens: deps.lens } : {}) } });
       return;
     }
-    // The feed and the sources list (whose counts come from the first page
-    // of "all") both read "all". The placeholder lenses read the unfiltered
-    // key too, for the count in their header.
+    // The feed and sources list share a summary under the selected lens.
+    // The sources list needs counts without loading a feed page.
     const sub = deps.sub ?? 'all';
     const offset = deps.view === 'sources' ? 0 : deps.offset;
     const key = readingKey(sub, deps.lens);
     const view = readingView(key, offset);
     await Promise.all([
-      preloadView(view),
+      preloadView(readingSummaryView(key)),
+      ...(deps.view === 'sources' ? [] : [preloadView(view)]),
       preloadView(listViews.subscriptions),
       preloadView(listViews.hoppers),
-      preloadView(listViews.signals),
+      ...(deps.view === 'sources' ? [] : [preloadView(listViews.signals)]),
+      ...(deps.view === 'sources' && deps.lens !== 'background' && deps.lens !== 'smart'
+        ? [preloadHopperInfos()]
+        : []),
     ]);
-    if (deps.sub === undefined || deps.lens === 'background' || deps.lens === 'smart') return;
-    const page = queryClient
-      .getQueriesData<
-        CachedResponse<import('../../sdk/dist/browser.js').ListReadingResponses[200]>
-      >({ queryKey: ['reading', key] })
-      .map(([, data]) => data?.data)
-      .find((data) => data?.offset === offset);
+    if (deps.sub === undefined || deps.lens === 'smart') return;
+    const page = readingSummaryView(key).toArray[0];
     if (
       page &&
       (page.selected !== sub || (offset > 0 && offset >= page.total))
@@ -176,6 +198,48 @@ const reading = createRoute({
       });
   },
   component: () => <ReadingPage {...reading.useSearch()} />,
+});
+/**
+ * One entry full screen: /reading/{sub}/{id}, `~own` as the sub for your own
+ * items. "more" on a card opens it; reloading stays on it.
+ */
+const article = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reading/$sub/$id',
+  loader: async ({ params }) => {
+    await Promise.all([
+      preloadView(listViews.subscriptions),
+      preloadView(listViews.hoppers),
+      preloadView(listViews.signals),
+    ]);
+    // The article keeps its inline failure and held-item fallback UI.
+    await loadArticleEntry(params.sub, params.id).catch(() => undefined);
+  },
+  component: () => {
+    const { sub, id } = article.useParams();
+    return <ReadingArticle key={`${sub}/${id}`} sub={sub} id={id} />;
+  },
+});
+/**
+ * An item of a blyg you do not subscribe to, read from its origin: where a
+ * link or a quoted layer in the reader leads when the blyg is not held.
+ */
+const peek = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/peek',
+  validateSearch: (search: Record<string, unknown>) => ({
+    origin: typeof search.origin === 'string' ? search.origin : '',
+    id: typeof search.id === 'string' ? search.id : '',
+  }),
+  loaderDeps: ({ search }) => search,
+  loader: ({ deps }) => Promise.all([
+    preloadView(listViews.subscriptions),
+    loadPeek(deps.origin, deps.id).catch(() => undefined),
+  ]),
+  component: () => {
+    const { origin, id } = peek.useSearch();
+    return <PeekPage key={`${origin}/${id}`} origin={origin} id={id} />;
+  },
 });
 const edit = createRoute({
   getParentRoute: () => rootRoute,
@@ -207,14 +271,14 @@ const subs = createRoute({
 const hoppers = createRoute({
   getParentRoute: () => rootRoute,
   path: '/hoppers',
-  loader: () => preloadView(listViews.hoppers),
+  loader: () => Promise.all([preloadHopperPreviews(), preloadView(listViews.subscriptions)]),
   component: HoppersPage,
 });
 const hopper = createRoute({
   getParentRoute: () => rootRoute,
   path: '/hoppers/$id',
   loader: ({ params }) =>
-    Promise.all([preloadDetail(hopperDetail(params.id), 'Hopper'), preloadView(listViews.subscriptions)]),
+    Promise.all([preloadHopperManagement(params.id), preloadView(listViews.subscriptions)]),
   component: () => {
     const { id } = hopper.useParams();
     return <HopperPage id={id} />;
@@ -223,25 +287,21 @@ const hopper = createRoute({
 const mentions = createRoute({
   getParentRoute: () => rootRoute,
   path: '/mentions',
-  loader: () =>
-    Promise.all([
-      preloadView(listViews.inbound),
-      preloadView(listViews.outbound),
-      preloadView(listViews.items),
-    ]),
+  loader: preloadMentions,
   component: MentionsPage,
 });
 // Quotes that have fallen behind their sources, stalest first (0.23.0).
 const updates = createRoute({
   getParentRoute: () => rootRoute,
   path: '/updates',
-  loader: () => preloadView(listViews.items),
+  loader: preloadStaleThreads,
   component: UpdatesPage,
 });
 // Thumbs and the private interaction log (0.25.0).
 const signalsPage = createRoute({
   getParentRoute: () => rootRoute,
   path: '/signals',
+  loader: preloadSignals,
   component: SignalsPage,
 });
 const fork = createRoute({
@@ -289,6 +349,8 @@ export const router = createRouter({
   routeTree: rootRoute.addChildren([
     compose,
     reading,
+    article,
+    peek,
     edit,
     settings,
     setup,

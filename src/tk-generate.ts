@@ -1,3 +1,4 @@
+import { installWorkingCopy } from './item-revision.ts';
 // /api/items/{id}/generate business logic (tk-core-plan.md §5 task 4) —
 // factored out of the Hono route so tests can inject a fixture provider
 // fetch, the same DI pattern importer/schedule.ts uses for runScheduledPoll.
@@ -5,9 +6,10 @@
 import { generate, markDocument, platformProviderFetch, ProviderError, AiBudgetError, type ProviderFetchLike } from "./ai/provider.ts";
 import { stripGeneratedGrammar } from "./grammar.ts";
 import { selectionText } from "./markdown.ts";
-import { getSettings, saveWorkingCopy, setTkProvenance } from "./model.ts";
+import { getSettings, getTkProvenance } from "./model.ts";
 import { composeStubCite } from "./stub.ts";
 import { parseScopes, setScopeOutput } from "./tk.ts";
+import { outsideOtherComments } from "./comments.ts";
 import { resolveTarget, type ResolvedTarget } from "./transclusion.ts";
 import type { Env, GenerationSource, ItemRow } from "./types.ts";
 import { nowIso } from "./util.ts";
@@ -26,7 +28,7 @@ function sourceText(target: ResolvedTarget): string {
 
 export type GenerateScopeResult =
   /** `text` is the scope's new output alone; `content_md` is the whole working copy with it spliced in, as saved. */
-  | { ok: true; text: string; model: string; content_md: string }
+  | { ok: true; text: string; model: string; content_md: string; revision: number }
   | { ok: false; status: number; body: Record<string, unknown> };
 
 export async function runGenerateScope(
@@ -68,6 +70,7 @@ export async function runGenerateScope(
     sources.push({ ...ref, text: sourceText(target) });
   }
 
+  const context = outsideOtherComments(item.content_md, scope.start);
   let result;
   try {
     result = await generate(
@@ -76,7 +79,7 @@ export async function runGenerateScope(
         instruction: scope.instruction,
         currentText: scope.output,
         sources: sources.map(({ id, text }) => ({ id, content_md: text })),
-        documentContext: markDocument(item.content_md, scope.start, scope.end),
+        documentContext: markDocument(context.text, context.offset(scope.start), context.offset(scope.end)),
         stylePrompt: settings.ai_style_prompt || null,
       },
       fetchImpl,
@@ -90,12 +93,10 @@ export async function runGenerateScope(
   // Generated text is not grammar (row 67): strip any bracket form the model echoed.
   result = { ...result, text: stripGeneratedGrammar(result.text) };
   const updatedMd = setScopeOutput(item.content_md, scope, result.text);
-  await saveWorkingCopy(env.DB, item.id, updatedMd);
-  await setTkProvenance(env.DB, item.id, scopeIndex, scopes.length, {
-    sources: sources.map(({ text: _text, ...ref }) => ref),
-    model: result.model,
-    at,
-  });
-
-  return { ok: true, text: result.text, model: result.model, content_md: updatedMd };
+  const provenance = getTkProvenance(item);
+  while (provenance.length < scopes.length) provenance.push(null);
+  provenance.length = scopes.length;
+  provenance[scopeIndex] = { sources: sources.map(({ text: _text, ...ref }) => ref), model: result.model, at };
+  const revision = await installWorkingCopy(env.DB, item, updatedMd, JSON.stringify(provenance));
+  return { ok: true, text: result.text, model: result.model, content_md: updatedMd, revision };
 }

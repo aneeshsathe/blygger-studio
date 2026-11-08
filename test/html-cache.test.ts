@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import worker from '../src/index.ts';
 import { htmlCacheResponse, publicHtmlKey, publicHtmlRequest, publicHtmlRevision } from '../src/html-cache.ts';
 import { readChanges } from '../src/changes.ts';
-import { BASE, login, createAndPublish, apiJson } from './helpers.ts';
+import { BASE, login, createAndPublish, apiJson, getPublic } from './helpers.ts';
+import { markInboundUnverified, markInboundVerified, setMentionHidden, upsertInbound } from '../src/mentions/store.ts';
 
 const EDGE = 'public, max-age=60, stale-while-revalidate=300, stale-if-error=0';
 
@@ -54,7 +55,7 @@ describe('public HTML caching', () => {
   it('covers archives, permalinks and pinned HTML without caching missing pages', async () => {
     const cookie = await login();
     const id = await createAndPublish(cookie, 'HTML cache item');
-    expect((await apiJson(cookie, 'PUT', `/api/items/${id}/versions/1/pin`)).status).toBe(200);
+    expect((await apiJson(cookie, 'PUT', `/blyg/api/items/${id}/versions/1/pin`)).status).toBe(200);
     for (const path of ['/archive/', `/f/${id}/`, `/f/${id}/v1/`]) {
       const response = await SELF.fetch(`${BASE}/blyg${path}`);
       expect(response.status, path).toBe(200);
@@ -72,7 +73,7 @@ describe('public HTML caching', () => {
   });
 
   it('leaves private and wire responses outside the HTML policy', async () => {
-    for (const path of ['/api/settings', '/blyg/studio/login', '/blyg/blyg.json', '/blyg/style.css', '/blyg/feed.xml']) {
+    for (const path of ['/blyg/api/settings', '/blyg/studio/login', '/blyg/blyg.json', '/blyg/style.css', '/blyg/feed.xml']) {
       const response = await SELF.fetch(`${BASE}${path}`);
       expect(response.headers.has('cloudflare-cdn-cache-control'), path).toBe(false);
       await response.arrayBuffer();
@@ -110,7 +111,7 @@ describe('cached entrypoint dispatch', () => {
     for (const page of ['/studio', '/studio/login', '/feed.xml', '/items/id.json', '/media/image.jpg', '/unknown/deeper', '/feed']) {
       expect(publicHtmlRequest(new Request(`${BASE}${mount}${page}`), mount)).toBe(false);
     }
-    expect(publicHtmlRequest(new Request(`${BASE}/api/settings`), mount)).toBe(false);
+    expect(publicHtmlRequest(new Request(`${BASE}/blyg/api/settings`), mount)).toBe(false);
     expect(publicHtmlRequest(new Request(`${BASE}${mount}/`, { method: 'POST' }), mount)).toBe(false);
     if (mount) expect(publicHtmlRequest(new Request(`${BASE}${mount}extra/`), mount)).toBe(false);
   });
@@ -200,6 +201,67 @@ describe('cached entrypoint dispatch', () => {
     // The owner's private reading and thumbs never empty the public cache.
     await env.DB.prepare('UPDATE change_state SET reading=reading+1, signals=signals+1 WHERE id=1').run();
     expect(await keyFor('/')).toBe(afterSetting);
+  });
+
+  it('a verified response, a hide and a show move the key; a pending claim, its failure and outbound work do not', async () => {
+    const keys: string[] = [];
+    const ctx = { exports: { PublicHtml: { fetch: (_req: Request, init: { cf: { cacheKey: string } }) => {
+      keys.push(init.cf.cacheKey);
+      return Promise.resolve(new Response('saved HTML'));
+    } } } } as unknown as ExecutionContext;
+    const keyFor = async () => {
+      await (await worker.fetch(new Request(`${BASE}/blyg/`), env, ctx)).arrayBuffer();
+      return keys.at(-1)!;
+    };
+    const cookie = await login();
+    const item = await createAndPublish(cookie, 'Responses roll the public key');
+    const found = { relation: 'stub' as const, sourceOrigin: 'https://responder.example/', sourceId: 'r1', sourceKind: 'thread', sourceVersion: 1, authorJson: null, sourcePage: 't/r1/' };
+    const start = await keyFor(), changesAt = await readChanges(env.DB);
+
+    // Anyone can make a claim. Neither the claim nor its failure is public.
+    const spam = await upsertInbound(env.DB, 'https://spam.example/x', `${BASE}/blyg/f/${item}/`, item);
+    await markInboundUnverified(env.DB, spam.id, 'failed', 'no link');
+    expect(await keyFor()).toBe(start);
+    // The Studio lists only verified and gone rows, so its counter stays too.
+    expect((await readChanges(env.DB)).domains.mentions).toBe(changesAt.domains.mentions);
+    // Outbound sends are the Studio's business, never the public page's.
+    await env.DB.prepare("INSERT INTO mentions_out(id,item_id,version,target,status,created) VALUES('out-key',?,1,'https://x.example/','pending','t')").bind(item).run();
+    await env.DB.prepare("UPDATE mentions_out SET status='sent',attempts=1 WHERE id='out-key'").run();
+    expect(await keyFor()).toBe(start);
+    const outbound = await readChanges(env.DB);
+    expect(outbound.domains.mentions).toBeGreaterThan(changesAt.domains.mentions);
+    expect(outbound.domains.responses).toBe(changesAt.domains.responses);
+
+    const claim = await upsertInbound(env.DB, 'https://responder.example/t/r1/', `${BASE}/blyg/f/${item}/`, item);
+    expect(await keyFor()).toBe(start);
+    await markInboundVerified(env.DB, claim.id, found);
+    const verified = await keyFor();
+    expect(verified).not.toBe(start);
+    await setMentionHidden(env.DB, claim.id, true);
+    const hidden = await keyFor();
+    expect(hidden).not.toBe(verified);
+    // Re-verifying a hidden row is invisible to readers.
+    await upsertInbound(env.DB, 'https://responder.example/t/r1/', `${BASE}/blyg/f/${item}/`, item);
+    await markInboundVerified(env.DB, claim.id, found);
+    expect(await keyFor()).toBe(hidden);
+    await setMentionHidden(env.DB, claim.id, false);
+    expect(await keyFor()).not.toBe(hidden);
+  });
+
+  // The test pool has no persistent edge cache, so this witnesses what the page
+  // renders; the key test above is what keeps a cached entry from outliving it.
+  it('the item page renders a newly verified response and drops it when hidden', async () => {
+    const cookie = await login();
+    const item = await createAndPublish(cookie, 'Cached page awaiting a response');
+    expect((await apiJson(cookie, 'PATCH', `/blyg/api/items/${item}`, { responses: 'show' })).status).toBe(200);
+    const path = `/blyg/f/${item}/`;
+    const first = await (await getPublic(path)).text();
+    expect(first).not.toContain('responder.example');
+    const claim = await upsertInbound(env.DB, 'https://responder.example/t/r2/', `${BASE}${path}`, item);
+    await markInboundVerified(env.DB, claim.id, { relation: 'stub', sourceOrigin: 'https://responder.example/', sourceId: 'r2', sourceKind: 'thread', sourceVersion: 1, authorJson: JSON.stringify({ name: 'Prompt responder' }), sourcePage: 't/r2/' });
+    expect(await (await getPublic(path)).text()).toContain('Prompt responder');
+    await setMentionHidden(env.DB, claim.id, true);
+    expect(await (await getPublic(path)).text()).not.toContain('Prompt responder');
   });
 
   it('still serves public HTML under the plain key when the revision cannot be read', async () => {

@@ -1,3 +1,4 @@
+import { deploymentUrls } from './deployment-urls.ts';
 import { betterAuth } from 'better-auth';
 import { jwt } from 'better-auth/plugins';
 import { APIError, createAuthEndpoint } from 'better-auth/api';
@@ -7,11 +8,18 @@ import { z } from 'zod';
 import type { Env } from './types.ts';
 import { OWNER_SCOPES, type OwnerAccess } from './permissions.ts';
 import { verifySession, sessionAuthenticatedAt } from './auth.ts';
-import { normalizeMount, studioPath, hex } from './util.ts';
+import { hex, normalizeMount } from './util.ts';
 
 export function authLocations(url: string, env: Env) {
-  const origin = new URL(url).origin, base = origin + studioPath(normalizeMount(env.MOUNT));
-  return { base, issuer: base + '/auth', api: origin + '/api', mcp: base + '/mcp' };
+  const { studio: base, issuer, api, mcp } = deploymentUrls(url, env);
+  // The host-root REST audience a mounted node issued before 0.49.2. Accepted
+  // while the /api alias lasts (ROADMAP row 64); never advertised.
+  const legacyApi = normalizeMount(env.MOUNT) ? new URL(url).origin + '/api' : undefined;
+  return { base, issuer, api, mcp, legacyApi };
+}
+/** Every audience a REST bearer may carry: the mounted address, and the legacy one while it lasts. */
+function apiAudiences(locations: ReturnType<typeof authLocations>) {
+  return locations.legacyApi ? [locations.api, locations.legacyApi] : [locations.api];
 }
 export async function hashCredential(value: string) {
   return hex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))));
@@ -39,7 +47,7 @@ export async function betterAuthOptions(url: string, env: Env, manual = false) {
     allowDynamicClientRegistration: true, allowUnauthenticatedClientRegistration: true,
     grantTypes: ['authorization_code', 'refresh_token'],
     accessTokenExpiresIn: manual ? 30 * 86400 : 3600, refreshTokenExpiresIn: 30 * 86400,
-    resources: [locations.api, locations.mcp], clientRegistrationDefaultResources: [locations.api, locations.mcp],
+    resources: [...apiAudiences(locations), locations.mcp], clientRegistrationDefaultResources: [locations.api, locations.mcp],
     clientPrivileges: ({ user }) => user?.id === 'owner',
     postLogin: { page: locations.issuer + '/consent', shouldRedirect: () => false, consentReferenceId: ({ session }) => grantReference(env, session?.createdAt) },
     customAccessTokenClaims: ({ referenceId }) => grantClaims(env, referenceId),
@@ -175,7 +183,8 @@ export async function verifyBearer(request: Request, env: Env, resource: 'api' |
     const server = await authorizationServer(request.url, env);
     const validated = await server.api.delegatedAccess({ body: { token: header.replace(/^Bearer\s+/i, '') } });
     const audience = Array.isArray(validated.aud) ? validated.aud : [validated.aud];
-    if (validated.sub !== 'owner' || validated.cnf || !audience.includes(authLocations(request.url, env)[resource]) || validated.credentialVersion !== await credentialVersion(env)) return null;
+    const locations = authLocations(request.url, env), accepted = resource === 'api' ? apiAudiences(locations) : [locations.mcp];
+    if (validated.sub !== 'owner' || validated.cnf || !accepted.some(value => audience.includes(value)) || validated.credentialVersion !== await credentialVersion(env)) return null;
     const now = Math.floor(Date.now() / 1000);
     if (typeof validated.exp !== 'number' || validated.exp <= now || typeof validated.grantExpires !== 'number' || validated.grantExpires <= now) return null;
     if (typeof validated.grantId !== 'string' || await env.DB.prepare('SELECT grant_id FROM oauth_revocations WHERE grant_id = ?').bind(validated.grantId).first()) return null;
@@ -202,7 +211,7 @@ export async function rememberAuthorization(url: string, env: Env, accessToken: 
   if (typeof value.client_id !== 'string' || typeof value.grantId !== 'string') throw new Error('Issued credential has no client');
   const client = await (await server.$context).adapter.findOne<{ name?: string }>({ model: 'oauthClient', where: [{ field: 'clientId', value: value.client_id }] });
   const locations = authLocations(url, env), audiences = Array.isArray(value.aud) ? value.aud : [value.aud];
-  const resource = [locations.api, locations.mcp].filter(audience => audiences.includes(audience)).join(' ');
+  const resource = [...apiAudiences(locations), locations.mcp].filter(audience => audiences.includes(audience)).join(' ');
   const epoch = (await env.DB.prepare('SELECT epoch FROM oauth_state WHERE id=1').first<{epoch:number}>())!.epoch;
   if (value.credentialVersion !== await credentialVersion(env)) return false;
   // Recording and the tombstone check share one SQL statement. A completed

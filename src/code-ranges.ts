@@ -45,11 +45,6 @@ export function codeRanges(text: string): Range[] {
   return ranges;
 }
 
-/** Code regions of already-rendered HTML: every `<code>…</code>` (inline, or inside `<pre>`). */
-export function htmlCodeRanges(html: string): Range[] {
-  return [...html.matchAll(/<code[\s>][\s\S]*?<\/code>/gi)].map((m): Range => [m.index!, m.index! + m[0].length]);
-}
-
 export function inRanges(ranges: Range[], pos: number): boolean {
   return ranges.some(([s, e]) => pos >= s && pos < e);
 }

@@ -31,7 +31,7 @@ describe("reading resource and shell authentication — §3.6", () => {
       contentHash: "sha256:whatever",
     });
 
-    const res = await apiJson(cookie, "GET", "/api/reading");
+    const res = await apiJson(cookie, "GET", "/blyg/api/reading");
     expect(res.status).toBe(200);
     const rows = res.json.items;
     const ownIdx = rows.findIndex((row: { contentHtml: string }) => row.contentHtml.includes("my own fragment"));
@@ -55,7 +55,10 @@ describe("reading resource and shell authentication — §3.6", () => {
     const withdrawTr = transition({ local: { status: "current", version: 1 }, doc: JSON.parse(withdrawnDoc) });
     await applyEffect(env.DB, sub.id, "remote-2", withdrawTr.effect, "2026-08-02T00:00:00Z");
 
-    const res = await apiJson(cookie, "GET", `/api/reading?sub=${sub.id}`);
+    // Withdrawn items are background: absent from the feed, present under the Background lens.
+    const feed = await apiJson(cookie, "GET", `/blyg/api/reading?sub=${sub.id}`);
+    expect(feed.json.items.some((row: { imported?: { remoteId: string } }) => row.imported?.remoteId === "remote-2")).toBe(false);
+    const res = await apiJson(cookie, "GET", `/blyg/api/reading?sub=${sub.id}&background=true`);
     expect(res.status).toBe(200);
     const entry = res.json.items.find((row: { imported?: { remoteId: string } }) => row.imported?.remoteId === "remote-2");
     expect(entry).toMatchObject({ withdrawn: true });

@@ -2,7 +2,7 @@
 // locked protocol surface: do not modify without Fable + Venkat.
 
 import { attachedQuote } from "./directives.ts";
-import { codeRanges, htmlCodeRanges, inRanges, lineOffsets, type Range } from "./code-ranges.ts";
+import { codeRanges, inRanges, lineOffsets } from "./code-ranges.ts";
 import { sanitizeHtml } from "./importer/sanitize.ts";
 import { blygItemUrl } from "./importer/util.ts";
 import { renderMarkdown, selectionText } from "./markdown.ts";
@@ -10,6 +10,7 @@ import type { ImportedItemRow, ItemRow, TextQuoteSelector, Transclusion, Version
 import { absolutizeHtml, escapeHtml } from "./util.ts";
 import { DIRECTIVE_LINE, label, LINK_INLINE, RESERVED_LINE } from "./grammar.ts";
 import { linkLabel } from "./link-label.ts";
+import { renderGeneratedBlock } from "./tk.ts";
 
 /**
  * `[[id]]` — a plain internal link (§10.1, decision #32). The same bracket
@@ -32,19 +33,15 @@ import { linkLabel } from "./link-label.ts";
  *
  * A blank line detaches, which is the whole reason the grammar is adjacency
  * rather than a new sigil: a whole transclusion followed by the author's own
- * block quotation has always been writable, and must stay writable. The run
- * ends at the first line that is not a quote line; a line that is empty after
- * its marker is a paragraph break *inside* the selection.
+ * block quotation has always been writable, and must stay writable. The
+ * blockquote's extent is CommonMark's, lazy continuation included (decision
+ * #76): an unprefixed line that continues the quote's paragraph is part of the
+ * selection, and a line that is empty after its marker is a paragraph break
+ * *inside* it. `attachedQuote` in `directives.ts` measures it, for every caller.
  */
-
 
 /** How much context either side of the match to record — §10.1–§10.3 says short. */
 const SELECTOR_CONTEXT = 32;
-
-/**
- * The run of `>` lines attached to the directive at `i`, and where the caller
- * should resume. `lines[i]` is the directive itself.
- */
 
 
 /**
@@ -211,7 +208,7 @@ export async function resolveTarget(
     .prepare(
       `SELECT ii.*, s.origin AS sub_origin
        FROM imported_items ii JOIN subscriptions s ON s.id = ii.subscription_id
-       WHERE ii.remote_id = ?`,
+       WHERE ii.remote_id = ? AND s.hopper_feed IS NULL`,
     )
     .bind(id)
     .all<ImportedItemRow & { sub_origin: string }>();
@@ -235,6 +232,16 @@ export async function resolveTarget(
 }
 
 /**
+ * TK block spans lifted out of the body (`annotateGenerated`): each token
+ * stands alone on its line in the body, and its markdown and rendered
+ * replacement are kept beside it.
+ */
+export interface GeneratedBlocks {
+  blockReplacements: Map<string, string>;
+  blockSources: Map<string, string>;
+}
+
+/**
  * Shared line-walker for both publish-time resolution and studio preview.
  * `onError` decides what (if anything) renders in place of a directive that
  * fails to resolve — the strict resolver omits it (publish aborts anyway);
@@ -245,6 +252,7 @@ async function walk(
   contentMd: string,
   onError: (err: TransclusionRefError) => string | null,
   selfId?: string,
+  blocks?: GeneratedBlocks,
 ): Promise<ResolveResult> {
   const errors: TransclusionRefError[] = [];
   const transclusions: Transclusion[] = [];
@@ -273,6 +281,24 @@ async function walk(
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (inRanges(inert, starts[i])) {
+      prose.push(line);
+      continue;
+    }
+    // A generated block with provenance was lifted out of the body, so its
+    // lines are not here to walk (#105): an own-line `![[id]]` in it would stay
+    // literal text while publish warned it had been quoted (#60). Walk the
+    // block's own markdown, at its place in the body so transclusions[] keeps
+    // document order, and bake its quotes inside its `div.blyg-tk-gen` — the
+    // author's output put them there. The token line stays prose, so the body
+    // renders byte for byte as before and the wrapper splice still finds it.
+    const blockMd = blocks?.blockSources.get(line.trim());
+    if (blocks && blockMd !== undefined) {
+      const inner = await walk(db, blockMd, onError, selfId);
+      if (inner.transclusions.length || inner.errors.length) {
+        transclusions.push(...inner.transclusions);
+        errors.push(...inner.errors);
+        blocks.blockReplacements.set(line.trim(), `<div class="blyg-tk-gen">${inner.html}</div>`);
+      }
       prose.push(line);
       continue;
     }
@@ -328,6 +354,13 @@ async function walk(
     // data-blyg-origin appears only for remote sources, so a baked own-origin
     // blockquote is byte-identical to the 0.2 shape (decision #26).
     const originAttr = target.origin ? ` data-blyg-origin="${escapeHtml(target.origin)}"` : "";
+    // The directive's label is the author's name for the quoted item (§10.1,
+    // §10.2, decision #81): baked verbatim and escaped, after the other
+    // attributes, so it reaches subscribers and fork flatteners. It is only
+    // ever an attribution anchor, never the target's title (#46). No label, no
+    // attribute: an unlabelled bake stays byte-identical to its 0.3 form.
+    const directiveLabel = label(m[2]);
+    const labelAttr = directiveLabel ? ` data-blyg-label="${escapeHtml(directiveLabel)}"` : "";
     if (selector) {
       // P4, a build call recorded in v0.4-plan §7.3 in advance: the bake is the
       // selection's **plain text** in paragraphs, not a carved sub-range of the
@@ -340,11 +373,11 @@ async function walk(
         .map((para) => `<p>${escapeHtml(para)}</p>`)
         .join("\n");
       htmlParts.push(
-        `<blockquote class="blyg-transclusion blyg-partial" data-blyg-id="${target.id}" data-blyg-version="${target.version}"${originAttr}>\n${body}\n</blockquote>`,
+        `<blockquote class="blyg-transclusion blyg-partial" data-blyg-id="${target.id}" data-blyg-version="${target.version}"${originAttr}${labelAttr}>\n${body}\n</blockquote>`,
       );
     } else {
       htmlParts.push(
-        `<blockquote class="blyg-transclusion" data-blyg-id="${target.id}" data-blyg-version="${target.version}"${originAttr}>\n${target.contentHtml}\n</blockquote>`,
+        `<blockquote class="blyg-transclusion" data-blyg-id="${target.id}" data-blyg-version="${target.version}"${originAttr}${labelAttr}>\n${target.contentHtml}\n</blockquote>`,
       );
     }
   }
@@ -360,8 +393,8 @@ async function walk(
  * anything — this runs only at publish time, called from model.publish().
  * `selfId` is the publishing thread's own id, for the local DAG check.
  */
-export async function resolveTransclusions(db: D1Database, contentMd: string, selfId?: string): Promise<ResolveResult> {
-  return walk(db, contentMd, () => null, selfId);
+export async function resolveTransclusions(db: D1Database, contentMd: string, selfId?: string, blocks?: GeneratedBlocks): Promise<ResolveResult> {
+  return walk(db, contentMd, () => null, selfId, blocks);
 }
 
 /**
@@ -370,16 +403,24 @@ export async function resolveTransclusions(db: D1Database, contentMd: string, se
  * publish will reject, before the author hits publish. Not used at publish
  * time (see resolveTransclusions above); not a protocol surface.
  */
-export async function previewTransclusions(db: D1Database, contentMd: string, selfId?: string): Promise<ResolveResult> {
+export async function previewTransclusions(db: D1Database, contentMd: string, selfId?: string, blocks?: GeneratedBlocks): Promise<ResolveResult> {
   const result = await walk(
     db,
     contentMd,
     (err) => `<blockquote class="blyg-transclusion unresolved"><p>⚠ unresolvable: ${escapeHtml(err.reason)}</p></blockquote>`,
     selfId,
+    blocks,
   );
   // Publish bakes the target's HTML verbatim (§5.2, §10.2), so the walk does
   // not sanitize. The preview is displayed in the owner's studio, and every
   // display sanitizes at render, as the public pages do with the baked thread.
+  // A lifted generated block's quotes (#105) are spliced in after this, so
+  // they are sanitized here too.
+  if (blocks) {
+    for (const [token, html] of blocks.blockReplacements) {
+      blocks.blockReplacements.set(token, await sanitizeHtml(html));
+    }
+  }
   return { ...result, html: await sanitizeHtml(result.html) };
 }
 
@@ -430,13 +471,17 @@ function anchorText(target: ResolvedTarget): string {
  *
  * `ourOrigin` must be absolute: `content_html` travels to subscribers, where a
  * relative href would resolve against *their* origin and point at nothing.
+ *
+ * `contentMd` is always markdown, never rendered HTML: a label is the author's
+ * plain text, and HTML has already had markdown applied to it (`*em*` is
+ * `<em>` by then) and its `<`/`&` escaped. Generated blocks are resolved over
+ * their own markdown for that reason — see `resolveBlockLinks`.
  */
 export async function resolveInternalLinks(
   db: D1Database,
   contentMd: string,
   ourOrigin: string,
   onError: (err: TransclusionRefError) => string | null = () => null,
-  inert: (text: string) => Range[] = codeRanges,
 ): Promise<InternalLinkDocument> {
   const errors: TransclusionRefError[] = [];
   const replacements = new Map<string, string>();
@@ -444,10 +489,21 @@ export async function resolveInternalLinks(
   let out = "";
   let last = 0;
 
-  const code = inert(contentMd);
+  // A label is text, not markdown, so a backtick in one must not open a code
+  // span that swallows a later link. Each live link's label is blanked (same
+  // length, so offsets hold) and code found again. Left to right, so a span
+  // opened *before* a link still makes it inert, as markdown's own precedence
+  // has it (§10.1, #54).
+  let scanned = contentMd;
+  let code = codeRanges(scanned);
   for (const m of contentMd.matchAll(LINK_INLINE)) {
     const at = m.index ?? 0;
     if (inRanges(code, at)) continue; // inert inside code (§10.1, #54)
+    if (m[2]?.includes("`")) {
+      const end = at + m[0].length - 2; // the label runs up to the closing `]]`
+      scanned = scanned.slice(0, end - m[2].length) + " ".repeat(m[2].length) + scanned.slice(end);
+      code = codeRanges(scanned);
+    }
     out += contentMd.slice(last, at);
     last = at + m[0].length;
     const id = m[1];
@@ -496,12 +552,24 @@ const ENCODED_TOKEN = new RegExp(`${ENCODED_SENTINEL}(\\d+)${ENCODED_SENTINEL}`,
  *
  * No sentinel character survives in any case.
  */
+/** Replace every occurrence of `literal` in a document's text with a token for `html`, as links are. */
+export function addLinkToken(doc: InternalLinkDocument, literal: string, html: string): void {
+  if (!doc.text.includes(literal)) return;
+  const token = `${LINK_SENTINEL}${linkTokenSeq++}${LINK_SENTINEL}`;
+  doc.text = doc.text.split(literal).join(token);
+  doc.replacements.set(token, html);
+  doc.labels.set(token, { text: escapeHtml(literal), literal });
+}
+
 export function applyInternalLinks(html: string, doc: InternalLinkDocument): string {
   const label = (seq: string) => doc.labels.get(`${LINK_SENTINEL}${seq}${LINK_SENTINEL}`);
-  // 1. Tokens percent-encoded into attribute values: the author's literal, encoded the way the URL around it was.
+  // 1. Tokens percent-encoded into attribute values: the author's literal,
+  // encoded the way the URL around it was, and escaped like any attribute
+  // value — `encodeURI` keeps `&`, which a browser would read as an entity.
+  const inHref = (literal: string) => escapeHtml(encodeURI(literal));
   let out = html.replace(ENCODED_TOKEN, (whole, seq: string) => {
     const l = label(seq);
-    return l ? encodeURI(l.literal) : whole;
+    return l ? inHref(l.literal) : whole;
   });
   // 2. Walk tags and text, tracking whether we are inside an anchor or code.
   const parts = out.split(/(<[^>]*>)/);
@@ -523,7 +591,7 @@ export function applyInternalLinks(html: string, doc: InternalLinkDocument): str
       if (isTag) return escapeHtml(l.literal);
       if (inCode) return escapeHtml(l.literal);
       // An autolink's text is its URL: keep it reading as the URL it links to.
-      if (inAnchor) return anchorTag.includes(encodeURI(l.literal)) ? escapeHtml(l.literal) : l.text;
+      if (inAnchor) return anchorTag.includes(inHref(l.literal)) ? escapeHtml(l.literal) : l.text;
       return doc.replacements.get(token) ?? whole;
     });
     if (isTag && /^<a[\s>]/i.test(part)) { inAnchor++; anchorTag = parts[i]; }
@@ -536,18 +604,26 @@ export function applyInternalLinks(html: string, doc: InternalLinkDocument): str
  * block span is lifted out of the body and rendered on its own, so the body's
  * pass never sees it). Publish and preview both call this, so the preview shows
  * the links readers will get, and an unresolvable one is an error in both
- * places (studio#14). The input is rendered HTML, so code is `<code>`.
+ * places (studio#14).
+ *
+ * Resolved over each block's markdown, as the body is, and the block rendered
+ * again from the substituted text: resolving over its HTML would take a label
+ * that markdown had already rendered and escaped, and escape it a second time.
  */
 export async function resolveBlockLinks(
-  blocks: Map<string, string>,
-  resolve: (html: string) => Promise<InternalLinkDocument>,
+  blocks: GeneratedBlocks,
+  resolve: (md: string) => Promise<InternalLinkDocument>,
 ): Promise<{ docs: InternalLinkDocument[]; errors: TransclusionRefError[] }> {
   const docs: InternalLinkDocument[] = [];
   const errors: TransclusionRefError[] = [];
-  for (const [token, blockHtml] of blocks) {
-    const doc = await resolve(blockHtml);
+  for (const [token, blockMd] of blocks.blockSources) {
+    const doc = await resolve(blockMd);
     if (doc.replacements.size || doc.errors.length) {
-      blocks.set(token, doc.text);
+      blocks.blockReplacements.set(token, renderGeneratedBlock(doc.text));
+      // The block's markdown is now the link-substituted text, so a later
+      // directive walk over it (resolveTransclusions with these blocks, #105)
+      // keeps the link tokens that applyInternalLinks splices back.
+      blocks.blockSources.set(token, doc.text);
       errors.push(...doc.errors);
       docs.push(doc);
     }
@@ -560,12 +636,11 @@ export async function resolveBlockLinks(
  * the composer shows what publish will reject before the author hits publish —
  * the same contract as `previewTransclusions`.
  */
-export async function previewInternalLinks(db: D1Database, contentMd: string, ourOrigin: string, html = false): Promise<InternalLinkDocument> {
+export async function previewInternalLinks(db: D1Database, contentMd: string, ourOrigin: string): Promise<InternalLinkDocument> {
   return resolveInternalLinks(
     db,
     contentMd,
     ourOrigin,
     (err) => `<span class="blyg-link-unresolved" style="color:#b3412b">⚠ ${escapeHtml(err.reason)}</span>`,
-    html ? htmlCodeRanges : codeRanges,
   );
 }

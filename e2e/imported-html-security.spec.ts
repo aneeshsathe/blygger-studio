@@ -63,10 +63,10 @@ for (const surface of ['public collection', 'published thread'] as const) test('
   page.on('request', request => { if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/authorizations') attemptedGrants.push(request.url()); });
   let path = '/h/security-native/';
   if (surface === 'published thread') path = await page.evaluate(async () => {
-    const created = await fetch('/api/items',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'thread',content_md:'![[00000000000000000000000001]]'})});
+    const created = await fetch('/api/items',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'thread',contentMd:'![[00000000000000000000000001]]'})});
     if (created.status!==201) throw new Error('Thread fixture create failed');
-    const {id}=await created.json();
-    if (!(await fetch('/api/items/'+id+'/publish',{method:'POST'})).ok) throw new Error('Thread fixture publish failed');
+    const {id,revision}=await created.json();
+    if (!(await fetch('/api/items/'+id+'/publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({expectedRevision:revision})})).ok) throw new Error('Thread fixture publish failed');
     return '/t/'+id+'/';
   });
   await page.goto(path);
@@ -92,6 +92,11 @@ test('public version navigation cannot activate a legacy pinned bake', async ({ 
   await page.getByRole('button',{name:'older version',exact:true}).click();
   await expect(page.getByText('Legacy pin safety marker',{exact:true})).toBeVisible();
   await expect(page.locator('.version-note')).toContainText('Old pin note');
+  // Rendering turns do not wait for a failed image request. Exercise its error
+  // handler now so a slow 404 response cannot let unsafe markup pass this oracle.
+  await page.locator('article .item-content img[src="/missing"]').evaluateAll(images => {
+    for (const image of images) image.dispatchEvent(new Event('error'));
+  });
   await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
   expect(attemptedGrants, 'version navigation must not attempt owner-authority calls').toEqual([]);
   await expect(page.locator('html'),'version navigation cannot execute legacy protocol markup').not.toHaveAttribute('data-import-script','yes');

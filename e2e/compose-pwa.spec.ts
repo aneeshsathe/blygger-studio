@@ -1,3 +1,4 @@
+import { fixtureJson } from './api-fixture';
 import { test, expect, type Page } from './fixture';
 import { answerSheet } from './sheets.ts';
 import { expandRow, openCard } from './editor.ts';
@@ -14,14 +15,13 @@ async function login(page: Page) {
   await page.getByRole('button', { name: 'log in', exact: true }).click();
   await expect(page.locator('#composer-text')).toBeVisible();
 }
-const api = (page: Page, method: string, path: string, data?: unknown) =>
-  page.evaluate(async ([method, path, data]) => {
-    const r = await fetch(`/api${path}`, { method, headers: { 'content-type': 'application/json' }, body: data === undefined ? undefined : JSON.stringify(data) });
-    if (!r.ok) throw new Error(`${method} ${path}: ${r.status}`);
-    return r.json();
-  }, [method, path, data] as const);
+const api = async (page: Page, method: string, path: string, data?: unknown) => {
+  const result = await page.evaluate(fixtureJson, { method, path: `/api${path}`, body: data });
+  if (!result.ok) throw new Error(`${method} ${path}: ${result.status}`);
+  return result.json;
+};
 const create = async (page: Page, content_md: string, kind: 'fragment' | 'thread' = 'fragment') =>
-  (await api(page, 'POST', '/items', { content_md, kind })).id as string;
+  (await api(page, 'POST', '/items', { contentMd: content_md, kind })).id as string;
 const clipboard = (page: Page) => page.evaluate(() => navigator.clipboard.readText());
 const setClipboard = (page: Page, text: string) => page.evaluate((text) => navigator.clipboard.writeText(text), text);
 const select = (page: Page, selector: string, text: string) =>
@@ -40,7 +40,7 @@ test('the filters show drafts, unpublished changes, public and withdrawn items',
   await api(page, 'POST', `/items/${pub}/publish`, {});
   const changed = await create(page, `${tag} changed`);
   await api(page, 'POST', `/items/${changed}/publish`, {});
-  await api(page, 'PATCH', `/items/${changed}`, { content_md: `${tag} changed, edited` });
+  await api(page, 'PATCH', `/items/${changed}`, { contentMd: `${tag} changed, edited` });
   const gone = await create(page, `${tag} withdrawn`);
   await api(page, 'POST', `/items/${gone}/publish`, {});
   await api(page, 'POST', `/items/${gone}/withdraw`, {});
@@ -56,10 +56,19 @@ test('the filters show drafts, unpublished changes, public and withdrawn items',
   await shows('public', [pub, changed]);
   await shows('withdrawn', [gone]);
   await shows('all', [draft, pub, changed, gone]);
-  // Each count is the number of rows its filter shows.
+  // Counts cover the whole filtered sequence; each window starts with at most25.
+  const totals = await api(page, 'GET', '/items/summary');
   for (const filter of ['drafts', 'changes', 'public', 'withdrawn', 'all']) {
     await page.locator(`[data-filter="${filter}"]`).click();
-    await expect(page.locator('.item-row')).toHaveCount(Number(await page.locator(`[data-filter="${filter}"] .n`).textContent()));
+    const total = totals[filter] as number;
+    await expect(page.locator(`[data-filter="${filter}"] .n`)).toHaveText(String(total));
+    await expect(page.locator('.item-row')).toHaveCount(Math.min(25, total));
+    for (let loaded = 25; loaded < total; loaded += 25) {
+      await page.getByRole('button', { name: 'load more items', exact: true }).click();
+      await expect(page.locator('.item-row')).toHaveCount(Math.min(loaded + 25, total));
+    }
+    await expect(page.locator('.item-row')).toHaveCount(total);
+    await expect(page.getByRole('button', { name: 'load more items', exact: true })).toHaveCount(0);
   }
   // The row says what it is without opening.
   await expect(rows(changed).locator('.item-meta')).toContainText('public · v1 · unpublished changes');
@@ -180,13 +189,18 @@ test('the composer tools: kind pills, the over-length hint, [[ and [TK]', async 
   await login(page);
   const box = page.locator('#composer-text');
   await expect(page.getByRole('radio', { name: 'fragment', exact: true })).toBeChecked();
-  await expect(page.locator('[data-action="bracket-quote"]')).toHaveCount(0);
+  // Thread-only tools stay in the row, greyed, so it doesn't shift between kinds.
+  await expect(page.locator('[data-action="bracket-quote"]')).toBeDisabled();
+  await expect(box).toHaveClass(/is-fragment/);
   await box.fill('x'.repeat(1001));
   await expect(page.locator('#composer-count')).toHaveClass(/over/);
+  await expect(box).toHaveClass(/is-over/);
   await page.getByRole('button', { name: 'make this a thread', exact: true }).click();
   await expect(page.getByRole('radio', { name: 'thread', exact: true })).toBeChecked();
   await expect(page.locator('#composer-count')).not.toHaveClass(/over/);
-  await expect(page.locator('[data-action="bracket-quote"]')).toHaveCount(1);
+  await expect(box).not.toHaveClass(/is-fragment/);
+  await expect(box).not.toHaveClass(/is-over/);
+  await expect(page.locator('[data-action="bracket-quote"]')).toBeEnabled();
   await box.fill('Summarise this');
   await select(page, '#composer-text', 'Summarise this');
   await page.locator('[data-action="tk"]').click();
