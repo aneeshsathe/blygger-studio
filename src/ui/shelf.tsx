@@ -57,7 +57,8 @@ function move(ids: readonly string[], index: number, by: -1 | 1) {
 export function Shelf() {
   const ids = useShelf();
   const action = useAction();
-  const rows = useLiveQuery((q) => q.from({ item: items }).where(({ item }) => inArray(item.id, ids)), [ids.join(',')]).data ?? [];
+  // Captured values (ids) are part of the derived query's identity, so no deps array.
+  const rows = useLiveQuery({ query: (q) => q.from({ item: items }).where(({ item }) => inArray(item.id, ids)) }).data ?? [];
   if (!ids.length) return null;
   const byId = new Map(rows.map((row) => [row.id, row]));
   return (
