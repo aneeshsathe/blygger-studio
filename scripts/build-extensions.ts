@@ -17,17 +17,18 @@
 // BLYG_EXTENSIONS=a,b or =all replaces the list (the browser suite uses all;
 // "all" means every catalogued extension, never a vendored one).
 //
-// Registry extensions (docs/extension-registry.md, a proposal): `npm run
-// ext:add` vendors a pinned, browser-only tree into the gitignored
-// extensions-vendor/<name>/ and records it under "vendored" in
-// extensions.local.json. Only the local file names them, so a release build,
-// which ignores that file, can never carry one. The build re-hashes each
-// vendored tree it compiles and refuses one that differs from its lock.
+// Vendored extensions (docs/extension-vendoring.md): `npm run ext:add` fetches
+// a browser-only extension from another repository at a pinned commit into the
+// gitignored extensions-vendor/<name>/ and records the pin and its tree hash
+// under "vendored" in extensions.local.json. Only the local file names them, so
+// a release build, which ignores that file, can never carry one. The build
+// re-hashes each vendored tree it compiles and refuses one that differs from
+// its lock, or one with a server half.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { EXTENSIONS } from "../extensions/catalog.ts";
-import { hashDirectory } from "./registry-tree.ts";
+import { hashDirectory } from "./ext-tree.ts";
 
-interface Config { compile?: string[]; remove?: string[]; vendored?: Record<string, { sha256?: string }> }
+interface Config { compile?: string[]; remove?: string[]; vendored?: Record<string, { commit?: string; sha256?: string }> }
 const fail = (msg: string): never => {
   console.error(`build-extensions: ${msg}`);
   process.exit(1);
@@ -52,11 +53,11 @@ const dir = (name: string) => (vendored[name] ? "extensions-vendor" : "extension
 for (const name of names) {
   if (known.has(name) && vendored[name]) fail(`"${name}" is both a repository extension and a vendored one; run npm run ext:remove ${name}`);
   if (!known.has(name) && !vendored[name]) fail(`"${name}" is not an extension in extensions/catalog.ts (known: ${[...known].join(", ") || "none"}) or a vendored one in extensions.local.json`);
-  if (!existsSync(`${dir(name)}/${name}/ui/index.tsx`)) fail(`${dir(name)}/${name}/ui/index.tsx is missing${vendored[name] ? `; run npm run ext:update ${name}` : ""}`);
+  if (!existsSync(`${dir(name)}/${name}/ui/index.tsx`)) fail(`${dir(name)}/${name}/ui/index.tsx is missing${vendored[name] ? `; run npm run ext:update -- ${name} ${vendored[name].commit ?? "<commit>"}` : ""}`);
   if (vendored[name]) {
-    if (existsSync(`extensions-vendor/${name}/server.ts`) || existsSync(`extensions-vendor/${name}/contract.ts`)) fail(`vendored "${name}" has a server half; registry extensions are browser-only`);
+    if (existsSync(`extensions-vendor/${name}/server.ts`) || existsSync(`extensions-vendor/${name}/contract.ts`)) fail(`vendored "${name}" has a server half; vendored extensions are browser-only (docs/mods.md)`);
     const actual = hashDirectory(`extensions-vendor/${name}`);
-    if (actual !== vendored[name].sha256) fail(`extensions-vendor/${name} has changed since it was vendored (tree hash ${actual}, locked ${vendored[name].sha256}); run npm run ext:update ${name}`);
+    if (actual !== vendored[name].sha256) fail(`extensions-vendor/${name} has changed since it was vendored (tree hash ${actual}, locked ${vendored[name].sha256}); restore it with npm run ext:update -- ${name} ${vendored[name].commit ?? "<commit>"}`);
   }
 }
 const server = names.filter((name) => !vendored[name] && existsSync(`extensions/${name}/server.ts`));

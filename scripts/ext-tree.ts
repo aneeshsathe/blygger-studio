@@ -1,4 +1,4 @@
-// The registry's tree hash (docs/extension-registry.md, "The tree hash").
+// The tree hash of a vendored extension (docs/extension-vendoring.md, "The tree hash").
 //
 // One line per regular file, `<sha256 of its bytes>  <path relative to the
 // tree>\n`, sorted by path, and the sha256 of those lines joined. It is what
@@ -7,10 +7,10 @@
 //   cd <tree> && find . -type f | sed 's|^\./||' | LC_ALL=C sort \
 //     | while read -r f; do sha256sum "$f"; done | sha256sum
 //
-// Paths are restricted to ASCII (scripts/registry-lib.ts refuses anything
+// Paths are restricted to ASCII (scripts/ext-vendor-lib.ts refuses anything
 // else), so JavaScript's sort order is the same as LC_ALL=C's.
 //
-// Kept apart from registry-lib.ts because scripts/build-extensions.ts uses it
+// Kept apart from ext-vendor-lib.ts because scripts/build-extensions.ts uses it
 // on every build, to refuse a vendored tree that no longer matches its lock.
 import { createHash } from "node:crypto";
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
