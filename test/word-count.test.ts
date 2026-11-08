@@ -16,7 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { apiJson, createAndPublish, login } from "./helpers.ts";
 import { putSettings } from "../src/model.ts";
 import { outlineLinks, rollup, type CountedItem } from "../extensions/word-count/tree.ts";
-import { countWords } from "../extensions/word-count/count.ts";
+import { countMarkdown, countWords } from "../extensions/word-count/count.ts";
 
 const A = "0000000000000000000000000a";
 const B = "0000000000000000000000000b";
@@ -50,6 +50,15 @@ describe("rollup", () => {
     const load = graph({ r: [A, B], [A]: [C], [B]: [], [C]: [] });
     await rollup("r", async (ids) => (calls.push(ids), load(ids)));
     expect(calls).toEqual([["r"], [A, B], [C]]);
+  });
+});
+
+describe("countMarkdown", () => {
+  it("counts what a reader would read, not link and image syntax", () => {
+    expect(countMarkdown("one **two** [the label](https://example.com/a/b) ![alt](https://example.com/i.png) [[abc | three]]")).toEqual({ words: 5, cjk: 0 });
+  });
+  it("leaves out what only the server can resolve", () => {
+    expect(countMarkdown("one [[abc]] ![[abc]] two")).toEqual({ words: 2, cjk: 0 });
   });
 });
 
@@ -93,6 +102,18 @@ describe("the counts route", () => {
     expect(c[`own:${toc}`].published.document).toEqual({ words: own(toc) + own(ch1) + 3 + own(ch2), cjk: 0, items: 4 });
     // Nothing unpublished: the draft side is the published side.
     for (const id of [toc, ch1, ch2]) expect(c[`own:${id}`].draft).toEqual(c[`own:${id}`].published);
+  });
+
+  it("counts no comment text, and follows no outline link in a comment", async () => {
+    const cookie = await login();
+    const chapter = await createAndPublish(cookie, "One two three.");
+    const id = await createAndPublish(cookie, "Four five.");
+    const edited = await apiJson(cookie, "PATCH", `/blyg/api/items/${id}`, { contentMd: `Four five. /* six seven eight\n\n- [[${chapter} | One]]\n*/` });
+    expect(edited.status).toBe(200);
+    const c = (await counts(cookie, [id])).json.counts[`own:${id}`];
+    expect(c.draft.words).toBe(2);
+    expect(c.published.words).toBe(2);
+    expect(c.draft.document).toEqual(c.published.document);
   });
 
   it("counts unpublished edits on the draft side, through the tree, and leaves the published side alone", async () => {

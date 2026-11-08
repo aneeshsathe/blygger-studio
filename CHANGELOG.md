@@ -18,6 +18,52 @@ not have its own repo until session 26.
 
 ---
 
+## 0.57.0 — Writing a book on the studio
+
+Most of this release was asked for while writing a book on the studio (the blykker
+pilot, *New Nature*).
+
+**Comments to self** (#131). In a working copy, `/* … */` holds a note for you:
+inline or over several lines, kept across saves and publishes, and left out of
+everything public: the page, feeds, item documents, history and quotes. A `[TK]`
+scope inside one can be generated as usual. Editing only a comment is not an
+unpublished change. An unclosed `/*`, or a `*/` on its own, blocks publish rather
+than risk showing the note. In code they are literal; elsewhere `\/*` and `\*/` write
+the characters. **Existing text can change meaning:** a working copy that already has
+`/*` outside code will either refuse to publish with a reason or, if a `*/` follows,
+drop the text between them at its next publish or quote refresh. The preview shows
+this first, and already-published versions don't change. Discarding changes or
+restoring a version removes comments, and the confirm dialog says so.
+
+**Focus view** (#126). A full-screen writing view in the full editor: the icon at the
+right of the editor's head line, or ⌘⇧↩ / Ctrl+Shift+Enter; Esc leaves. It has
+typewriter scrolling, controls that fade while you type, the counts in a corner, and a
+**preview** tab (⌘⌥↩ / Ctrl+Alt+Enter). Text, caret, scroll and undo history all
+survive the switch, and autosave keeps running.
+
+**Word count while writing** (#125). The `word-count` extension now also shows its
+count beside the character count, in the composer and the full editor, through a
+new general `draftCounter` extension slot. Like the character count, it leaves comments
+to self out.
+
+**Extension pages can sit in the main menu** (#133). `page.mainMenu: { icon }` links an
+extension page from the main menu, above compose, instead of from More. Browser only.
+
+**A quote's label is shown to readers** (#136, ROADMAP row 79, decision #81). A labelled
+directive, `![[id | text]]`, bakes `data-blyg-label` on its blockquote. Public pages,
+the reader and fork flattening use it as the attribution link's text. What the link
+said before stays beside it, so a label never hides whose quote it is and is never
+shown as the quoted item's title. Unlabelled quotes bake byte-identically. The reader
+conformance suite goes from 74 to 79 passing.
+
+**Single-node deploys** (#138). A self-host whose `wrangler.private.jsonc` has no
+`env` block (one target, `"env": ""`) now passes `npm test` and `deploy:all`'s
+cross-check. The pinned-`account_id` guard still applies.
+
+Private contract, SDK and protocol version unchanged (`"0.4"`).
+
+**Migrations:** none.
+
 ## 0.56.0 — Mentions means people now
 
 **A Mentions lens in the reader** (#134, `tn-6`). Reading's new lens lists items you
