@@ -1,6 +1,6 @@
 {
   "name": "@blygger/studio",
-  "version": "0.57.0",
+  "version": "0.58.1",
   "private": true,
   "description": "Blygger Studio — reference client for the Blygger protocol (publish, subscribe, thread, transclude, respond)",
   "license": "MIT",
@@ -28,6 +28,7 @@
     "test:oauth:conformance": "node --import tsx scripts/verify-oidc-conformance.ts",
     "test:upgrade": "node --import tsx scripts/verify-upgrade.ts",
     "check:template": "node --import tsx scripts/check-template.ts",
+    "check:fixtures": "node --import tsx scripts/check-feed-fixtures.ts",
     "ext:add": "node --import tsx scripts/ext-vendor.ts add",
     "ext:update": "node --import tsx scripts/ext-vendor.ts update",
     "ext:remove": "node --import tsx scripts/ext-vendor.ts remove",

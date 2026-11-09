@@ -40,6 +40,9 @@
   .composer-actions:has(.counter-slot) { width: 100%; margin-left: 0; justify-content: flex-end; }
   .composer-actions .counter-slot { flex: 1 1 auto; min-width: 0; }
   .composer-actions .counter-slot + .spacer { flex: 0 0 100%; margin-top: calc(-1 * var(--s2)); }
+  .qe-bar:has(.counter-slot) { flex-wrap: wrap; justify-content: flex-end; }
+  .qe-bar .counter-slot { flex: 1 1 auto; min-width: 0; }
+  .qe-bar .counter-slot + .spacer { flex: 0 0 100%; margin-top: calc(-1 * var(--s2)); }
 }
 /* The resize grip helps with a mouse; on touch it is a stray target. */
 @media (hover: hover) and (pointer: fine) { .composer textarea { resize: vertical; } }
@@ -184,6 +187,8 @@ html.focus-view { overflow: hidden; scrollbar-gutter: auto; }
 .editor.is-focus textarea.md { flex: 1; min-height: 0; resize: none; background: transparent; border: none; border-radius: 0; box-shadow: none; font-family: var(--sans); font-size: 1.15rem; line-height: 1.7;
   padding: max(48px, env(safe-area-inset-top)) max(var(--s4), calc((100% - 68ch) / 2)) calc((100vh - var(--focus-keyboard, 0px)) * .55); }
 .editor.is-focus textarea.md:focus { outline: none; box-shadow: none; }
+/* A fragment keeps its tint here too, focused or not (#126). */
+.editor.is-focus textarea.md.is-fragment { background: var(--fragment-bg); }
 /* The preview tab lies over the text, which stays laid out: hiding it with display
    would lose its scroll position and, in some browsers, its undo history. */
 .editor.is-focus .editor-grid[data-pane=preview] .editor-pane { visibility: hidden; }

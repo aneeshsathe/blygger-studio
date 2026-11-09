@@ -6,7 +6,7 @@ import { outsideOtherComments, parseComments, previewComments, sameOutsideCommen
 describe("removal leaves what the author would have typed without the comment", () => {
   it.each([
     ["inline, spaces both sides", "foo /* note */ bar", "foo bar"],
-    ["inline, tight", "foo/*note*/bar", "foobar"],
+    ["inline, tight after a space", "foo /*note*/bar", "foo bar"],
     ["before punctuation", "foo /* note */.", "foo."],
     ["at a line's end, no hard break left", "foo /* note */\nbar", "foo\nbar"],
     ["at a line's start", "/* note */ foo", "foo"],
@@ -46,6 +46,10 @@ describe("what is literal", () => {
     ["an escaped opener", "a \\/* b"],
     ["an escaped closer", "a \\*/ b"],
     ["a closer attached to a word", "**bold**/ and on"],
+    ["an opener inside a path", "see src/*.ts for more"],
+    ["emphasis between slashes", "a /**word**/ b"],
+    ["two paths in a paragraph", "src/*.ts and lib/*.js"],
+    ["an attached opener with a closer only in a later paragraph", "src/*.ts\n\nthen **bold**/ text"],
   ])("%s", (_name, source) => {
     const parsed = parseComments(source);
     expect(parsed.errors).toEqual([]);
@@ -54,7 +58,7 @@ describe("what is literal", () => {
   });
 
   it("an even run of backslashes does not escape", () => {
-    expect(withoutComments("a \\\\/* b */ c")).toBe("a \\\\ c");
+    expect(withoutComments("a /* b \\\\*/ c")).toBe("a c");
   });
 
   it("a closer in code inside a comment does not close it", () => {
@@ -97,8 +101,14 @@ describe("the rules lean towards privacy", () => {
     expect(parseComments("/* [TK]x */ y[/TK]").errors).toHaveLength(1);
   });
 
-  it("a mid-word opener with no closer refuses, it does not pass as prose", () => {
-    expect(parseComments("see src/*.ts for more").errors).toHaveLength(1);
+  it("a note written tight against a word refuses rather than publishes", () => {
+    const parsed = parseComments("foo/*note*/bar");
+    expect(parsed.errors).toHaveLength(1);
+    expect(parsed.errors[0].reason).toContain('attached to "foo"');
+  });
+
+  it("a /** opener is prose, so its spaced closer refuses as stray", () => {
+    expect(parseComments("a /** note */ b").errors).toHaveLength(1);
   });
 
   it("the preview says what would stop a publish", () => {

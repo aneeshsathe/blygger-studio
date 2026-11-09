@@ -42,9 +42,14 @@ function escaped(text: string, at: number): boolean {
   return slashes % 2 === 1;
 }
 
+// A comment opens where a note would start: at a line's start or after a
+// space, and not as `/**`. So `src/*.ts` and `/**bold**/` are prose (#131).
+const opens = (text: string, at: number) =>
+  (at === 0 || /\s/.test(text[at - 1])) && text[at + 2] !== "*";
+
 function findOpener(text: string, from: number, code: ReturnType<typeof codeRanges>): number {
   let at = text.indexOf("/*", from);
-  while (at !== -1 && (inRanges(code, at) || escaped(text, at))) at = text.indexOf("/*", at + 2);
+  while (at !== -1 && (!opens(text, at) || inRanges(code, at) || escaped(text, at))) at = text.indexOf("/*", at + 2);
   return at;
 }
 
@@ -116,6 +121,25 @@ function strayClosers(text: string): CommentIssue[] {
   return issues;
 }
 
+// A `/*` attached to a word is prose, but with a closer after it in the same
+// paragraph it reads as a note written tight (`word/*note*/`), which would
+// publish. Refuse rather than guess.
+function attachedOpeners(text: string): CommentIssue[] {
+  const issues: CommentIssue[] = [];
+  const code = codeRanges(text);
+  for (const m of text.matchAll(/\/\*/g)) {
+    const at = m.index!;
+    if (opens(text, at) || text[at + 2] === "*" || inRanges(code, at) || escaped(text, at)) continue;
+    const blank = text.slice(at).search(/\n[ \t]*\n/);
+    const paragraph = blank === -1 ? text.slice(at + 2) : text.slice(at + 2, at + blank);
+    const close = paragraph.indexOf("*/");
+    if (close === -1 || inRanges(code, at + 2 + close)) continue;
+    const word = text.slice(0, at).split(/\s/).pop();
+    issues.push({ at, reason: `a /* attached to "${word}" with a */ after it. A comment opens only at a line's start or after a space, so this would publish. Put a space before /*, or write \\/* if you meant it literally` });
+  }
+  return issues;
+}
+
 /**
  * Find every comment in a working copy. Code is judged on the text as it will
  * publish, earlier comments removed, so a stray backtick in a note can't turn
@@ -123,6 +147,20 @@ function strayClosers(text: string): CommentIssue[] {
  */
 export function parseComments(md: string): ParsedComments {
   if (!md.includes("/*") && !md.includes("*/")) return { text: md, ranges: [], errors: [] };
+  // One parse re-reads the document's code once per comment, so a long
+  // chapter costs hundreds of milliseconds; the editor asks about the same
+  // few texts on every render (#131). Results are never mutated.
+  const hit = recent.get(md);
+  if (hit) return hit;
+  const parsed = parseUncached(md);
+  recent.set(md, parsed);
+  if (recent.size > 4) recent.delete(recent.keys().next().value!);
+  return parsed;
+}
+
+const recent = new Map<string, ParsedComments>();
+
+function parseUncached(md: string): ParsedComments {
   const ranges: CommentRange[] = [];
   let kept = "";
   let rest = md;
@@ -146,7 +184,7 @@ export function parseComments(md: string): ParsedComments {
     [kept, rest] = closeUp(scan.slice(0, open), after);
   }
   const text = kept + rest;
-  return { text, ranges, errors: strayClosers(text) };
+  return { text, ranges, errors: [...strayClosers(text), ...attachedOpeners(text)].sort((a, b) => a.at - b.at) };
 }
 
 export const withoutComments = (md: string) => parseComments(md).text;
