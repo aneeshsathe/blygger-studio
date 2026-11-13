@@ -40,7 +40,7 @@ import { Sheet, confirm, menu, prompt, toast } from './sheets.tsx';
 import { compiledExtensions } from '../../build/extensions.ui.ts';
 import { DraftCounterSlot, enabledExtensions, type HostContext } from './extensions.tsx';
 import { HandlePicker } from './contacts.tsx';
-import { onFormatKey } from './format-shortcuts.ts';
+import { applyEdit, breakEdit, codeBlockEdit, indentEdit, onFormatKey } from './format-shortcuts.ts';
 import { BracketPicker } from './picker.tsx';
 import { revealCaret, setTextAt } from './caret.ts';
 import { Draft } from './draft.ts';
@@ -51,7 +51,7 @@ import { insertLink, isUrl, linkToast } from './links.ts';
 import { itemTitle, permalink, plainText, textWithLink } from './plain-text.ts';
 import { OcrScan } from './ocr.tsx';
 import { addStubQuote, passageCount, quoteCount, stubQuoteForm, withStubQuote } from './stub-quote.ts';
-import { EnterFocus, ExitFocus, Image as ImageIcon, LinkIcon, More, Scan, Sparkle, Swap } from './icons.tsx';
+import { CodeBlock, EnterFocus, ExitFocus, Image as ImageIcon, IndentIn, IndentOut, LineBreak, LinkIcon, More, Scan, Sparkle, Swap } from './icons.tsx';
 import { SearchBox, SearchResults, store, stored } from './search.tsx';
 import './authoring.css';
 
@@ -128,7 +128,9 @@ function Help({ thread, className = 'compose-help' }: { thread?: boolean; classN
       <code>[[id]]</code> links an item. <code>[TK]an instruction[/TK]</code>{' '}
       marks AI-drafted text. Type <code>/image</code> on its own line, or
       paste or drop an image, to insert one there. Paste a URL over selected
-      text to link it. Cmd/Ctrl+B, I and K make bold, italics and a link.{' '}
+      text to link it. Cmd/Ctrl+B, I and K make bold, italics and a link. Tab
+      and Shift+Tab move a list item in and out; Shift+Enter breaks a line
+      without ending the paragraph.{' '}
       <Link to="/syntax">full syntax reference</Link>
     </p>
   ) : (
@@ -2371,6 +2373,35 @@ function Editor({ item, onDiscarding }: { item: Detail; onDiscarding?: (active: 
             <Sparkle />
             <span className="sr-only">mark selection as generated</span>
           </Button>
+          {/* Markdown's structure, for a keyboard with no Tab key (an iPad's). */}
+          {([
+            ['indent', <IndentIn />, 'move list item in', 'Move the list item under the cursor in a level, making it a sublist (Tab)'],
+            ['outdent', <IndentOut />, 'move list item out', 'Move the list item under the cursor out a level (Shift+Tab)'],
+            ['break', <LineBreak />, 'line break', 'Break the line without ending the paragraph, for verse (Shift+Enter)'],
+            ['code', <CodeBlock />, 'code block', 'Put the selected lines in a code block, or start an empty one'],
+          ] as const).map(([kind, icon, label, title]) => (
+            <Button
+              key={kind}
+              className="act icon-only tool"
+              data-action={`md-${kind}`}
+              disabled={replacing}
+              title={title}
+              onClick={() => {
+                const el = input.current;
+                if (!el) return;
+                const [from, to] = [el.selectionStart, el.selectionEnd];
+                const change =
+                  kind === 'break' ? breakEdit(el.value, from, to)
+                  : kind === 'code' ? codeBlockEdit(el.value, from, to)
+                  : indentEdit(el.value, from, to, kind === 'outdent');
+                if (change) applyEdit(el, change);
+                else toast(kind === 'indent' ? 'Put the cursor on a list item that has another above it.' : 'Put the cursor on an indented list item.');
+              }}
+            >
+              {icon}
+              <span className="sr-only">{label}</span>
+            </Button>
+          ))}
         </ToolRow>
         <div className="editor-pane">
           <div className="ta-wrap">
