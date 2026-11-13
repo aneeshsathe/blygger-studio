@@ -270,6 +270,14 @@ button.link { background: none; border: none; padding: 0; font: inherit; color: 
 .banner a { font-weight: 600; }
 .error-banner { border: 1px solid color-mix(in srgb, var(--alert) 40%, transparent); background: var(--alert-bg); color: var(--alert); border-radius: 12px; padding: 10px 13px; font-size: .86rem; margin: 0 0 12px; overflow-wrap: anywhere; }
 .error-banner code { color: inherit; }
+.error-details { color: inherit; font-size: .78rem; white-space: nowrap; }
+.error-log { list-style: none; margin: 12px 0; padding: 0; }
+.error-log li { border-top: 1px solid var(--rule); }
+.error-log summary { display: flex; flex-wrap: wrap; gap: 2px 12px; justify-content: space-between; padding: 8px 2px; cursor: pointer; }
+.error-log-message { overflow-wrap: anywhere; }
+.error-log-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 12px; }
+.error-log-when { font-size: .78rem; color: var(--ink-soft); white-space: nowrap; }
+.error-log pre { margin: 0 0 10px; padding: 10px; font-size: .74rem; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--sunk); border-radius: 8px; user-select: text; }
 .read-error { margin-bottom: 14px; }
 
 /* ---------- NAV LIST (more) ---------- */

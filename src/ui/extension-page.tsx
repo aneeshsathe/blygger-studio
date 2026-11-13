@@ -10,7 +10,7 @@ import { compiledExtensions } from '../../build/extensions.ui.ts';
 import { client } from './data.ts';
 import { Failure, useChrome, useSettings } from './components.tsx';
 import type { PageContext } from './extension-api.ts';
-import { ExtensionBoundary, askedZone, enabledExtensions, menuPlacement } from './extensions.tsx';
+import { ExtensionBoundary, askedZone, enabledExtensions, extensionContext, menuPlacement } from './extensions.tsx';
 
 export function ExtensionPage({ name }: { name: string }) {
   useChrome({ framed: false });
@@ -30,7 +30,7 @@ export function ExtensionPage({ name }: { name: string }) {
       </>
     );
   const zone = menuPlacement(enabled).zoneOf(extension);
-  const context: PageContext = {
+  const context = extensionContext<PageContext>(extension, 'page', {
     client,
     openDraft: async (body) => {
       const created = await createItem(body);
@@ -46,7 +46,7 @@ export function ExtensionPage({ name }: { name: string }) {
       }
     },
     menu: { asked: askedZone(extension), zone },
-  };
+  });
   const Page = extension.page.component;
   return (
     <>
