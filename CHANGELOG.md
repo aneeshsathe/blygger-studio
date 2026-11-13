@@ -18,6 +18,26 @@ not have its own repo until session 26.
 
 ---
 
+## 0.58.3 — Sublists, verse and code blocks are easier to type
+
+Sublists, line breaks inside a paragraph and code blocks always rendered: the Studio's
+markdown is CommonMark. What was missing was a way to type them in a text box.
+- **Tab and Shift+Tab** move the list item under the cursor in and out a level; with
+  several lines selected they all move, and undo takes it back. A numbered item that
+  opens a sublist is renumbered to 1, which is the only way markdown reads it as a list.
+  Off a list, or on the first item of one, Tab moves focus as usual.
+- **Shift+Enter** breaks a line without ending the paragraph, for verse or an address.
+  It types markdown's backslash line break, which you can see in the text. Inside a
+  code block it types a plain newline.
+- **The full editor's toolbar** has a button for each, and one that puts the selected
+  lines in a code block (or starts an empty one), for an iPad's keyboard, which has no
+  Tab key.
+- The syntax page has a Markdown section saying how to write each by hand.
+
+Private contract and SDK unchanged. Protocol version unchanged (`"0.4"`).
+
+**Migrations:** none. A node coming from before 0.58.0 needs `0045`.
+
 ## 0.58.2 — An error log you can read and send, and focus view on an iPad
 
 **The Studio keeps an error log** (Settings → Errors). An error banner can be gone
