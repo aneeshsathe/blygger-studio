@@ -11,14 +11,18 @@ import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
 import { createElement, type ReactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { DraftCounterSlot, EntryBylineSlot, EntrySheetSlot, ExtensionBoundary, entryActionRows, enabledExtensions, menuPlacement } from '../src/ui/extensions.tsx';
+import { DraftCounterSlot, EntryBylineSlot, EntrySheetSlot, ExtensionBoundary, entryActionRows, enabledExtensions, extensionContext, menuPlacement, type HostContext } from '../src/ui/extensions.tsx';
+import { errorLog } from '../src/ui/error-log.ts';
 import type { DraftCounterContext, EntryContext, MenuZone, StudioExtension } from '../src/ui/extension-api.ts';
 import { extension as example } from '../extensions/example/ui/index.tsx';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  errorLog.clear();
+});
 
 const entry = { key: 'own:x', source: 'own', kind: 'fragment', withdrawn: false, l0: false, contentHtml: '<p>x</p>', displayAt: '2026-10-01T00:00:00Z', own: { id: 'x', kind: 'fragment', withdrawn: false, updated: '2026-10-01T00:00:00Z', contentHtml: '<p>x</p>' } } as EntryContext['entry'];
-const context = (): EntryContext => ({
+const context = (): HostContext<EntryContext> => ({
   entry,
   id: 'x',
   client: {} as EntryContext['client'],
@@ -30,7 +34,7 @@ const context = (): EntryContext => ({
 });
 const html = (element: ReactElement) => renderToStaticMarkup(element);
 const byline = (extensions: readonly StudioExtension[]) => html(createElement(EntryBylineSlot, { extensions, context }));
-const counterContext: DraftCounterContext = {
+const counterContext: HostContext<DraftCounterContext> = {
   client: {} as DraftCounterContext['client'],
   openDraft: async () => {},
   navigate: async () => {},
@@ -119,6 +123,31 @@ test('a throwing entryActions or onSelect is contained and logged under its name
   const throwsOnSelect: StudioExtension = { ...example, name: 'clumsy', entryActions: () => [{ label: 'boom', onSelect: () => { throw new Error('select exploded'); } }] };
   expect(() => entryActionRows([throwsOnSelect], context)[0].onSelect!()).not.toThrow();
   expect(log.mock.calls.at(-1)![0]).toContain('"clumsy"');
+  // Both are in the owner's error log too, each under its extension and slot.
+  expect(errorLog.entries().map((entry) => [entry.source, entry.extension, entry.slot, entry.message])).toEqual([
+    ['extension', 'clumsy', 'entryActions', 'select exploded'],
+    ['extension', 'broken', 'entryActions', expect.any(String)],
+  ]);
+});
+
+test('run and showError hand the failure to the screen with the extension named on it', async () => {
+  // The screen's run, as every host has it: catch, and show in its error line.
+  const shown: unknown[] = [];
+  const host = { ...context(), run: async (action: () => unknown) => { try { await action(); } catch (failure) { shown.push(failure); } } };
+  const handed = extensionContext<EntryContext>({ name: 'clumsy' }, 'entryByline', host);
+  await handed.run(async () => { throw new Error('fetch fell over'); });
+  handed.showError('Nothing to count yet.');
+  await handed.run(() => 'fine');
+  await Promise.resolve();
+  expect(shown.map((error) => (error as Error).message)).toEqual(['fetch fell over', 'Nothing to count yet.']);
+  // The screen's banner is what logs it; the name was put on the error before it got there.
+  for (const error of shown) errorLog.record(error, 'banner');
+  expect(errorLog.entries().map((entry) => [entry.source, entry.extension, entry.slot, entry.message])).toEqual([
+    ['banner', 'clumsy', 'entryByline', 'Nothing to count yet.'],
+    ['banner', 'clumsy', 'entryByline', 'fetch fell over'],
+  ]);
+  // The rest of the context is the screen's, untouched.
+  expect(handed.id).toBe('x');
 });
 
 test('the slot boundary renders nothing once its extension throws, and names it', () => {
@@ -132,6 +161,7 @@ test('the slot boundary renders nothing once its extension throws, and names it'
   const log = vi.spyOn(console, 'error').mockImplementation(() => {});
   boundary.componentDidCatch(new Error('byline exploded'), { componentStack: '' });
   expect(log.mock.calls[0][0]).toContain('"broken" failed in entryByline');
+  expect(errorLog.entries()[0]).toMatchObject({ source: 'extension', extension: 'broken', slot: 'entryByline', message: 'byline exploded' });
 });
 
 // Every import in an extension's UI is one of these, or a file in its own directory.

@@ -18,6 +18,68 @@ not have its own repo until session 26.
 
 ---
 
+## 0.58.3 — Sublists, verse and code blocks are easier to type
+
+Sublists, line breaks inside a paragraph and code blocks always rendered: the Studio's
+markdown is CommonMark. What was missing was a way to type them in a text box.
+- **Tab and Shift+Tab** move the list item under the cursor in and out a level; with
+  several lines selected they all move, and undo takes it back. A numbered item that
+  opens a sublist is renumbered to 1, which is the only way markdown reads it as a list.
+  Off a list, or on the first item of one, Tab moves focus as usual.
+- **Shift+Enter** breaks a line without ending the paragraph, for verse or an address.
+  It types markdown's backslash line break, which you can see in the text. Inside a
+  code block it types a plain newline.
+- **The full editor's toolbar** has a button for each, and one that puts the selected
+  lines in a code block (or starts an empty one), for an iPad's keyboard, which has no
+  Tab key.
+- The syntax page has a Markdown section saying how to write each by hand.
+
+Private contract and SDK unchanged. Protocol version unchanged (`"0.4"`).
+
+**Migrations:** none. A node coming from before 0.58.0 needs `0045`.
+
+## 0.58.2 — An error log you can read and send, and focus view on an iPad
+
+**The Studio keeps an error log** (Settings → Errors). An error banner can be gone
+before you have read it; what it said is now kept, with the time, the page you were on,
+the item, the request that failed with its status and error code, the Studio version and
+a stack. Every banner has a *details* link to its entry. Errors that never reach a
+banner are kept too: uncaught exceptions, unhandled promise rejections, and a page that
+failed to load. A failure repeated within a minute is one entry with a count and the
+time it first happened.
+- **The log stays on the device.** It lives in the browser's own storage, holds the
+  latest 100 entries, and is sent nowhere. Each device has its own. It records failures,
+  not writing: no draft text, and no query strings.
+- **Export error log** hands over a dated JSON file with the entries, the Studio
+  version and the device (browser, platform, screen and window size, whether the Studio
+  was opened from the home screen, language, timezone). A phone or tablet opens the
+  share sheet; a desktop saves the file. **Copy diagnostics** puts the same as plain
+  text on the clipboard, for an issue. **Clear error log** empties it.
+- Not logged: messages to the author such as a link that does not resolve, requests the
+  Studio cancelled, and requests the browser dropped because you were leaving the page.
+- Only the browser Studio is covered. Cron, the importer and Webmention run on the
+  server with no browser attached, and their errors are in the Worker's own logs.
+
+**Extensions.** What an extension throws in a slot is logged under its name and the slot
+(the slot still renders nothing until the page reloads). An error caught by
+`context.run` is logged the same way, as well as shown. **New: `context.showError(error)`**
+shows an error the extension found for itself in the screen's error line and logs it;
+pass an `Error` or a message. Existing extensions need no change. The example extension
+uses it, and `docs/extensions.md` describes it.
+
+**Focus view on an iPad closed as soon as it opened.** iPad Safari has browser
+fullscreen and leaves it when the on-screen keyboard comes up; the Studio took that for
+Escape. On an iPad and iPhone the view no longer asks for browser fullscreen, so
+Safari's toolbar stays and the view stays open.
+
+**Hiding or showing a response** could fail with "Collection must be in 'ready' state for
+manual sync operations" if you left the page before the server answered: the one write
+0.58.1's fix (#142) had missed.
+
+Private contract and SDK unchanged. Protocol version unchanged (`"0.4"`).
+
+**Migrations:** none. A node coming from before 0.58.0 needs `0045`.
+
 ## 0.58.1 — Stubs from Reading open again, and long chapters type quickly
 
 **stub ↗ on Reading could fail** with "Collection must be in 'ready' state for manual

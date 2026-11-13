@@ -194,3 +194,26 @@ test('the extensions releases carry: reading time in the byline, inspect in the 
     await patchSettings(page, { extensions: [], timezone: zone });
   }
 });
+
+// An extension's failures are the owner's to see (Settings → Errors), under its name.
+test('an error an extension shows is in the page banner and in the error log under its name', async ({ page }) => {
+  await login(page);
+  await setExtensions(page, ['example']);
+  try {
+    await page.goto('/studio/ext/example');
+    await expect(page.locator('[data-extension-page=example]')).toBeVisible();
+    await page.evaluate(() => localStorage.removeItem('blyg-error-log'));
+    await page.getByRole('button', { name: 'show an error', exact: true }).click();
+    const banner = page.locator('.error-banner', { hasText: 'this is what an error looks like' });
+    await expect(banner).toBeVisible();
+    const logged = await page.evaluate(() => JSON.parse(localStorage.getItem('blyg-error-log') ?? '[]'));
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatchObject({ source: 'banner', extension: 'example', slot: 'page' });
+    await banner.getByRole('link', { name: 'details', exact: true }).click();
+    await page.locator('.error-log li summary').first().click();
+    await expect(page.locator('.error-log li pre').first()).toContainText('extension example (page)');
+  } finally {
+    await page.evaluate(() => localStorage.removeItem('blyg-error-log'));
+    await setExtensions(page, []);
+  }
+});

@@ -50,6 +50,7 @@ const entryContext = (contentHtml: string, imported = false): EntryContext => ({
   openDraft: async () => {},
   navigate: async () => {},
   run: async () => {},
+  showError: () => {},
   actions: {},
   openSheet: () => {},
 });

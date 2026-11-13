@@ -21,6 +21,7 @@ import * as sourceData from './data.ts';
 import { readState } from '../versions.ts';
 import { displayUrl } from '../importer/util.ts';
 import { Sheet } from './sheets.tsx';
+import { errorLog, type ErrorSource } from './error-log.ts';
 import { SetupBanner } from './setup.tsx';
 import { compiledExtensions } from '../../build/extensions.ui.ts';
 import type { StudioExtension } from './extension-api.ts';
@@ -63,10 +64,24 @@ export function SourceLink({ url }: { url?: string | null }) {
 export function Html({ html, id }: { html: string; id?: string }) {
   return <div id={id} dangerouslySetInnerHTML={{ __html: html }} />;
 }
-export function Failure({ error }: { error: unknown }) {
+/**
+ * An error banner. A failure (an Error, not a message to the author) also goes in
+ * this device's error log, and the banner links to it there.
+ */
+export function Failure({ error, source = 'banner' }: { error: unknown; source?: ErrorSource }) {
+  const [logged, setLogged] = useState<string>();
+  useEffect(() => setLogged(errorLog.record(error, source)), [error, source]);
   return error ? (
     <p className="error-banner" role="alert">
       {error instanceof Error ? error.message : String(error)}
+      {logged ? (
+        <>
+          {' '}
+          <Link className="error-details" to="/settings" hash="errors">
+            details
+          </Link>
+        </>
+      ) : null}
     </p>
   ) : null;
 }
@@ -205,7 +220,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const framed = chrome.framed ?? true;
   const wide = chrome.wide ?? (path === '/reading' || path.startsWith('/edit/'));
   const readProblem = useSyncExternalStore(subscribeReadProblems, readProblemSnapshot);
-  const error = readProblem?.cause ?? readProblem?.message;
+  const error = readProblem?.cause ?? readProblem;
   // The studio wears the reading theme. Until settings load, the theme
   // applied at startup (the last one seen on this device) stays.
   const theme = settings?.theme;
@@ -303,7 +318,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <main className={wide ? 'views wide' : 'views'}>
         {error ? (
           <div className="read-error">
-            <Failure error={error} />
+            <Failure error={error} source="read" />
             <Button
               className="btn btn-ghost btn-mini"
               onClick={() => {

@@ -38,11 +38,11 @@ import {
 } from './components.tsx';
 import { Sheet, confirm, menu, prompt, toast } from './sheets.tsx';
 import { compiledExtensions } from '../../build/extensions.ui.ts';
-import { DraftCounterSlot, editorRegions, enabledExtensions } from './extensions.tsx';
+import { DraftCounterSlot, editorRegions, enabledExtensions, type HostContext } from './extensions.tsx';
 import { join, rebase, split, toFull, toShown, touches } from './editor-regions.ts';
 import type { EditorRegion } from './editor-regions.ts';
 import { HandlePicker } from './contacts.tsx';
-import { onFormatKey } from './format-shortcuts.ts';
+import { applyEdit, breakEdit, codeBlockEdit, indentEdit, onFormatKey } from './format-shortcuts.ts';
 import { BracketPicker } from './picker.tsx';
 import { revealCaret, setTextAt } from './caret.ts';
 import { Draft } from './draft.ts';
@@ -53,7 +53,7 @@ import { insertLink, isUrl, linkToast } from './links.ts';
 import { itemTitle, permalink, plainText, textWithLink } from './plain-text.ts';
 import { OcrScan } from './ocr.tsx';
 import { addStubQuote, passageCount, quoteCount, stubQuoteForm, withStubQuote } from './stub-quote.ts';
-import { EnterFocus, ExitFocus, Image as ImageIcon, LinkIcon, More, Scan, Sparkle, Swap } from './icons.tsx';
+import { CodeBlock, EnterFocus, ExitFocus, Image as ImageIcon, IndentIn, IndentOut, LineBreak, LinkIcon, More, Scan, Sparkle, Swap } from './icons.tsx';
 import { SearchBox, SearchResults, store, stored } from './search.tsx';
 import './authoring.css';
 
@@ -130,7 +130,9 @@ function Help({ thread, className = 'compose-help' }: { thread?: boolean; classN
       <code>[[id]]</code> links an item. <code>[TK]an instruction[/TK]</code>{' '}
       marks AI-drafted text. Type <code>/image</code> on its own line, or
       paste or drop an image, to insert one there. Paste a URL over selected
-      text to link it. Cmd/Ctrl+B, I and K make bold, italics and a link.{' '}
+      text to link it. Cmd/Ctrl+B, I and K make bold, italics and a link. Tab
+      and Shift+Tab move a list item in and out; Shift+Enter breaks a line
+      without ending the paragraph.{' '}
       <Link to="/syntax">full syntax reference</Link>
     </p>
   ) : (
@@ -1622,7 +1624,7 @@ function useWithoutComments(text: string) {
 function DraftCounter({ text, item, run }: { text: string; item?: DraftCounterContext['item']; run: (action: () => Promise<unknown>) => Promise<unknown> }) {
   const settings = useSettings();
   const navigate = useNavigate();
-  const context: DraftCounterContext = {
+  const context: HostContext<DraftCounterContext> = {
     client,
     openDraft: async (body) => {
       const created = await createItem(body);
@@ -1763,7 +1765,8 @@ const CARET_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', '
  * of the editor (authoring.css), not a second textarea, so the text, caret, undo
  * history and autosave all carry straight through; its preview tab is the editor's
  * own preview pane, on the same `pane` state phones use. Browser fullscreen is on
- * top where the browser has it, and the view works the same where it doesn't (iPhone).
+ * top where the browser has it, and the view works the same where it doesn't (iPhone)
+ * or can't keep it while typing (iPad).
  *
  * The line being written stays mid-window: typing and the caret keys recentre it.
  * A click doesn't, since the text would jump from under the pointer, and scrolling
@@ -1804,7 +1807,9 @@ function useFocusView(
     setShown(next);
     const mine = next ? { fullscreen: false } : null;
     visit.current = mine;
-    if (next) {
+    // iPad Safari has the API but leaves fullscreen when its keyboard comes up, which
+    // would read here as Escape and end the visit: the view does without it there.
+    if (next && platform() !== 'ios') {
       const request = () =>
         document.documentElement.requestFullscreen?.().then(() => {
           if (visit.current === mine) mine!.fullscreen = true;
@@ -2439,6 +2444,35 @@ function Editor({ item, onDiscarding }: { item: Detail; onDiscarding?: (active: 
             <Sparkle />
             <span className="sr-only">mark selection as generated</span>
           </Button>
+          {/* Markdown's structure, for a keyboard with no Tab key (an iPad's). */}
+          {([
+            ['indent', <IndentIn />, 'move list item in', 'Move the list item under the cursor in a level, making it a sublist (Tab)'],
+            ['outdent', <IndentOut />, 'move list item out', 'Move the list item under the cursor out a level (Shift+Tab)'],
+            ['break', <LineBreak />, 'line break', 'Break the line without ending the paragraph, for verse (Shift+Enter)'],
+            ['code', <CodeBlock />, 'code block', 'Put the selected lines in a code block, or start an empty one'],
+          ] as const).map(([kind, icon, label, title]) => (
+            <Button
+              key={kind}
+              className="act icon-only tool"
+              data-action={`md-${kind}`}
+              disabled={replacing}
+              title={title}
+              onClick={() => {
+                const el = input.current;
+                if (!el) return;
+                const [from, to] = [el.selectionStart, el.selectionEnd];
+                const change =
+                  kind === 'break' ? breakEdit(el.value, from, to)
+                  : kind === 'code' ? codeBlockEdit(el.value, from, to)
+                  : indentEdit(el.value, from, to, kind === 'outdent');
+                if (change) applyEdit(el, change);
+                else toast(kind === 'indent' ? 'Put the cursor on a list item that has another above it.' : 'Put the cursor on an indented list item.');
+              }}
+            >
+              {icon}
+              <span className="sr-only">{label}</span>
+            </Button>
+          ))}
         </ToolRow>
         <div className="editor-pane">
           <div className="ta-wrap">
@@ -3168,7 +3202,7 @@ function VersionHistory({ item, select, pin, restore, pinBusy, restoreBusy }: {
     .where(({ version }) => eq(version.itemId, item.id)).orderBy(({ version }) => version.version, { direction: 'desc', stringSort: 'lexical' }), { pageSize: 25 });
   return <>
     {history.isLoading ? <p className="hint">Loading history…</p> : null}
-    {history.status === 'error' ? <p role="alert">Could not load history.</p> : null}
+    {history.status === 'error' ? <Failure error={new Error('Could not load history.')} /> : null}
             <ul className="h-list">
               {history.data.map((v) => (
                 <li className="h-row" key={v.version}>

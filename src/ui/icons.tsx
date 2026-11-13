@@ -80,6 +80,27 @@ export const Swap = () => (
     <path d="M7 4 3 8l4 4M3 8h13M17 20l4-4-4-4M21 16H8" />
   </Svg>
 );
+/* Markdown structure: a list item moved in or out, a line broken, a block of code. */
+export const IndentIn = () => (
+  <Svg>
+    <path d="M4 6h16M12 12h8M12 18h8M4 10l4 3.5L4 17" />
+  </Svg>
+);
+export const IndentOut = () => (
+  <Svg>
+    <path d="M4 6h16M12 12h8M12 18h8M8 10l-4 3.5L8 17" />
+  </Svg>
+);
+export const LineBreak = () => (
+  <Svg>
+    <path d="M19 5v7a3 3 0 0 1-3 3H5M9 11l-4 4 4 4" />
+  </Svg>
+);
+export const CodeBlock = () => (
+  <Svg>
+    <path d="m8 7-5 5 5 5M16 7l5 5-5 5M13.5 5l-3 14" />
+  </Svg>
+);
 export const Expand = () => (
   <Svg>
     <path d="M14 4h6v6M20 4l-7 7M10 20H4v-6M4 20l7-7" />
