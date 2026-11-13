@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { AiModels, Settings } from '../../sdk/dist/browser.js';
 import { BlyggerApi, unwrap } from '../../sdk/dist/browser.js';
 import { settings, client, items } from './data.ts';
@@ -27,6 +27,7 @@ import { FONTS } from '../fonts.ts';
 import { DEFAULT_FEED_ORDER, FEED_ALGORITHMS } from '../feeds/index.ts';
 import { CLIENT } from '../client.ts';
 import { AddressBook } from './contacts.tsx';
+import { ERROR_LOG_MAX, describeEntry, diagnostics, errorLog, exportLog, thisDevice } from './error-log.ts';
 import { compiledExtensions } from '../../build/extensions.ui.ts';
 
 const fields = [
@@ -890,8 +891,99 @@ function SettingsForm({ initial }: { initial: Settings }) {
       <h2 className="section-title" id="contacts-h">Address book</h2>
       <AddressBook />
     </section>
+    <section className="settings-section" id="errors" aria-labelledby="errors-h">
+      <h2 className="section-title" id="errors-h">Errors</h2>
+      <ErrorLog />
+    </section>
     </div>
     </div>
+  );
+}
+
+/**
+ * This device's error log (error-log.ts): what each banner said, newest first,
+ * and one button to copy the lot into an issue.
+ */
+function ErrorLog() {
+  const entries = useSyncExternalStore(errorLog.subscribe, errorLog.entries);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => setCopied(false), [entries]);
+  return (
+    <section className="card" id="error-log">
+      <p className="hint">
+        The last errors the Studio showed in this browser, kept on this device
+        only: nothing here is sent anywhere unless you export it. Each device
+        keeps its own list, of the latest {ERROR_LOG_MAX}. An export carries the errors
+        with this browser, screen and Studio version, and none of your text.
+      </p>
+      {entries.length ? (
+        <ol className="error-log">
+          {entries.map((entry) => (
+            <li key={entry.id}>
+              <details>
+                <summary>
+                  <span className="error-log-message">{entry.message}</span>
+                  <span className="error-log-when">
+                    <time dateTime={entry.at}>{new Date(entry.at).toLocaleString()}</time>
+                    {entry.count > 1 ? ` · ×${entry.count}` : ''}
+                  </span>
+                </summary>
+                <pre>{describeEntry(entry)}</pre>
+              </details>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p id="error-log-empty">No errors logged on this device.</p>
+      )}
+      <div className="error-log-actions">
+        <Button
+          type="button"
+          className="btn btn-ghost btn-mini"
+          id="error-log-copy"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(diagnostics(entries, thisDevice()));
+              setCopied(true);
+            } catch {
+              /* clipboard blocked: each entry's text is selectable above */
+            }
+          }}
+        >
+          {copied ? 'copied' : 'copy diagnostics'}
+        </Button>
+        <Button
+          type="button"
+          className="btn btn-ghost btn-mini"
+          id="error-log-export"
+          onClick={async () => {
+            const { name, text } = exportLog(entries, thisDevice(), new Date());
+            const file = new File([text], name, { type: 'application/json' });
+            // A phone or tablet hands the file to Mail, Messages or AirDrop; a desktop saves it.
+            if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) {
+              try {
+                await navigator.share({ files: [file], title: name });
+                return;
+              } catch (failure) {
+                if (failure instanceof Error && failure.name === 'AbortError') return;
+              }
+            }
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(file);
+            link.download = name;
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
+          }}
+        >
+          export error log
+        </Button>
+        {entries.length ? (
+          <Button type="button" className="btn btn-ghost btn-mini" id="error-log-clear" onClick={() => errorLog.clear()}>
+            clear error log
+          </Button>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -905,6 +997,7 @@ const SECTIONS = [
   ['network', 'Network'],
   ...(compiledExtensions.length ? [['extensions', 'Extensions'] as const] : []),
   ['contacts', 'Address book'],
+  ['errors', 'Errors'],
 ] as const;
 
 /**

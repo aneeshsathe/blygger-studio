@@ -229,6 +229,26 @@ test('the view goes browser-fullscreen, and leaving fullscreen leaves the view',
   await expect(page.locator('.editor')).toHaveClass(/is-focus/);
 });
 
+// iPad Safari has the Fullscreen API and drops out of it when the on-screen keyboard
+// rises. The page would take that exit for Escape and close the view at once.
+test('on an iPad the view never asks for browser fullscreen, and stays open', async ({ page }, info) => {
+  test.skip(info.project.name !== 'desktop', 'needs a browser with the Fullscreen API');
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'maxTouchPoints', { get: () => 5 });
+    Object.defineProperty(navigator, 'userAgent', {
+      get: () => 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+    });
+  });
+  await open(page, 'On an iPad ');
+  await enter(page);
+  await expect(page.locator('.editor')).toHaveClass(/is-focus/);
+  await page.waitForTimeout(500);
+  expect(await page.evaluate(() => !!document.fullscreenElement)).toBe(false);
+  await expect(page.locator('.editor')).toHaveClass(/is-focus/);
+  await exit(page);
+  await expect(page.locator('.editor')).not.toHaveClass(/is-focus/);
+});
+
 test('typewriter: the line being written stays mid-window, across soft wraps and at the end of the text', async ({ page }) => {
   await open(page, longDraft + '\n');
   await roomyScrollbars(page);

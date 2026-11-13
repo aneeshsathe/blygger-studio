@@ -34,14 +34,17 @@ A slot receives a narrow context ([`src/ui/extension-api.ts`](../src/ui/extensio
 - `entry`, `id`, `imported`, `url`: the reading entry, as `GET /api/reading` returns it.
 - `client`: the SDK client, carrying the owner's session. Extension routes are SDK methods like any other operation.
 - `openDraft(body)`, `navigate(location)`, `run(action)`: create-and-edit an item, move within the Studio, and run an action whose error lands in the screen's own error line.
+- `showError(error)`: show an error the extension found for itself in that same error line. Pass an `Error` or a message. For news that is not a failure, use `toast`.
 - `actions`: the Studio's own handlers for this entry (`stub`, `fork`, `linkPost`, `history`, `open`), present only where the Studio offers them. An extension can present the existing actions differently without reimplementing them.
 - `openSheet(render)`: open a sheet that the extension owns, under the entry.
 
-The draft counter slot gets the verbs (`client`, `openDraft`, `navigate`, `run`), `text` (as it stands now, saved or not) and, in the full editor, `item`: its `id`, `kind`, `status`, `version` and `revision`. `revision` moves each time autosave reaches the server, so a slot that shows something derived from the working copy re-reads on it. The composer passes no `item`, because its text may have no server copy.
+The draft counter slot gets the verbs (`client`, `openDraft`, `navigate`, `run`, `showError`), `text` (as it stands now, saved or not) and, in the full editor, `item`: its `id`, `kind`, `status`, `version` and `revision`. `revision` moves each time autosave reaches the server, so a slot that shows something derived from the working copy re-reads on it. The composer passes no `item`, because its text may have no server copy.
 
 Extensions do not get the router, the query cache, the data collections or any other Studio module. An extension's UI may import only `src/ui/extension-api.ts` (which also re-exports the Studio's `Sheet`, `Button`, `toast` and `confirm`), React, the SDK (`sdk/dist/browser.js`) and files in its own directory. `test-ui/extensions.test.ts` enforces this rule.
 
 Each slot renders inside an error boundary. If an extension throws, that slot renders nothing until the page reloads, and the console names the extension. A throwing `entryActions()` or row handler is caught the same way. The rest of the Studio carries on.
+
+Every failure of an extension goes in the owner's error log (Settings → Errors, kept on the device), under the extension's name and the slot it was filling: what a slot throws, what `run` catches, and what `showError` is given. The first is logged without a banner; the other two show one. An extension that catches its own errors and says nothing leaves no trace, so prefer `run` or `showError` to a silent `catch`. The context a slot receives is built per extension, which is how the log knows whose error it is; do not pass a context to code outside the extension.
 
 ## What is not offered, on purpose
 

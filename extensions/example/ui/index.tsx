@@ -33,7 +33,15 @@ function ExamplePage({ context }: { context: StudioContext }) {
   useEffect(() => {
     void context.run(async () => setTitle((await unwrap(BlyggerApi.getSettings({ client: context.client }))).siteTitle));
   }, []);
-  return <p data-extension-page="example">This page belongs to the example extension. Site title, read through the SDK: {title ?? '…'}</p>;
+  return (
+    <>
+      <p data-extension-page="example">This page belongs to the example extension. Site title, read through the SDK: {title ?? '…'}</p>
+      {/* A failure the extension found for itself: shown in the page's error line and kept in Settings → Errors under "example". */}
+      <Button className="btn btn-ghost btn-mini" onClick={() => context.showError(new Error('The example extension has nothing wrong with it; this is what an error looks like.'))}>
+        show an error
+      </Button>
+    </>
+  );
 }
 
 export const extension: StudioExtension = {

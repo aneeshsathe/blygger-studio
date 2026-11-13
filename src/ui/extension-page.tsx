@@ -10,7 +10,7 @@ import { compiledExtensions } from '../../build/extensions.ui.ts';
 import { client } from './data.ts';
 import { Failure, useChrome, useSettings } from './components.tsx';
 import type { StudioContext } from './extension-api.ts';
-import { ExtensionBoundary, enabledExtensions, mainMenuPage } from './extensions.tsx';
+import { ExtensionBoundary, enabledExtensions, extensionContext, mainMenuPage } from './extensions.tsx';
 
 export function ExtensionPage({ name }: { name: string }) {
   useChrome({ framed: false });
@@ -29,7 +29,7 @@ export function ExtensionPage({ name }: { name: string }) {
         <p className="view-sub">This extension is not enabled here.</p>
       </>
     );
-  const context: StudioContext = {
+  const context = extensionContext<StudioContext>(extension, 'page', {
     client,
     openDraft: async (body) => {
       const created = await createItem(body);
@@ -44,7 +44,7 @@ export function ExtensionPage({ name }: { name: string }) {
         setError(failure);
       }
     },
-  };
+  });
   const Page = extension.page.component;
   return (
     <>

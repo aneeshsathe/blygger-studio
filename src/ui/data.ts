@@ -42,9 +42,21 @@ import { readCursorWindow, type ApiPage } from './cursor-query.ts';
 import { planReadWrites, type ReadWrite, type UnreadWrite } from './read-state.ts';
 import { createReadBatchFetch } from './read-batch.ts';
 import { createReadFlight } from './read-flight.ts';
+import { errorLog } from './error-log.ts';
 
 export const apiBase = new URL(document.getElementById('studio-root')!.dataset.apiBase!, location.origin).href;
-const transport = createReadBatchFetch(apiBase);
+const batched = createReadBatchFetch(apiBase);
+/** Names each failed request to the error log, so the error it becomes can say what was asked. */
+const transport = (request: Request) => {
+  const { method, url } = request;
+  return batched(request).then((response) => {
+    if (!response.ok) errorLog.noteRequest(method, url, response.status);
+    return response;
+  }, (failure) => {
+    errorLog.noteRequest(method, url);
+    throw failure;
+  });
+};
 export const client = createBlyggerClient({ baseUrl: apiBase, fetch: (input, init) => {
   const request = new Request(input, init);
   if (['GET', 'HEAD'].includes(request.method)) return transport(request);
@@ -900,7 +912,7 @@ export const inbound = createCollection(queryCollectionOptions({
       const result = await unwrap(BlyggerApi.updateMention({ client,
         path: { id: String(mutation.key) }, body: { hidden: mutation.modified.hidden },
       }));
-      await collection.utils.writeUpdate({ id: String(mutation.key), hidden: result.hidden });
+      await writeIfSyncing(() => collection.utils.writeUpdate({ id: String(mutation.key), hidden: result.hidden }));
     }
     // The receipt is confirmed; refresh the server aggregate before settling.
     // A failed secondary read stays visible through collection health.

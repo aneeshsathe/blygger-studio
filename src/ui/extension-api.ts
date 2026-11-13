@@ -33,6 +33,12 @@ export interface StudioContext {
   navigate(location: StudioLocation): Promise<void>;
   /** Run an action; a thrown error lands in the screen's own error line rather than escaping. */
   run(action: () => unknown): Promise<void>;
+  /**
+   * Show an error in the screen's own error line, as `run` does for a thrown one.
+   * Either way it is also kept in the owner's error log (Settings → Errors) under
+   * this extension's name. For news that is not a failure, use `toast`.
+   */
+  showError(error: unknown): void;
 }
 
 /**

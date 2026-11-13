@@ -38,7 +38,7 @@ import {
 } from './components.tsx';
 import { Sheet, confirm, menu, prompt, toast } from './sheets.tsx';
 import { compiledExtensions } from '../../build/extensions.ui.ts';
-import { DraftCounterSlot, enabledExtensions } from './extensions.tsx';
+import { DraftCounterSlot, enabledExtensions, type HostContext } from './extensions.tsx';
 import { HandlePicker } from './contacts.tsx';
 import { onFormatKey } from './format-shortcuts.ts';
 import { BracketPicker } from './picker.tsx';
@@ -1620,7 +1620,7 @@ function useWithoutComments(text: string) {
 function DraftCounter({ text, item, run }: { text: string; item?: DraftCounterContext['item']; run: (action: () => Promise<unknown>) => Promise<unknown> }) {
   const settings = useSettings();
   const navigate = useNavigate();
-  const context: DraftCounterContext = {
+  const context: HostContext<DraftCounterContext> = {
     client,
     openDraft: async (body) => {
       const created = await createItem(body);
@@ -1693,7 +1693,8 @@ const CARET_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', '
  * of the editor (authoring.css), not a second textarea, so the text, caret, undo
  * history and autosave all carry straight through; its preview tab is the editor's
  * own preview pane, on the same `pane` state phones use. Browser fullscreen is on
- * top where the browser has it, and the view works the same where it doesn't (iPhone).
+ * top where the browser has it, and the view works the same where it doesn't (iPhone)
+ * or can't keep it while typing (iPad).
  *
  * The line being written stays mid-window: typing and the caret keys recentre it.
  * A click doesn't, since the text would jump from under the pointer, and scrolling
@@ -1734,7 +1735,9 @@ function useFocusView(
     setShown(next);
     const mine = next ? { fullscreen: false } : null;
     visit.current = mine;
-    if (next) {
+    // iPad Safari has the API but leaves fullscreen when its keyboard comes up, which
+    // would read here as Escape and end the visit: the view does without it there.
+    if (next && platform() !== 'ios') {
       const request = () =>
         document.documentElement.requestFullscreen?.().then(() => {
           if (visit.current === mine) mine!.fullscreen = true;
@@ -3092,7 +3095,7 @@ function VersionHistory({ item, select, pin, restore, pinBusy, restoreBusy }: {
     .where(({ version }) => eq(version.itemId, item.id)).orderBy(({ version }) => version.version, { direction: 'desc', stringSort: 'lexical' }), { pageSize: 25 });
   return <>
     {history.isLoading ? <p className="hint">Loading history…</p> : null}
-    {history.status === 'error' ? <p role="alert">Could not load history.</p> : null}
+    {history.status === 'error' ? <Failure error={new Error('Could not load history.')} /> : null}
             <ul className="h-list">
               {history.data.map((v) => (
                 <li className="h-row" key={v.version}>

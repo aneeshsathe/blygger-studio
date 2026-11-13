@@ -63,7 +63,7 @@ import { OpmlImportSheet } from './opml-import.tsx';
 import { diffText, type DiffOp } from '../word-diff.ts';
 import { useSwipe } from './swipe.ts';
 import type { EntryContext, StudioExtension } from './extension-api.ts';
-import { EntryBylineSlot, EntrySheetSlot, entryActionRows, enabledExtensions, type OpenSheet } from './extensions.tsx';
+import { EntryBylineSlot, EntrySheetSlot, entryActionRows, enabledExtensions, type HostContext, type OpenSheet } from './extensions.tsx';
 import { compiledExtensions } from '../../build/extensions.ui.ts';
 import { More, ThumbDown, ThumbUp } from './icons.tsx';
 import { SearchBox, SearchResults, type SearchFilters } from './search.tsx';
@@ -470,7 +470,7 @@ function useEntryActions({
   };
   // What an extension's slots see of this entry (extension-api.ts). Built only
   // when an extension asks, so an entry with none enabled does no extra work.
-  const extensionContext = (extension: StudioExtension): EntryContext => ({
+  const extensionContext = (extension: StudioExtension): HostContext<EntryContext> => ({
     entry,
     id,
     imported: imported
