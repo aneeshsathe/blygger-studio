@@ -18,6 +18,46 @@ not have its own repo until session 26.
 
 ---
 
+## 0.59.0 — Extensions from other repositories, menu zones and editor regions
+
+Three changes for extension authors and operators, held on `main` since 0.58.1. It also
+carries everything in 0.58.2 and 0.58.3, which were released from a branch without them.
+
+**Vendoring an extension from another repository** (#59, decision #89). An operator can
+compile a browser-only extension published in someone else's repository into their own
+build: `npm run ext:add -- <https repo> <commit>` fetches exactly that commit on the
+operator's machine, checks its layout, that it has no server half, its imports and a
+typecheck against the extension API, prints every file and a tree hash, and vendors it
+only after a yes. `ext:update` and `ext:remove` do the rest. The source goes into the
+gitignored `extensions-vendor/` and the lock into `extensions.local.json`, so nothing
+vendored is committed and a release build never carries one; `npm run build` re-hashes
+each vendored tree and refuses one edited since. No Studio loads anything at run time,
+and there is no registry. See `docs/extension-vendoring.md`.
+
+**Menu zones** (#143). An extension page asks for a place in the main menu with
+`page.mainMenu.zone`: `top` (one page, above reading), `visible` (one page, above
+compose; the default, and where `mainMenu: { icon }` put a page before) or `hidden`
+(More). The Studio decides: a full zone moves a page down, never up, in compiled order,
+and the page's context says what it asked for and where it landed (`menu: { asked,
+zone }`). Template: `extensions/menu-top-example`.
+
+**Editor regions** (#144). An extension can keep parts of the full editor's text out of
+its text box, for text a tool writes and the author should not edit by hand, such as
+chapter navigation. `editorRegions({ text, item })` returns ranges; the box shows the
+rest, and every edit is joined back with the regions before the draft sees it, so
+autosave, preview, counts and publish keep the whole text. Hidden each time the editor
+opens, read-only when shown, and if a join does not round-trip the edit is saved whole
+and the editor shows everything. Full editor only. Template:
+`extensions/regions-example`.
+
+**Extensions and the error log** (0.58.2's hooks, carried to the new surfaces): an
+extension page's context is built per extension, so its errors are logged under its
+name and it has `showError`.
+
+Private contract and SDK unchanged. Protocol version unchanged (`"0.4"`).
+
+**Migrations:** none. A node coming from before 0.58.0 needs `0045`.
+
 ## 0.58.3 — Sublists, verse and code blocks are easier to type
 
 Sublists, line breaks inside a paragraph and code blocks always rendered: the Studio's
