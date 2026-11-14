@@ -42,7 +42,7 @@ import { DraftCounterSlot, editorRegions, enabledExtensions, type HostContext } 
 import { join, rebase, split, toFull, toShown, touches } from './editor-regions.ts';
 import type { EditorRegion } from './editor-regions.ts';
 import { HandlePicker } from './contacts.tsx';
-import { Shelf, shelfLabel, toggleShelf, useShelf } from './shelf.tsx';
+import { ownEntry, Shelf, shelfLabel, toggleShelf, useShelf } from './shelf.tsx';
 import { applyEdit, breakEdit, codeBlockEdit, indentEdit, onFormatKey } from './format-shortcuts.ts';
 import { BracketPicker } from './picker.tsx';
 import { revealCaret, setTextAt } from './caret.ts';
@@ -1525,9 +1525,9 @@ function ItemRow({
                 className="btn btn-ghost btn-mini"
                 data-action="shelf"
                 disabled={action.busy}
-                onClick={() => void action.run(() => toggleShelf(shelved, item.id))}
+                onClick={() => void action.run(() => toggleShelf(shelved, ownEntry(item.id)))}
               >
-                {shelfLabel(shelved, item.id)}
+                {shelfLabel(shelved, ownEntry(item.id))}
               </Button>
             ) : null}
             {item.version === 0 || item.dirty || item.status === 'withdrawn' ? (
@@ -2258,10 +2258,10 @@ function Editor({ item, onDiscarding }: { item: Detail; onDiscarding?: (active: 
         },
         item.status !== 'withdrawn' && {
           icon: '⊤',
-          label: shelfLabel(shelved, item.id),
+          label: shelfLabel(shelved, ownEntry(item.id)),
           description: shelved.includes(item.id) ? undefined : 'keep it at the top of your compose list, in your order',
           disabled: action.busy,
-          onSelect: () => void action.run(() => toggleShelf(shelved, item.id)),
+          onSelect: () => void action.run(() => toggleShelf(shelved, ownEntry(item.id))),
         },
         item.status !== 'withdrawn' && {
           icon: '▤',

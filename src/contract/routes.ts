@@ -5,7 +5,7 @@ import { ErrorSchema, route } from "./route.ts";
 import { extensionRoutes } from "../../extensions/catalog.ts";
 import { ItemRevisionSchema } from "./schemas.ts";
 import { SettingsSchema } from './settings.ts';
-import { ShelfSchema, ContactSchema, HopperMembershipSchema, SignalSchema, OutboundMentionSchema, InteractionSchema, ThumbSchema, BrowseStepSchema } from './resources.ts';
+import { ShelfEntrySchema, ShelfSchema, ContactSchema, HopperMembershipSchema, SignalSchema, OutboundMentionSchema, InteractionSchema, ThumbSchema, BrowseStepSchema } from './resources.ts';
 import { CHANGE_DOMAINS } from '../change-state.ts';
 import { CHANGE_CATEGORIES } from "../change-category.ts";
 import { READ_BATCH_MAX, READ_ID_MAX, READ_VERSION_MAX } from '../importer/read-state.ts';
@@ -120,9 +120,9 @@ export const routes = {
   deleteSubscription: route("deleteSubscription", manageOperation({"writes":["subscriptions","imports","hoppers","signals","readingState"],"destructive":true}), "delete", "/subscriptions/{id}", ok),
   getShelf: route("getShelf", readOperation(), "get", "/shelf", ShelfSchema),
   putShelf: route("putShelf", manageOperation({"writes":["shelf"],"destructive":true}), "put", "/shelf", ShelfSchema, z.object({
-    itemIds: z.array(z.string().min(1).max(128)).max(SHELF_MAX).describe(`The whole list, in order (at most ${SHELF_MAX}). Replaces the stored list. Ids that name no own item, or a withdrawn one, are dropped quietly, and a repeated id keeps its first position; the response is what was stored.`),
-    expectedRevision: z.number().int().nonnegative().describe("Required. Replace only if the shelf is still at this revision (read it with GET /shelf; a never-written shelf is at 0); otherwise 409 revision-conflict with the current { itemIds, revision } in details.current. There is no unconditional replace: several clients share the shelf, and one must not silently undo another's reorder."),
-  }).describe("Replace the shelf, the owner's ordered list of own items. Studio-private for good: the shelf never gains a public mode. A featured list on public pages, if ever wanted, would be a separate presentation setting that may default from the shelf, not a flag on this resource.")),
+    entries: z.array(ShelfEntrySchema).max(SHELF_MAX).describe(`The whole list, in order (at most ${SHELF_MAX}). Replaces the stored list. An entry that does not resolve (an unknown subscription, an item not held under it, a withdrawn own item, an imported tombstone with no retained pin) is dropped quietly, never refused, and a repeated entry keeps its first position; the response is what was stored.`),
+    expectedRevision: z.number().int().nonnegative().describe("Required. Replace only if the shelf is still at this revision (read it with GET /shelf; a never-written shelf is at 0); otherwise 409 revision-conflict with the current { entries, revision } in details.current. There is no unconditional replace: several clients share the shelf, and one must not silently undo another's reorder."),
+  }).describe("Replace the shelf, the owner's ordered list of own and imported items. Studio-private for good: the shelf never gains a public mode. A featured list on public pages, if ever wanted, would be a separate presentation setting that may default from the shelf, not a flag on this resource.")),
   listContacts: route("listContacts", readOperation(), "get", "/contacts", z.object({ contacts: z.array(ContactSchema) })),
   createContact: route("createContact", manageOperation({"writes":["settings"]}), "post", "/contacts", ContactSchema, z.object({ handle: z.string(), name: z.string().trim().min(1).max(200), url: z.string(), ids: z.array(z.string().min(1).max(500)).max(50).optional() }), 201),
   updateContact: route("updateContact", manageOperation({"writes":["settings"]}), "patch", "/contacts/{id}", ContactSchema, z.object({ handle: z.string().optional(), name: z.string().trim().min(1).max(200).optional(), url: z.string().optional(), ids: z.array(z.string().min(1).max(500)).max(50).optional() })),

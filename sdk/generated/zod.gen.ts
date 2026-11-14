@@ -268,8 +268,13 @@ export const zSubscription = z.object({
     hopperFeedUrl: z.string().nullable()
 });
 
+export const zShelfEntry = z.object({
+    sub: z.string().min(1).max(128),
+    remoteId: z.string().min(1).max(256)
+}).strict();
+
 export const zShelf = z.object({
-    itemIds: z.array(z.string()),
+    entries: z.array(zShelfEntry),
     revision: z.int().gte(0)
 });
 
@@ -1373,7 +1378,7 @@ export const zResyncSubscriptionResponse = z.object({
 export const zGetShelfResponse = zShelf;
 
 export const zPutShelfBody = z.object({
-    itemIds: z.array(z.string().min(1).max(128)).max(50),
+    entries: z.array(zShelfEntry).max(50),
     expectedRevision: z.int().gte(0)
 }).strict();
 

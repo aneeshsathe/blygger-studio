@@ -281,7 +281,7 @@ export const settings = createCollection(
     },
   }),
 );
-/** The shelf (#135): one row, the owner's ordered own items. Edits replace the
+/** The shelf (#135): one row, the owner's ordered entries ({ sub, remoteId }). Edits replace the
  * whole list on the revision they were made against, so a change from another
  * client rolls this one back rather than being overwritten. */
 export const shelf = createCollection(
@@ -301,7 +301,7 @@ export const shelf = createCollection(
     onUpdate: async ({ transaction, collection }) => {
       try {
         for (const { original, modified } of transaction.mutations)
-          await unwrap(BlyggerApi.putShelf({ client, body: { itemIds: modified.itemIds, expectedRevision: original.revision } }));
+          await unwrap(BlyggerApi.putShelf({ client, body: { entries: modified.entries, expectedRevision: original.revision } }));
       } catch (error) {
         // A revision conflict means another client moved the shelf: show its
         // list, and let the owner make the change again on top of it.
@@ -314,12 +314,13 @@ export const shelf = createCollection(
   }),
 );
 export const SHELF_MAX = 50;
+export type ShelfEntry = { sub: string; remoteId: string };
 /** Replace the shelf's order; resolves once the server has it. */
-export async function setShelf(itemIds: string[]) {
+export async function setShelf(entries: ShelfEntry[]) {
   await preloadView(listViews.shelf);
   if (!shelf.has('shelf')) throw new Error('The shelf has not loaded. Try again.');
   await shelf.update('shelf', (row) => {
-    row.itemIds = itemIds;
+    row.entries = entries;
   }).when('settled');
 }
 export const subscriptions = createCollection(

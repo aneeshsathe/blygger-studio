@@ -1,13 +1,16 @@
 /*
- * The shelf (#135): a short list of the owner's own items, in the owner's
- * order, at the top of the compose list. Studio-private and synced through
+ * The shelf (#135): a short list of items in the owner's order, each named as
+ * { sub, remoteId } like hopper membership. The compose list shows the owner's
+ * own entries (sub OWN_SUBSCRIPTION) at its top; imported entries keep their
+ * places when those are reordered or removed. Studio-private and synced through
  * GET/PUT /api/shelf, so other clients (Blygger Desktop) show the same list.
  * The server drops withdrawn and discarded items; nothing here writes to the
  * interaction log.
  */
 import { useLiveQuery, inArray } from '@tanstack/react-db';
 import { Link } from '@tanstack/react-router';
-import { items, shelf, setShelf, SHELF_MAX } from './data.ts';
+import { items, shelf, setShelf, SHELF_MAX, type ShelfEntry } from './data.ts';
+import { OWN_SUBSCRIPTION } from '../own-subscription.ts';
 import { itemTitle } from './plain-text.ts';
 import { useState } from 'react';
 import { Button, Failure } from './components.tsx';
@@ -34,28 +37,40 @@ function useAction() {
   };
 }
 
-export function useShelf(): string[] {
-  return useLiveQuery({ query: (q) => q.from({ row: shelf }) }).data?.[0]?.itemIds ?? [];
+export function useShelf(): ShelfEntry[] {
+  return useLiveQuery({ query: (q) => q.from({ row: shelf }) }).data?.[0]?.entries ?? [];
 }
 
-/** Add or remove one item; the label and the toast say which. */
-export async function toggleShelf(ids: readonly string[], id: string) {
-  const on = ids.includes(id);
-  if (!on && ids.length >= SHELF_MAX) throw new Error(`The shelf holds at most ${SHELF_MAX} items. Remove one first.`);
-  await setShelf(on ? ids.filter((other) => other !== id) : [...ids, id]);
+const same = (a: ShelfEntry, b: ShelfEntry) => a.sub === b.sub && a.remoteId === b.remoteId;
+export const ownEntry = (id: string): ShelfEntry => ({ sub: OWN_SUBSCRIPTION, remoteId: id });
+/** The owner's own shelved item ids, in shelf order. */
+export const ownIds = (entries: readonly ShelfEntry[]) => entries.filter((entry) => entry.sub === OWN_SUBSCRIPTION).map((entry) => entry.remoteId);
+
+/** Add or remove one entry; the label and the toast say which. */
+export async function toggleShelf(entries: readonly ShelfEntry[], entry: ShelfEntry) {
+  const on = entries.some((other) => same(other, entry));
+  if (!on && entries.length >= SHELF_MAX) throw new Error(`The shelf holds at most ${SHELF_MAX} items. Remove one first.`);
+  await setShelf(on ? entries.filter((other) => !same(other, entry)) : [...entries, entry]);
   toast(on ? 'Removed from shelf' : 'Added to shelf', { tone: 'ok' });
 }
 
-export const shelfLabel = (ids: readonly string[], id: string) => (ids.includes(id) ? 'remove from shelf' : 'add to shelf');
+export const shelfLabel = (entries: readonly ShelfEntry[], entry: ShelfEntry) =>
+  (entries.some((other) => same(other, entry)) ? 'remove from shelf' : 'add to shelf');
 
-function move(ids: readonly string[], index: number, by: -1 | 1) {
-  const next = [...ids];
-  [next[index], next[index + by]] = [next[index + by], next[index]];
+/** Swap one own item with its neighbouring own item; other entries keep their places. */
+function move(entries: readonly ShelfEntry[], id: string, by: -1 | 1) {
+  const own = entries.flatMap((entry, at) => (entry.sub === OWN_SUBSCRIPTION ? [at] : []));
+  const from = own.find((at) => entries[at].remoteId === id);
+  const to = own[own.indexOf(from ?? -1) + by];
+  if (from === undefined || to === undefined) return [...entries];
+  const next = [...entries];
+  [next[from], next[to]] = [next[to], next[from]];
   return next;
 }
 
 export function Shelf() {
-  const ids = useShelf();
+  const entries = useShelf();
+  const ids = ownIds(entries);
   const action = useAction();
   // Captured values (ids) are part of the derived query's identity, so no deps array.
   const rows = useLiveQuery({ query: (q) => q.from({ item: items }).where(({ item }) => inArray(item.id, ids)) }).data ?? [];
@@ -76,11 +91,11 @@ export function Shelf() {
               {item ? <span className="shelf-meta">{item.kind === 'thread' ? 'thread · ' : ''}{item.version === 0 ? 'draft' : `v${item.version}`}</span> : null}
               <span className="shelf-actions">
                 <Button className="btn btn-ghost btn-mini" aria-label="move up" title="move up" disabled={action.busy || index === 0}
-                  onClick={() => void action.run(() => setShelf(move(ids, index, -1)))}>↑</Button>
+                  onClick={() => void action.run(() => setShelf(move(entries, id, -1)))}>↑</Button>
                 <Button className="btn btn-ghost btn-mini" aria-label="move down" title="move down" disabled={action.busy || index === ids.length - 1}
-                  onClick={() => void action.run(() => setShelf(move(ids, index, 1)))}>↓</Button>
+                  onClick={() => void action.run(() => setShelf(move(entries, id, 1)))}>↓</Button>
                 <Button className="btn btn-ghost btn-mini" aria-label="remove from shelf" title="remove from shelf" disabled={action.busy}
-                  onClick={() => void action.run(() => toggleShelf(ids, id))}>✕</Button>
+                  onClick={() => void action.run(() => toggleShelf(entries, ownEntry(id)))}>✕</Button>
               </span>
             </li>
           );

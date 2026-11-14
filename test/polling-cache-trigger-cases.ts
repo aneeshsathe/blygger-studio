@@ -23,7 +23,7 @@ export const triggerFamilies = [
   { table: 'interactions', insert: "INSERT INTO interactions(at,kind,origin,remote_id) VALUES('t','thumb_up','https://matrix-log/','remote')", update: "UPDATE interactions SET backfilled=1 WHERE origin='https://matrix-log/'", remove: "DELETE FROM interactions WHERE origin='https://matrix-log/'", domains: ['interactions'] },
   { table: 'browse_log', insert: "INSERT INTO browse_log(at,trail,origin,remote_id,via) VALUES('t','matrix-trail','https://matrix-log/','remote','start')", update: "UPDATE browse_log SET title='title' WHERE trail='matrix-trail'", remove: "DELETE FROM browse_log WHERE trail='matrix-trail'", domains: ['browse'] },
   // 0044: the shelf and its revision are Studio-private and move only `shelf`.
-  { table: 'shelf', insert: "INSERT INTO shelf(item_id,position) VALUES('matrix-item',0)", update: "UPDATE shelf SET position=1 WHERE item_id='matrix-item'", remove: "DELETE FROM shelf WHERE item_id='matrix-item'", domains: ['shelf'] },
+  { table: 'shelf', insert: "INSERT INTO shelf(subscription_id,remote_id,position) VALUES('~own','matrix-item',0)", update: "UPDATE shelf SET position=1 WHERE remote_id='matrix-item'", remove: "DELETE FROM shelf WHERE remote_id='matrix-item'", domains: ['shelf'] },
   { table: 'shelf_revision', insert: "INSERT INTO shelf_revision(id,revision) VALUES(1,0)", update: "UPDATE shelf_revision SET revision=revision+1 WHERE id=1", remove: "DELETE FROM shelf_revision WHERE id=1", domains: ['shelf'] },
 ] as const;
 

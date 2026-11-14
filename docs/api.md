@@ -181,42 +181,67 @@ Publication, withdrawal, restoration, and generation remain explicit operations:
 
 ## Shelf
 
-The shelf is a short list of the owner's own items in the owner's order, such
-as living threads kept at the top of a writing list. Studio and other clients
-(Blygger Desktop) share it. It is studio-private: it never reaches an item
-document, a feed, the manifest, a public page or the static export, and it
-never gains a public mode. A featured list on public pages, if one is ever
-wanted, would be a separate presentation setting, not a flag on the shelf.
+The shelf is a short list of items in the owner's order: living threads kept
+at the top of a writing list, and posts from blygs the owner reads. Studio and
+other clients (Blygger Desktop) share it. It is studio-private: it never
+reaches an item document, a feed, the manifest, a public page or the static
+export, and it never gains a public mode. A featured list on public pages, if
+one is ever wanted, would be a separate presentation setting, not a flag on
+the shelf.
 
-- `GET /shelf` (`owner:read`) returns `{ itemIds, revision }`, in order.
-- `PUT /shelf` (`owner:manage`) takes `{ itemIds, expectedRevision }` and
-  replaces the whole list. It returns the stored `{ itemIds, revision }`.
+An entry names an item the way hopper membership does, as `{ sub, remoteId }`:
+
+- an own item is `{ sub: "~own", remoteId: <item id> }`. The SDK exports the
+  sentinel as `OWN_SUBSCRIPTION`;
+- an imported item is `{ sub: <subscription id>, remoteId: <its remote id> }`.
+
+A bare id would not tell two origins apart.
+
+- `GET /shelf` (`owner:read`) returns `{ entries, revision }`, in order.
+- `PUT /shelf` (`owner:manage`) takes `{ entries, expectedRevision }` and
+  replaces the whole list. It returns the stored `{ entries, revision }`
+  after dropping and deduplicating, so a client can reconcile without a second
+  `GET`.
 
 Rules:
 
-- Any of this blyg's own items can be shelved, drafts included.
-- `GET` omits withdrawn items. A `PUT` drops ids that name no own item and ids
-  of withdrawn items quietly, and a repeated id keeps its first position. Check
-  the response to see what was kept. A withdrawn item's place is kept until the
-  next `PUT`, so republishing it before then puts it back where it was.
-- Discarding a draft takes it off the shelf.
-- At most 50 ids per `PUT`. A longer list, non-string ids, unknown fields, or a
-  missing or negative `expectedRevision` return 400 `invalid-input`.
+- Any of this blyg's own items can be shelved, drafts included, and so can
+  any item held under a subscription.
+- An entry has to resolve to be kept: an own item that is not withdrawn, or an
+  imported item that is current or a tombstone with a retained pin (the rule
+  `[[id]]` and `![[id]]` resolve by). `GET` omits entries that do not.
+- A `PUT` **drops entries that do not resolve quietly and never refuses them**.
+  That covers a `sub` that names no subscription, a `remoteId` not held under
+  it, a withdrawn own item, and an imported tombstone with no retained pin. A
+  repeated entry keeps its first position. Check the response to see what was
+  kept. A withdrawn item's place is kept until the next `PUT`, so republishing
+  it before then puts it back where it was. The same holds for an imported
+  item that turns into a tombstone and comes back.
+- Discarding a draft takes it off the shelf. So does an imported item that is
+  no longer held, and unsubscribing removes every entry of that subscription.
+- At most 50 entries per `PUT`. A longer list, a malformed entry (`sub` or
+  `remoteId` missing, empty or not a string, or an unknown field), unknown
+  fields in the body, or a missing or negative `expectedRevision` returns 400
+  `invalid-input`.
 - Every successful `PUT` bumps `revision`, even when the list is unchanged.
   `expectedRevision` is required: read the shelf first (a never-written shelf
   is at revision 0), and the replace applies only if nobody else has written
-  since. A stale one returns 409 `revision-conflict` with the current list in
-  `details.current: { itemIds, revision }`: merge and retry. There is no
+  since. A stale one returns 409 `revision-conflict` with the full current list
+  in `details.current: { entries, revision }`: merge and retry. There is no
   unconditional replace, because one client's `PUT` would silently undo
   another's reorder.
 - The `shelf` change domain in `GET /changes` moves on every `PUT`, when a
-  shelved item is withdrawn or republished, and when a shelved draft is
-  discarded.
+  shelved own item is withdrawn or republished, when a shelved imported item
+  becomes a tombstone without a retained pin or comes back, and when a shelved
+  entry's row is deleted (discarded draft, unsubscribe).
 - Shelving is not an interaction: nothing goes in the interaction log.
+- The Studio's compose list shows the `~own` entries. Reordering or removing
+  them there leaves imported entries where they are.
 
 ```ts
-const { itemIds, revision } = await unwrap(BlyggerApi.getShelf({ client }));
-await unwrap(BlyggerApi.putShelf({ client, body: { itemIds: [id, ...itemIds], expectedRevision: revision } }));
+import { OWN_SUBSCRIPTION } from "@blygger/sdk";
+const { entries, revision } = await unwrap(BlyggerApi.getShelf({ client }));
+await unwrap(BlyggerApi.putShelf({ client, body: { entries: [{ sub: OWN_SUBSCRIPTION, remoteId: id }, ...entries], expectedRevision: revision } }));
 ```
 
 ## Change classifier
