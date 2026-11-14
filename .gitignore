@@ -19,6 +19,10 @@ deploy-targets.json
 models.local.json
 # An operator's choice of Studio extensions to compile in (docs/extensions.md).
 extensions.local.json
+# Extensions vendored from other repositories by `npm run ext:add`
+# (docs/extension-vendoring.md): pinned and hash-checked, recorded in extensions.local.json.
+# Never committed, and never in a release build.
+extensions-vendor/
 
 # init's resume marker — records what has already been provisioned.
 .blyg-init.json

@@ -11,6 +11,7 @@ import {
 import {
   parseLoadSubsetOptions,
   queryCollectionOptions,
+  SyncNotInitializedError,
 } from '@tanstack/query-db-collection';
 import type { QueryFunctionContext } from '@tanstack/query-core';
 import { z } from 'zod';
@@ -41,9 +42,21 @@ import { readCursorWindow, type ApiPage } from './cursor-query.ts';
 import { planReadWrites, type ReadWrite, type UnreadWrite } from './read-state.ts';
 import { createReadBatchFetch } from './read-batch.ts';
 import { createReadFlight } from './read-flight.ts';
+import { errorLog } from './error-log.ts';
 
 export const apiBase = new URL(document.getElementById('studio-root')!.dataset.apiBase!, location.origin).href;
-const transport = createReadBatchFetch(apiBase);
+const batched = createReadBatchFetch(apiBase);
+/** Names each failed request to the error log, so the error it becomes can say what was asked. */
+const transport = (request: Request) => {
+  const { method, url } = request;
+  return batched(request).then((response) => {
+    if (!response.ok) errorLog.noteRequest(method, url, response.status);
+    return response;
+  }, (failure) => {
+    errorLog.noteRequest(method, url);
+    throw failure;
+  });
+};
 export const client = createBlyggerClient({ baseUrl: apiBase, fetch: (input, init) => {
   const request = new Request(input, init);
   if (['GET', 'HEAD'].includes(request.method)) return transport(request);
@@ -53,6 +66,15 @@ export const client = createBlyggerClient({ baseUrl: apiBase, fetch: (input, ini
 } });
 const changesFlight = createReadFlight(signal => unwrap(BlyggerApi.getChanges({ client, signal })));
 queryClient.mount();
+/** Applies a confirmed row. An on-demand source no view has started holds no
+ * rows to correct, and the view that starts it reads the server (#142). */
+export async function writeIfSyncing(write: () => unknown) {
+  try {
+    await write();
+  } catch (error) {
+    if (!(error instanceof SyncNotInitializedError)) throw error;
+  }
+}
 /** Query resolves paused refetches without observing the server. */
 function assertNotPaused(queryKey: readonly unknown[]) {
   if (queryClient.getQueryCache().findAll({ queryKey, type: 'active' })
@@ -553,7 +575,7 @@ export function createDraftAction(id?: string, observedRevision?: number) {
         case 'delete': result = await unwrap(BlyggerApi.deleteItem({ client, path, body: condition })); break;
         case 'withdraw': result = await unwrap(BlyggerApi.withdrawItem({ client, path, body: condition })); break;
         case 'pin': result = await unwrap(BlyggerApi.pinItem({ client, path: { ...path, version: command.version }, body: condition })); break;
-        case 'draft-note': result = await unwrap(BlyggerApi.draftNote({ client, path, body: condition })); break;
+        case 'draft-note': result = await unwrap(BlyggerApi.draftNote({ client, path, body: { ...condition, ...(command.history ? { history: true } : {}) } })); break;
         case 'classify': result = await unwrap(BlyggerApi.classifyChange({ client, path, body: condition })); break;
         case 'update': result = await unwrap(BlyggerApi.updateItem({ client, path, body: { ...command.changes, ...condition } })); break;
       }
@@ -566,7 +588,7 @@ export function createDraftAction(id?: string, observedRevision?: number) {
       // the summaries rather than replacing unknown pins with an empty list.
       const pins = item.version === 0 ? [] : items.get(itemId!)?.pins
         ?? (await unwrap(BlyggerApi.getItem({ client, path: { id: itemId! } }))).pins;
-      await items.utils.writeUpsert(sourceSchemas.items.parse({ ...result, pins }));
+      await writeIfSyncing(() => items.utils.writeUpsert(sourceSchemas.items.parse({ ...result, pins })));
     }
     if (command.type === 'save' || command.type === 'update') {
       // The response confirms the row. Count refresh failures stay visible
@@ -576,7 +598,7 @@ export function createDraftAction(id?: string, observedRevision?: number) {
       // Keep the row until refreshes finish, then apply the confirmed deletion
       // even if a secondary read failed. The caller can navigate immediately.
       await Promise.allSettled([changed('item-summary', 'reading')]);
-      await items.utils.writeDelete(itemId!);
+      await writeIfSyncing(() => items.utils.writeDelete(itemId!));
     } else if (command.type === 'draft-note' || command.type === 'classify') {
       // These commands return suggestions without changing the item.
     } else {
@@ -931,7 +953,7 @@ export const inbound = createCollection(queryCollectionOptions({
       const result = await unwrap(BlyggerApi.updateMention({ client,
         path: { id: String(mutation.key) }, body: { hidden: mutation.modified.hidden },
       }));
-      await collection.utils.writeUpdate({ id: String(mutation.key), hidden: result.hidden });
+      await writeIfSyncing(() => collection.utils.writeUpdate({ id: String(mutation.key), hidden: result.hidden }));
     }
     // The receipt is confirmed; refresh the server aggregate before settling.
     // A failed secondary read stays visible through collection health.

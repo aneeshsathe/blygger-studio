@@ -1,5 +1,8 @@
 // Cmd/Ctrl+B, I and K in the editors: markdown's bold, italic and link, written
 // into the text as if typed, so the browser's own undo takes them back.
+// Also the keys for markdown's structure, which a textarea makes awkward: Tab and
+// Shift+Tab move a list item in and out, and Shift+Enter breaks a line without
+// ending the paragraph (verse, addresses).
 export type FormatKind = 'bold' | 'italic' | 'link';
 export interface FormatEdit {
   /** Replace [from, to) with insert, then select [start, end). */
@@ -76,6 +79,84 @@ export function formatEdit(text: string, from: number, to: number, kind: FormatK
   return kind === 'link' ? link(text, from, to) : emphasis(text, from, to, kind);
 }
 
+const LIST_LINE = /^[ \t]*(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)/;
+/**
+ * Four spaces: enough to nest under any bullet or number markdown allows up to
+ * `99.`, and the one indent every markdown renderer agrees is a sublist.
+ */
+const INDENT = '    ';
+/** [from, to) widened to whole lines. A selection ending at a line's start does not take that line. */
+function lineSpan(text: string, from: number, to: number) {
+  const start = text.lastIndexOf('\n', from - 1) + 1;
+  const last = to > from && text[to - 1] === '\n' ? to - 1 : to;
+  const end = text.indexOf('\n', last);
+  return { start, end: end < 0 ? text.length : end };
+}
+/**
+ * Move the list items under the selection one level in or out. Null when a line
+ * there is not a list item (or nothing would move), so Tab keeps its usual meaning.
+ */
+export function indentEdit(text: string, from: number, to: number, out: boolean): FormatEdit | null {
+  const { start, end } = lineSpan(text, from, to);
+  const lines = text.slice(start, end).split('\n');
+  if (!lines.some((line) => line.trim()) || !lines.every((line) => !line.trim() || LIST_LINE.test(line))) return null;
+  const moved = lines.map((line) => (!line.trim() ? line : out ? line.replace(/^(?: {1,4}|\t)/, '') : INDENT + line));
+  // A numbered item that opens a sublist must be number 1: markdown reads any other
+  // number straight after its parent's text as more of that text, not as a list.
+  if (!out) {
+    const first = lines.findIndex((line) => line.trim());
+    const depth = /^[ \t]*/.exec(moved[first]!)![0];
+    const above = text.slice(0, start).trimEnd().split('\n').pop() ?? '';
+    // With no list above to go under, four spaces would make the line a code block.
+    if (!LIST_LINE.test(above) && !/^[ \t]+\S/.test(above)) return null;
+    const continues = lines.slice(0, first).length === 0 && above.startsWith(depth) && /^\d{1,9}[.)]/.test(above.slice(depth.length));
+    if (!continues) moved[first] = moved[first]!.replace(/^([ \t]*)\d{1,9}([.)])/, '$11$2');
+  }
+  const insert = moved.join('\n');
+  if (insert === lines.join('\n')) return null;
+  if (from !== to) return { from: start, to: end, insert, start, end: start + insert.length };
+  // A caret stays on its character; one inside the removed indent goes to the line's start.
+  const caret = Math.max(start, from + moved[0]!.length - lines[0]!.length);
+  return { from: start, to: end, insert, start: caret, end: caret };
+}
+
+/** Whether `at` is inside a fenced code block, where a backslash is a backslash. */
+function inFence(text: string, at: number) {
+  let open: string | null = null;
+  for (const line of text.slice(0, at).split('\n')) {
+    const fence = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+    if (!fence) continue;
+    if (!open) open = fence;
+    else if (fence[0] === open[0] && fence.length >= open.length && !line.trim().slice(fence.length)) open = null;
+  }
+  return open !== null;
+}
+/**
+ * A line break that is not a paragraph break: markdown's backslash at the end of
+ * the line. The backslash form, not two trailing spaces, because it can be seen.
+ */
+export function breakEdit(text: string, from: number, to: number): FormatEdit {
+  const before = text.slice(0, from);
+  const line = before.slice(before.lastIndexOf('\n') + 1);
+  // Nothing to break after on an empty line, and a line already ending in one needs no second.
+  const plain = !line.trim() || /\\$/.test(line) || inFence(text, from);
+  const insert = plain ? '\n' : '\\\n';
+  return { from, to, insert, start: from + insert.length, end: from + insert.length };
+}
+
+/** A fenced code block around the selected lines, or an empty one with the caret inside. */
+export function codeBlockEdit(text: string, from: number, to: number): FormatEdit {
+  const picked = text.slice(from, to);
+  // A block starts on its own line with a blank line before it, and ends the same way.
+  const lead = from === 0 || text.slice(0, from).endsWith('\n\n') ? '' : text[from - 1] === '\n' ? '\n' : '\n\n';
+  const rest = text.slice(to);
+  const tail = !rest || rest.startsWith('\n\n') ? '' : rest.startsWith('\n') ? '\n' : '\n\n';
+  const body = picked.replace(/\n$/, '');
+  const insert = `${lead}\`\`\`\n${body}\n\`\`\`${tail}`;
+  const inside = from + lead.length + 4;
+  return { from, to, insert, start: inside, end: inside + body.length };
+}
+
 const KEYS: Record<string, FormatKind> = { b: 'bold', i: 'italic', k: 'link' };
 
 /**
@@ -90,13 +171,37 @@ export function formatKey(event: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKe
 
 const isMac = () => /mac|iphone|ipad/i.test(navigator.platform);
 
+/** Which structural edit a key press asks for, if any. */
+export function structureKey(event: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>): 'indent' | 'outdent' | 'break' | null {
+  if (event.metaKey || event.ctrlKey || event.altKey) return null;
+  if (event.key === 'Tab') return event.shiftKey ? 'outdent' : 'indent';
+  return event.key === 'Enter' && event.shiftKey ? 'break' : null;
+}
+
 /** The textarea's onKeyDown. Fires its input event, so the editor's onChange sees the edit. */
 export function onFormatKey(event: React.KeyboardEvent<HTMLTextAreaElement>) {
   const el = event.currentTarget;
+  // A picker that took the key (Tab or Enter choosing a row) keeps it.
+  if (el.readOnly || event.defaultPrevented || event.nativeEvent.isComposing) return;
+  const [from, to] = [el.selectionStart, el.selectionEnd];
   const kind = formatKey(event, isMac());
-  if (!kind || el.readOnly) return;
+  const structure = kind ? null : structureKey(event);
+  const edit = kind
+    ? formatEdit(el.value, from, to, kind)
+    : structure === 'break'
+      ? breakEdit(el.value, from, to)
+      : structure
+        ? indentEdit(el.value, from, to, structure === 'outdent')
+        : null;
+  // Tab off a list line moves focus on, as it does in any form.
+  if (!edit) return;
   event.preventDefault();
-  const edit = formatEdit(el.value, el.selectionStart, el.selectionEnd, kind);
+  applyEdit(el, edit);
+}
+
+/** Write an edit into the textarea as if typed, and leave the selection where the edit says. */
+export function applyEdit(el: HTMLTextAreaElement, edit: FormatEdit) {
+  el.focus({ preventScroll: true });
   el.setSelectionRange(edit.from, edit.to);
   // insertText is what keeps the edit on the undo stack; empty insert means delete.
   const done = edit.insert ? document.execCommand('insertText', false, edit.insert) : document.execCommand('delete');

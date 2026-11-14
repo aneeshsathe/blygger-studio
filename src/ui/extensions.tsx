@@ -9,6 +9,8 @@
  *  - A broken extension breaks only itself. Each slot is an error boundary
  *    that renders nothing once its extension throws, and a throwing
  *    entryActions() or onSelect() is caught and logged.
+ *  - Its failures carry its name. What an extension throws, or shows through
+ *    run() and showError(), goes in the error log (error-log.ts) as its own.
  *
  * Kept free of the data layer (data.ts, components.tsx) so the UI test suite
  * can render it without a browser; reading.tsx and authoring.tsx supply the
@@ -16,7 +18,9 @@
  */
 import type { ErrorInfo, ReactNode } from 'react';
 import { Component } from 'react';
-import type { DraftCounterContext, EntryAction, EntryContext, StudioExtension } from './extension-api.ts';
+import type { EditorRegion } from './editor-regions.ts';
+import type { DraftCounterContext, EditorRegionsContext, EntryAction, EntryContext, MenuZone, StudioContext, StudioExtension } from './extension-api.ts';
+import { errorLog } from './error-log.ts';
 import type { MenuRow } from './sheets.tsx';
 
 /** The compiled-in extensions this node has enabled, in compiled order. */
@@ -25,16 +29,60 @@ export function enabledExtensions(compiled: readonly StudioExtension[], enabled:
   return compiled.filter((extension) => enabled.includes(extension.name));
 }
 
-/**
- * The one enabled extension page in the main menu: the first in compiled order that asks.
- * One, because a phone's tab bar has room for one more tab and no more.
- */
-export function mainMenuPage(extensions: readonly StudioExtension[]) {
-  return extensions.find((extension) => extension.page?.mainMenu);
+/** How many extension pages each menu zone holds. Hidden (More) holds any number. */
+export const MENU_CAPACITY = { top: 1, visible: 1 } as const;
+
+/** The zone an extension page asks for. A page that does not ask is in More. */
+export function askedZone(extension: StudioExtension): MenuZone {
+  const menu = extension.page?.mainMenu;
+  return menu ? (menu.zone ?? 'visible') : 'hidden';
 }
 
+/**
+ * Where each enabled extension page links from. An extension asks; the Studio decides.
+ * A zone is filled first by the pages that asked for it, then by pages a full zone above
+ * moved down, each in compiled order; whatever does not fit goes down a zone. So a page
+ * gets the zone it asked for or a lower one, never a higher one, and ends at worst in More.
+ */
+export function menuPlacement(extensions: readonly StudioExtension[]) {
+  const pages = extensions.filter((extension) => extension.page);
+  const placed = { top: [] as StudioExtension[], visible: [] as StudioExtension[] };
+  let moved: StudioExtension[] = [];
+  for (const zone of ['top', 'visible'] as const) {
+    const candidates = [...pages.filter((extension) => askedZone(extension) === zone), ...moved];
+    placed[zone] = candidates.slice(0, MENU_CAPACITY[zone]);
+    moved = candidates.slice(MENU_CAPACITY[zone]);
+  }
+  const zoneOf = (extension: StudioExtension): MenuZone =>
+    placed.top.includes(extension) ? 'top' : placed.visible.includes(extension) ? 'visible' : 'hidden';
+  return { ...placed, hidden: pages.filter((extension) => zoneOf(extension) === 'hidden'), zoneOf };
+}
+
+const asError = (error: unknown) => (error instanceof Error ? error : new Error(String(error)));
 function report(name: string, slot: string, error: unknown) {
   console.error(`Studio extension "${name}" failed in ${slot}; it is skipped there until the page reloads.`, error);
+  errorLog.record(asError(error), 'extension', { extension: name, slot });
+}
+
+/** A screen's side of a context: everything but the verbs this module adds per extension. */
+export type HostContext<C extends StudioContext> = Omit<C, 'showError'>;
+/**
+ * What one extension's slot is handed: the screen's context, with `run` and
+ * `showError` putting each failure to the extension's name before the screen shows it.
+ */
+export function extensionContext<C extends StudioContext>(extension: Pick<StudioExtension, 'name'>, slot: string, host: HostContext<C>): C {
+  const run: StudioContext['run'] = (action) =>
+    host.run(async () => {
+      try {
+        await action();
+      } catch (failure) {
+        const error = asError(failure);
+        errorLog.attribute(error, { extension: extension.name, slot });
+        throw error;
+      }
+    });
+  const showError: StudioContext['showError'] = (error) => void run(() => { throw asError(error); });
+  return { ...host, run, showError } as unknown as C;
 }
 
 /** Renders nothing once its extension throws; the rest of the Studio carries on. */
@@ -52,7 +100,7 @@ export class ExtensionBoundary extends Component<{ name: string; slot: string; c
 }
 
 /** The byline slot: each enabled extension's adornment, each in its own boundary. */
-export function EntryBylineSlot({ extensions, context }: { extensions: readonly StudioExtension[]; context: (extension: StudioExtension) => EntryContext }) {
+export function EntryBylineSlot({ extensions, context }: { extensions: readonly StudioExtension[]; context: (extension: StudioExtension) => HostContext<EntryContext> }) {
   const filling = extensions.filter((extension) => extension.entryByline);
   if (!filling.length) return null;
   return (
@@ -61,7 +109,7 @@ export function EntryBylineSlot({ extensions, context }: { extensions: readonly 
         const Byline = extension.entryByline!;
         return (
           <ExtensionBoundary key={extension.name} name={extension.name} slot="entryByline">
-            <Byline context={context(extension)} />
+            <Byline context={extensionContext(extension, 'entryByline', context(extension))} />
           </ExtensionBoundary>
         );
       })}
@@ -70,7 +118,7 @@ export function EntryBylineSlot({ extensions, context }: { extensions: readonly 
 }
 
 /** Beside the character count: each enabled extension's addition, set as a counter, each in its own boundary. */
-export function DraftCounterSlot({ extensions, context }: { extensions: readonly StudioExtension[]; context: DraftCounterContext }) {
+export function DraftCounterSlot({ extensions, context }: { extensions: readonly StudioExtension[]; context: HostContext<DraftCounterContext> }) {
   const filling = extensions.filter((extension) => extension.draftCounter);
   if (!filling.length) return null;
   return (
@@ -80,7 +128,7 @@ export function DraftCounterSlot({ extensions, context }: { extensions: readonly
         return (
           <ExtensionBoundary key={extension.name} name={extension.name} slot="draftCounter">
             <span className="counter counter-slot">
-              <Counter context={context} />
+              <Counter context={extensionContext(extension, 'draftCounter', context)} />
             </span>
           </ExtensionBoundary>
         );
@@ -89,14 +137,28 @@ export function DraftCounterSlot({ extensions, context }: { extensions: readonly
   );
 }
 
+/** Every enabled extension's held-out regions for this text. A throwing extension holds out nothing. */
+export function editorRegions(extensions: readonly StudioExtension[], context: EditorRegionsContext): EditorRegion[] {
+  return extensions
+    .filter((extension) => extension.editorRegions)
+    .flatMap((extension) => {
+      try {
+        return extension.editorRegions!(context);
+      } catch (error) {
+        report(extension.name, 'editorRegions', error);
+        return [];
+      }
+    });
+}
+
 /** The ⋯ sheet's extension rows, after the Studio's own. A throwing extension contributes none. */
-export function entryActionRows(extensions: readonly StudioExtension[], context: (extension: StudioExtension) => EntryContext): MenuRow[] {
+export function entryActionRows(extensions: readonly StudioExtension[], context: (extension: StudioExtension) => HostContext<EntryContext>): MenuRow[] {
   const filling = extensions.filter((extension) => extension.entryActions);
   if (!filling.length) return [];
   return filling.flatMap((extension) => {
     let actions: EntryAction[];
     try {
-      actions = extension.entryActions!(context(extension));
+      actions = extension.entryActions!(extensionContext(extension, 'entryActions', context(extension)));
     } catch (error) {
       report(extension.name, 'entryActions', error);
       return [];

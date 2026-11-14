@@ -38,10 +38,12 @@ import {
 } from './components.tsx';
 import { Sheet, confirm, menu, prompt, toast } from './sheets.tsx';
 import { compiledExtensions } from '../../build/extensions.ui.ts';
-import { DraftCounterSlot, enabledExtensions } from './extensions.tsx';
+import { DraftCounterSlot, editorRegions, enabledExtensions, type HostContext } from './extensions.tsx';
+import { join, rebase, split, toFull, toShown, touches } from './editor-regions.ts';
+import type { EditorRegion } from './editor-regions.ts';
 import { HandlePicker } from './contacts.tsx';
 import { Shelf, shelfLabel, toggleShelf, useShelf } from './shelf.tsx';
-import { onFormatKey } from './format-shortcuts.ts';
+import { applyEdit, breakEdit, codeBlockEdit, indentEdit, onFormatKey } from './format-shortcuts.ts';
 import { BracketPicker } from './picker.tsx';
 import { revealCaret, setTextAt } from './caret.ts';
 import { Draft } from './draft.ts';
@@ -52,7 +54,7 @@ import { insertLink, isUrl, linkToast } from './links.ts';
 import { itemTitle, permalink, plainText, textWithLink } from './plain-text.ts';
 import { OcrScan } from './ocr.tsx';
 import { addStubQuote, passageCount, quoteCount, stubQuoteForm, withStubQuote } from './stub-quote.ts';
-import { EnterFocus, ExitFocus, Image as ImageIcon, LinkIcon, More, Scan, Sparkle, Swap } from './icons.tsx';
+import { CodeBlock, EnterFocus, ExitFocus, Image as ImageIcon, IndentIn, IndentOut, LineBreak, LinkIcon, More, Scan, Sparkle, Swap } from './icons.tsx';
 import { SearchBox, SearchResults, store, stored } from './search.tsx';
 import './authoring.css';
 
@@ -129,7 +131,9 @@ function Help({ thread, className = 'compose-help' }: { thread?: boolean; classN
       <code>[[id]]</code> links an item. <code>[TK]an instruction[/TK]</code>{' '}
       marks AI-drafted text. Type <code>/image</code> on its own line, or
       paste or drop an image, to insert one there. Paste a URL over selected
-      text to link it. Cmd/Ctrl+B, I and K make bold, italics and a link.{' '}
+      text to link it. Cmd/Ctrl+B, I and K make bold, italics and a link. Tab
+      and Shift+Tab move a list item in and out; Shift+Enter breaks a line
+      without ending the paragraph.{' '}
       <Link to="/syntax">full syntax reference</Link>
     </p>
   ) : (
@@ -800,6 +804,8 @@ function useNoteConfirm(write: ReturnType<typeof createDraftAction>) {
     item: { id: string; version: number },
     note: string,
     drafted?: string,
+    /** Draft a summary of the history to date rather than of this change (session 61). */
+    history = false,
   ): Promise<NoteChoice | null> => {
     const typed = note.trim();
     if (item.version === 0) return Promise.resolve({ note: typed, generated: false });
@@ -819,7 +825,7 @@ function useNoteConfirm(write: ReturnType<typeof createDraftAction>) {
         resolve,
       });
       if (auto)
-        write({ type: 'draft-note' })
+        write({ type: 'draft-note', history })
           .then((r) =>
             setState((s) => s && { ...s, drafted: r.note, loading: false, text: s.inNote ? composeNote(r.note, s.classify?.category ?? null) : r.note }),
           )
@@ -1060,7 +1066,8 @@ export function Compose({ q }: { q?: string } = {}) {
   };
   const rows = result.data ?? [];
   // The cap measures what would publish, as publish() does.
-  const length = withoutComments(text).length;
+  const visible = useWithoutComments(text);
+  const length = visible.length;
   const over = length > MAX && kind === 'fragment';
   return (
     <>
@@ -1129,7 +1136,7 @@ export function Compose({ q }: { q?: string } = {}) {
               {saved ? 'saved' : ''}
             </span>
             <CharCount id="composer-count" fragment={kind === 'fragment'} length={length} />
-            <DraftCounter text={withoutComments(text)} run={action.run} />
+            <DraftCounter text={visible} run={action.run} />
             <span className="spacer" />
             {text.includes('[TK]') ? (
               <Button
@@ -1334,7 +1341,8 @@ function ItemRow({
     setText(value);
     setSaved(false);
   };
-  const length = withoutComments(text).length;
+  const visible = useWithoutComments(text);
+  const length = visible.length;
   const ownWords = withoutComments(item.contentMd);
   const { count, withoutDirectives } = extractDirectives(ownWords);
   const stripped = previewStrip(
@@ -1435,6 +1443,7 @@ function ItemRow({
               <div className="row qe-bar">
                 {saved ? <span className="save-state">saved</span> : null}
                 <CharCount fragment={kind === 'fragment'} length={length} />
+                <DraftCounter text={visible} item={{ id: item.id, kind: item.kind, status: item.status, version: item.version, revision: item.revision }} run={action.run} />
                 <span className="spacer" />
                 <Button className="btn btn-ghost btn-mini" onClick={() => setOpen(false)}>
                   done
@@ -1604,10 +1613,31 @@ function ItemRow({
 }
 
 /** The extension slot beside a character count (docs/extensions.md). */
+/**
+ * The text as it would publish. Comments make that a parse of the whole
+ * document, too slow for every keystroke on a long chapter, so it waits for a
+ * pause in typing; text with no comment is its own answer at once (#131).
+ */
+const holdsComment = (text: string) => text.includes('/*') || text.includes('*/');
+
+function useWithoutComments(text: string) {
+  const plain = !holdsComment(text);
+  const [settled, setSettled] = useState(text);
+  useEffect(() => {
+    if (plain) return;
+    const timer = setTimeout(() => setSettled(text), 300);
+    return () => clearTimeout(timer);
+  }, [plain, text]);
+  if (plain) return text;
+  // Text settled before the first comment is stale; a document holding one
+  // or two comments parses quickly enough to answer now.
+  return withoutComments(holdsComment(settled) ? settled : text);
+}
+
 function DraftCounter({ text, item, run }: { text: string; item?: DraftCounterContext['item']; run: (action: () => Promise<unknown>) => Promise<unknown> }) {
   const settings = useSettings();
   const navigate = useNavigate();
-  const context: DraftCounterContext = {
+  const context: HostContext<DraftCounterContext> = {
     client,
     openDraft: async (body) => {
       const created = await createItem(body);
@@ -1672,6 +1702,74 @@ function Card({
   );
 }
 const initiallyOpen = (hash: string) => location.hash === `#${hash}`;
+/**
+ * The full editor's held-out regions (`editorRegions`, docs/extensions.md). `box` is
+ * what the text box shows; every edit made there goes through `change`, which puts
+ * the regions back before the draft sees it. Hidden each time the editor opens;
+ * shown, they are read-only, and an edit that touches one is refused. If a join
+ * does not give back what the author sees, the edit is still saved whole and the
+ * editor stops holding anything out until it is opened again.
+ */
+function useHeldOut(
+  text: string,
+  current: () => string,
+  item: Detail,
+  edit: (text: string) => void,
+  input: RefObject<HTMLTextAreaElement | null>,
+) {
+  const settings = useSettings();
+  const [showing, setShowing] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [, refuse] = useState(0);
+  const regionsOf = (full: string): EditorRegion[] =>
+    failed
+      ? []
+      : editorRegions(enabledExtensions(compiledExtensions, settings?.extensions), {
+          text: full,
+          item: { id: item.id, kind: item.kind, status: item.status, version: item.version, revision: item.revision },
+        });
+  const regions = regionsOf(text);
+  const parts = split(text, regions);
+  const hiding = regions.length > 0 && !showing;
+  /** `caret` is the text box's caret after a typed edit; tools that set the text leave it out. */
+  const change = (next: string, caret?: number) => {
+    const full = current();
+    const now = regionsOf(full);
+    if (!now.length) return edit(next);
+    if (!hiding) {
+      const hit = touches(now, full, next, caret);
+      if (!hit) return edit(next);
+      toast(`The ${hit.label} is read-only here.`);
+      // The text box is controlled; a render puts back what it showed.
+      refuse((n) => n + 1);
+      return;
+    }
+    const before = split(full, now);
+    const joined = join(next, rebase(before.held, before.shown, next, caret));
+    if (split(joined, regionsOf(joined)).shown !== next) {
+      setFailed(true);
+      toast('The editor is showing the whole text now: a hidden part could not be kept apart from this edit.');
+    }
+    edit(joined);
+  };
+  const toggle = () => {
+    const el = input.current;
+    const caret = el ? (hiding ? toFull(el.selectionStart, parts.held) : toShown(el.selectionStart, text, regions)) : 0;
+    setShowing(hiding);
+    requestAnimationFrame(() => input.current?.setSelectionRange(caret, caret));
+  };
+  const labels = [...new Set(parts.held.flatMap((region) => region.label.split(', ')))].join(', ');
+  const notice = regions.length ? (
+    <span className="held-out" data-held-out={hiding ? 'hidden' : 'shown'}>
+      {hiding ? `${labels} hidden` : `${labels} read-only`}{' '}
+      <button type="button" className="link-btn" onClick={toggle}>
+        {hiding ? 'show' : 'hide'}
+      </button>
+    </span>
+  ) : null;
+  return { box: hiding ? parts.shown : text, change, notice };
+}
+
 /** How near the top of the window the pointer brings the focus view's controls back. */
 const FOCUS_ZONE = 72;
 const CARET_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown']);
@@ -1680,7 +1778,8 @@ const CARET_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', '
  * of the editor (authoring.css), not a second textarea, so the text, caret, undo
  * history and autosave all carry straight through; its preview tab is the editor's
  * own preview pane, on the same `pane` state phones use. Browser fullscreen is on
- * top where the browser has it, and the view works the same where it doesn't (iPhone).
+ * top where the browser has it, and the view works the same where it doesn't (iPhone)
+ * or can't keep it while typing (iPad).
  *
  * The line being written stays mid-window: typing and the caret keys recentre it.
  * A click doesn't, since the text would jump from under the pointer, and scrolling
@@ -1721,7 +1820,9 @@ function useFocusView(
     setShown(next);
     const mine = next ? { fullscreen: false } : null;
     visit.current = mine;
-    if (next) {
+    // iPad Safari has the API but leaves fullscreen when its keyboard comes up, which
+    // would read here as Escape and end the visit: the view does without it there.
+    if (next && platform() !== 'ios') {
       const request = () =>
         document.documentElement.requestFullscreen?.().then(() => {
           if (visit.current === mine) mine!.fullscreen = true;
@@ -1870,6 +1971,8 @@ function Editor({ item, onDiscarding }: { item: Detail; onDiscarding?: (active: 
   // The note the studio drafted (#40); `generated` is sent only while the
   // field still holds exactly that text — an edit makes the words the author's.
   const [drafted, setDrafted] = useState<string>();
+  // Off by default and not remembered: a history-to-date note is a choice per version.
+  const [historyNote, setHistoryNote] = useState(false);
   const confirmNote = useNoteConfirm(write);
   const [preview, setPreview] =
     useState<Awaited<ReturnType<typeof getPreview>>>();
@@ -1921,6 +2024,7 @@ function Editor({ item, onDiscarding }: { item: Detail; onDiscarding?: (active: 
     saveTimer.current = setTimeout(() => void action.background(save), 400);
   };
   useEffect(() => () => clearTimeout(saveTimer.current), []);
+  const held = useHeldOut(text, () => draft.current!.text, item, edit, input);
   useEffect(() => {
     const controller = new AbortController();
     const timer = setTimeout(() => {
@@ -1945,8 +2049,8 @@ function Editor({ item, onDiscarding }: { item: Detail; onDiscarding?: (active: 
       controller.abort();
     };
   }, [text, item.id, item.kind]);
-  const upload = useUpload(item.id, input, edit, write);
-  const tools = useTextTools(input, edit);
+  const upload = useUpload(item.id, input, held.change, write);
+  const tools = useTextTools(input, held.change);
   const operation = (fn: () => Promise<unknown>) =>
     void action.run(async () => {
       if (!(await save())) return;
@@ -2038,7 +2142,7 @@ function Editor({ item, onDiscarding }: { item: Detail; onDiscarding?: (active: 
   };
   const publish = () =>
     operation(async () => {
-      const choice = await confirmNote.request(item, note, drafted);
+      const choice = await confirmNote.request(item, note, drafted, historyNote);
       if (!choice) return;
       const md = draft.current!.text;
       const result = await write({ type: 'publish', note: choice.note, generated: choice.generated, category: choice.category });
@@ -2048,7 +2152,7 @@ function Editor({ item, onDiscarding }: { item: Detail; onDiscarding?: (active: 
       setPublished({ id: item.id, kind: item.kind, md, version: result.version });
       return result;
     });
-  const focus = useFocusView(input, text, pane, setPane);
+  const focus = useFocusView(input, held.box, pane, setPane);
   const isThread = item.kind === 'thread';
   const isPublic = item.status === 'public';
   // Attachments the live version lists that the working copy no longer has.
@@ -2080,16 +2184,17 @@ function Editor({ item, onDiscarding }: { item: Detail; onDiscarding?: (active: 
     await addHopperItem({ id: hopperId, sub: '~own', remoteId: item.id });
     toast(`added to ${name}`);
   };
-  const length = withoutComments(text).length;
+  const visible = useWithoutComments(text);
+  const length = visible.length;
   // A comment to self is not an unpublished change.
-  const edited = !saved && withoutComments(text) !== withoutComments(item.contentMd);
+  const edited = !saved && visible !== withoutComments(item.contentMd);
   // Unpublished changes, discounting a working copy that already holds the
   // published words again (discard changes leaves `dirty` set on purpose).
   const unpublished =
     edited ||
     (item.dirty &&
       !(
-        withoutComments(text) === item.published?.contentMd &&
+        visible === item.published?.contentMd &&
         !item.published?.generated.length
       ));
   const scopes = preview?.scopes ?? [];
@@ -2294,8 +2399,8 @@ function Editor({ item, onDiscarding }: { item: Detail; onDiscarding?: (active: 
         <StubQuote
           setPane={setPane}
           target={item.stubOf.id}
-          text={text}
-          edit={edit}
+          text={held.box}
+          edit={held.change}
           input={input}
           fresh={item.version === 0}
         />
@@ -2348,18 +2453,47 @@ function Editor({ item, onDiscarding }: { item: Detail; onDiscarding?: (active: 
             onClick={() => {
               const el = input.current;
               if (!el) return;
-              const value = draft.current!.text;
+              const value = el.value;
               const [from, to] = [el.selectionStart, el.selectionEnd];
               if (from === to) {
                 toast('Select the pasted generated text first, then mark it.');
                 return;
               }
-              edit(markImported(value, from, to));
+              held.change(markImported(value, from, to));
             }}
           >
             <Sparkle />
             <span className="sr-only">mark selection as generated</span>
           </Button>
+          {/* Markdown's structure, for a keyboard with no Tab key (an iPad's). */}
+          {([
+            ['indent', <IndentIn />, 'move list item in', 'Move the list item under the cursor in a level, making it a sublist (Tab)'],
+            ['outdent', <IndentOut />, 'move list item out', 'Move the list item under the cursor out a level (Shift+Tab)'],
+            ['break', <LineBreak />, 'line break', 'Break the line without ending the paragraph, for verse (Shift+Enter)'],
+            ['code', <CodeBlock />, 'code block', 'Put the selected lines in a code block, or start an empty one'],
+          ] as const).map(([kind, icon, label, title]) => (
+            <Button
+              key={kind}
+              className="act icon-only tool"
+              data-action={`md-${kind}`}
+              disabled={replacing}
+              title={title}
+              onClick={() => {
+                const el = input.current;
+                if (!el) return;
+                const [from, to] = [el.selectionStart, el.selectionEnd];
+                const change =
+                  kind === 'break' ? breakEdit(el.value, from, to)
+                  : kind === 'code' ? codeBlockEdit(el.value, from, to)
+                  : indentEdit(el.value, from, to, kind === 'outdent');
+                if (change) applyEdit(el, change);
+                else toast(kind === 'indent' ? 'Put the cursor on a list item that has another above it.' : 'Put the cursor on an indented list item.');
+              }}
+            >
+              {icon}
+              <span className="sr-only">{label}</span>
+            </Button>
+          ))}
         </ToolRow>
         <div className="editor-pane">
           <div className="ta-wrap">
@@ -2369,24 +2503,29 @@ function Editor({ item, onDiscarding }: { item: Detail; onDiscarding?: (active: 
               aria-label="draft"
               readOnly={replacing}
               ref={input}
-              value={text}
+              value={held.box}
               {...textareaProps(upload, tools)}
-              onChange={(event) => edit(upload.command(event.target.value))}
+              onChange={(event) => {
+                const typed = event.target.value;
+                const next = upload.command(typed);
+                held.change(next, next === typed ? event.target.selectionEnd : undefined);
+              }}
             />
             {!replacing ? (
               <BracketPicker
                 input={input}
-                text={text}
-                change={edit}
+                text={held.box}
+                change={held.change}
                 allowTransclude={isThread}
               />
             ) : null}
-            {!replacing ? <HandlePicker input={input} text={text} change={edit} /> : null}
+            {!replacing ? <HandlePicker input={input} text={held.box} change={held.change} /> : null}
             {tools.coach}
           </div>
           <div className="row ed-foot">
             <CharCount fragment={!isThread} length={length} />
-            <DraftCounter text={withoutComments(text)} item={{ id: item.id, kind: item.kind, status: item.status, version: item.version, revision: item.revision }} run={action.run} />
+            <DraftCounter text={visible} item={{ id: item.id, kind: item.kind, status: item.status, version: item.version, revision: item.revision }} run={action.run} />
+            {held.notice}
             <span className="spacer" />
             {isPublic ? (
               <a href={publicPath(shareable)} target="_blank" rel="noreferrer">
@@ -2427,7 +2566,7 @@ function Editor({ item, onDiscarding }: { item: Detail; onDiscarding?: (active: 
                 title="Describe the change from the published version; you can edit it before publishing"
                 onClick={() =>
                   operation(async () => {
-                    const result = await write({ type: 'draft-note' });
+                    const result = await write({ type: 'draft-note', history: historyNote });
                     setNote(result.note);
                     setDrafted(result.note);
                   })
@@ -2437,6 +2576,21 @@ function Editor({ item, onDiscarding }: { item: Detail; onDiscarding?: (active: 
               </Button>
             ) : null}
           </div>
+          {item.version > 0 ? (
+            <label className="check" id="note-history">
+              <input
+                type="checkbox"
+                checked={historyNote}
+                onChange={(e) => setHistoryNote(e.target.checked)}
+              />
+              <span>
+                summarize full history to date{' '}
+                <span className="hint">
+                  a drafted note covers every version so far, this one included (up to 400 characters)
+                </span>
+              </span>
+            </label>
+          ) : null}
           {drafted !== undefined && note.trim() === drafted ? (
             <p className="hint" id="note-generated-hint">
               drafted — published as generated unless you edit it
@@ -3069,7 +3223,7 @@ function VersionHistory({ item, select, pin, restore, pinBusy, restoreBusy }: {
     .where(({ version }) => eq(version.itemId, item.id)).orderBy(({ version }) => version.version, { direction: 'desc', stringSort: 'lexical' }), { pageSize: 25 });
   return <>
     {history.isLoading ? <p className="hint">Loading history…</p> : null}
-    {history.status === 'error' ? <p role="alert">Could not load history.</p> : null}
+    {history.status === 'error' ? <Failure error={new Error('Could not load history.')} /> : null}
             <ul className="h-list">
               {history.data.map((v) => (
                 <li className="h-row" key={v.version}>

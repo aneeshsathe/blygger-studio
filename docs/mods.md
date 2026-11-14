@@ -25,7 +25,7 @@ Code in the slots that [`extensions.md`](extensions.md) describes: a reading byl
 - Writes go through the documented contract, under the same scopes as any client.
 - Nothing reaches the wire, except that a feed order may arrange the home page.
 
-An extension can live in your own repository and be vendored into a build through the gitignored `extensions.local.json`. Vendored code must be **browser only**. `openapi.json` has to stay a function of this repository, so a server half is either upstreamed or not run.
+An extension can live in your own repository and be vendored into a build through the gitignored `extensions.local.json`, with `npm run ext:add` at a pinned commit ([`extension-vendoring.md`](extension-vendoring.md)). Vendored code must be **browser only**. `openapi.json` has to stay a function of this repository, so a server half is either upstreamed or not run.
 
 ### 3. Hooks proposed upstream
 

@@ -1,6 +1,7 @@
 // The design system first, so each screen's own stylesheet (imported by its
 // module below) comes after it in the bundle and wins ties.
 import './studio.css';
+import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   createRootRoute,
@@ -52,10 +53,17 @@ import { ExtensionPage } from './extension-page.tsx';
 import { SetupPage } from './setup.tsx';
 import { applyCachedTheme } from './theme.ts';
 import { applyCachedTitle } from './tab.ts';
+import { errorLog, watchUncaughtErrors } from './error-log.ts';
 // Paint the last theme this device saw before the first render; settings
 // repaint it once they load (see theme.ts).
 applyCachedTheme();
 applyCachedTitle();
+watchUncaughtErrors();
+/** A failed route load replaces the page, banners included: log it from here. */
+function RouteErrorLogged({ error }: { error: unknown }) {
+  useEffect(() => { errorLog.record(error, 'route'); }, [error]);
+  return null;
+}
 const rootRoute = createRootRoute({
   loader: () => Promise.all([
     preloadView(listViews.settings),
@@ -65,6 +73,7 @@ const rootRoute = createRootRoute({
   errorComponent: ({ error }) => (
     <div role="alert">
       <p>{error instanceof Error ? error.message : String(error)}</p>
+      <RouteErrorLogged error={error} />
       <Button
         onClick={() =>
           void queryClient

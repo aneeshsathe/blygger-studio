@@ -891,3 +891,12 @@ test('saving an unloaded published item obtains its pin summaries instead of cle
   expect(requests.filter(request => request.path === '/api/items/a').length).toBeGreaterThan(0);
   expect(db.items.get('a')?.pins).toEqual(itemPins);
 });
+
+test('a create or save after the item source was collected confirms on the server and continues (#142)', async () => {
+  const { createItem } = await import('../src/ui/server-mutations.ts');
+  itemCount = 0; await db.listViews.items.preload();
+  await db.listViews.items.cleanup(); await db.items.cleanup();
+  expect(db.items.status).toBe('cleaned-up');
+  await expect(createItem({ kind: 'thread', contentMd: 'stub draft' })).resolves.toMatchObject({ id: 'a' });
+  await expect(db.createDraftAction()({ type: 'save', text: 'first save', kind: 'fragment' })).resolves.toMatchObject({ id: 'a' });
+});
